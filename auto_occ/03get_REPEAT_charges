@@ -1,0 +1,174 @@
+#!/usr/bin/env python
+
+import sys
+import os
+import time
+from JOB_OPTIONS import *
+import subprocess
+
+pid = str(os.getpid())
+
+
+EXIT_SUCCESS = 0
+EXIT_FAILURE = 1
+
+usage  = '''
+---------------------------------------------------
+Usage:
+03get_REPEAT_charges [CPMD INPUT filename]
+---------------------------------------------------
+'''
+
+#check if there are enough arguments in the call to main
+if(len(sys.argv) != 2):
+    print " ["+pid+"] "+time.ctime()+ "| "+"Too Few/Many Arguments"
+    print " ["+pid+"] "+time.ctime()+ "| "+usage
+    sys.exit(EXIT_FAILURE)
+
+
+dump = True
+
+basevars = dir()
+
+def vardump(newvars):
+    if dump:
+	for varname in basevars:
+            newvars.remove(str(varname))
+        for possiblefunction in newvars:
+            if str(eval(str(possiblefunction))).__contains__("0x"):
+                newvars.remove(str(possiblefunction))
+        for possiblefunction in newvars:
+            if str(eval(str(possiblefunction))).__contains__("0x"):
+                newvars.remove(str(possiblefunction))
+        for newvarname in newvars:
+            print "#dump#%(name)35s evaluates to | %(eval)35s" % {'name':newvarname,'eval':eval(newvarname)}
+
+
+
+#PB - The files listed below in the if statement are required to move forward with the automation following the REPEAT charge calculation.  
+#     This function will prevent the code from re-submitting a REPEAT job if it has already been done.
+def repeatexists():
+  dirlist=os.listdir(".")
+  if ("GEOMETRY.xyz" in dirlist)and("ORDER_"+sys.argv[1] in dirlist)and(sys.argv[1] in dirlist)and("rpt_out" in dirlist):
+    return(True)
+  else:
+    return(False)
+
+vardump(dir())
+
+def qexists(jobID):
+    qlist = subprocess.Popen('qstat',stdout=subprocess.PIPE,shell=True).stdout
+    first_line = qlist.readline()
+    if not(first_line.split() == ['Job', 'id', 'Name', 'User', 'Time', 'Use', 'S', 'Queue']):
+        print " ["+pid+"] "+time.ctime()+ "| "+"\nProblem with qstat. Not returning jobs.  Waiting . . \n"
+        found=1
+        return found
+    qlist.readline()
+    all_jobs = qlist.readlines()
+    found = 0
+#NOTE: this line will need to be rethought in later revisions. Bug if currently job is only job on queue.
+    if len(all_jobs) == 0:
+        print " ["+pid+"] "+time.ctime()+ "| "+"Error. qstat returns column headers but no jobs. Queue empty?"
+        sys.exit(EXIT_FAILURE)
+    job_found = False
+    for i in range(len(all_jobs)):
+        if(all_jobs[i].split(".")[0]==str(jobID)) :
+            found+=1
+    if found > 1:
+        print " ["+pid+"] "+time.ctime()+ "| "+"More than one job found in queue with job ID " + str(jobID)
+        return False
+    elif found == 1:
+        return True
+
+
+
+
+
+REPEAT_ESP_CUBEFILE = str(init_variable("REPEAT_ESP_CUBEFILE"))
+REPEAT_PERIODICITY = str(init_variable("REPEAT_PERIODICITY"))
+REPEAT_VDW_FACTOR = str(init_variable("REPEAT_VDW_FACTOR"))
+REPEAT_RESP_PENALTIES = str(init_variable("REPEAT_RESP_PENALTIES"))
+REPEAT_READ_CUTOFF = str(init_variable("REPEAT_READ_CUTOFF"))
+REPEAT_R_CUTOFF = str(init_variable("REPEAT_R_CUTOFF"))
+REPEAT_APPLY_SYMMETRY_RESTRAIN = str(init_variable("REPEAT_APPLY_SYMMETRY_RESTRAIN"))
+REPEAT_USE_GODDARD = str(init_variable("REPEAT_USE_GODDARD"))
+REPEAT_GODDARD_WEIGHT = str(init_variable("REPEAT_GODDARD_WEIGHT"))
+REPEAT_CHARGE = str(init_variable("REPEAT_CHARGE"))
+
+REPEAT_INPUT_LINE = """Input ESP file name in cube format
+"""+REPEAT_ESP_CUBEFILE+"""
+Fit molecular(0) or periodic(1:default) system?
+"""+REPEAT_PERIODICITY+"""
+van der Waals scaling factor (default = 1.0)
+"""+REPEAT_VDW_FACTOR+"""
+Apply RESP penalties?, no(0:default), yes(1)
+"""+REPEAT_RESP_PENALTIES+"""
+Read cutoff radius? no(0), yes(1:default)
+"""+REPEAT_READ_CUTOFF+"""
+If flag above=1 provide R_cutoff next (in Bohrs)
+"""+REPEAT_R_CUTOFF+"""
+Apply symmetry restrain? no(0:default), yes(1)
+"""+REPEAT_APPLY_SYMMETRY_RESTRAIN+"""
+Use Goddard-type restrains? no(0:default), yes(1)
+"""+REPEAT_USE_GODDARD+"""
+If flag above=1 then provide weight next
+"""+REPEAT_GODDARD_WEIGHT+"""
+Enter total charge of the system
+"""+REPEAT_CHARGE+"""
+"""
+
+
+# Call to copy ELPOT and GEOMETRY.xyz files from job output location
+
+print " ["+pid+"] "+time.ctime()+ "| "+"--Checking to see that CPMD data finished properly\n"
+time.sleep(3)
+login_name = subprocess.Popen("whoami",shell=True,stdout=subprocess.PIPE).stdout.readlines()[0].replace("\n","")
+print " ["+pid+"] "+time.ctime()+ "| "+sys.argv[1]
+
+print " ["+pid+"] "+time.ctime()+ "| "+"Check for ELPOT file in "+'/shared_scratch/'+login_name+'/'+sys.argv[1]+'/'
+if(os.path.exists('/shared_scratch/'+login_name+'/'+sys.argv[1]+'/ELPOT')):
+    print " ["+pid+"] "+time.ctime()+ "| "+"ELPOT file found\n"
+    print " ["+pid+"] "+time.ctime()+ "| "+"--Assuming CPMD data intact.  Copy files to local directory.\n"
+    print " ["+pid+"] "+time.ctime()+ "| "+"Copying ELPOT file to local directory.\n"
+    os.system('cp /shared_scratch/'+login_name+'/'+sys.argv[1]+'/ELPOT ./')
+    print " ["+pid+"] "+time.ctime()+ "| "+"Copying GEOMETRY file to local directory.\n"
+    os.system('cp /shared_scratch/'+login_name+'/'+sys.argv[1]+'/GEOMETRY.xyz ./')
+    print " ["+pid+"] "+time.ctime()+ "| "+"Done Copying files to local directory.\nConverting ELPOT to cube file ELPOT.cube"
+    os.system('cpmd2cube.x ELPOT')
+    print " ["+pid+"] "+time.ctime()+ "| "+"ELPOT.cube file finished renaming to REPEAT_ESP.cube.\n"
+    os.system('mv ELPOT.cube REPEAT_ESP.cube')
+else:
+    print " ["+pid+"] "+time.ctime()+ "| "+"--CPMD data incomplete and/or ELPOT file in "+'/shared_scratch/'+login_name+'/'+sys.argv[1]+'/ not found'
+    sys.exit(EXIT_FAILURE)
+
+
+
+#Call to REPEAT code 
+#REPEAT_charge_fitting output is written to rpt_out for use in 04mkdlpolyin
+
+
+if os.path.exists("./REPEAT_param.inp"):
+    os.system("mv ./REPEAT_param.inp ./REPEAT_param.bak")
+    print " ["+pid+"] "+time.ctime()+ "| "+"REPEAT params found in current directory, backed up as REPEAR_param.bak"
+
+repeat_params=open("REPEAT_param.inp","w")
+repeat_params.write(REPEAT_INPUT_LINE)
+repeat_params.close()
+vardump(dir())
+
+if not repeatexists():
+    print " ["+pid+"] "+time.ctime()+ "| "+"--Calling REPEAT to generate charges\n"
+    jobID=os.popen("repeatsubmit REPEAT_ESP.cube").readline().split(".")[0]
+    while qexists(jobID):
+        print " ["+pid+"] "+time.ctime()+ "| "+"Job still in queue"
+        time.sleep(60)
+    print " ["+pid+"] "+time.ctime()+ "| "+str(int(os.popen("ls | grep -c *.esp_fit.out").readline()))
+    print " ["+pid+"] "+time.ctime()+ "| "+str(os.getcwd())
+    if os.path.exists("./REPEAT_ESP.esp_fit.out"):
+        os.system("mv *.esp_fit.out rpt_out")
+        print " ["+pid+"] "+time.ctime()+ "| "+"--REPEAT Done\n"
+    else:
+        print " ["+pid+"] "+time.ctime()+ "| "+"ERROR - No REPEAT output found"
+        sys.exit(EXIT_FAILURE)
+
+vardump(dir())

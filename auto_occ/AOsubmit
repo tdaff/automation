@@ -1,0 +1,152 @@
+#!/usr/bin/env python
+import os, sys, optparse,time,md5
+
+debug=False
+debug=True
+
+username=os.getlogin()
+
+# -----------------------------------------------------------------------
+# AutoOcc Submissions script - python version
+# The purpose of this script is to allow the AutoOcc gas occupancy 
+# determination framework to run on a PBS qeueing system.
+#
+# Oct '10 - DvR
+# -----------------------------------------------------------------------
+
+usage = '''
+Usage: AOsubmit [xyz input file] [job name]
+
+'''
+
+pid = str(os.getpid())
+
+if len(sys.argv) != 3:
+  print "\nToo many/few arguments."
+  print usage
+  sys.exit(0)
+
+
+max_cpus = 1               #-max no. of CPUs that can be requested
+mem_default="1gb"           #-default memory request to pass to qsub 
+default_queue=""            #-leave blank ("") to use Wooki default 
+                            # (not the same as node attributes)
+shared_memory_only=False   #some codes only have shared memory parallel executables
+n_cpus = 1
+scratch_dir = "/shared_scratch/"+username 
+shared_memory_job = False
+
+PACKAGE_DIR = os.getcwd()+"/"
+
+
+###############
+
+
+#Generate a UUID to append to jobs in event that name is the same
+UUID = md5.md5(time.ctime()+str(time.sleep(1))).hexdigest()[:10]
+
+#check if there are enough arguments in the call to main
+if len(sys.argv) < 3:
+    print " ["+pid+"] "+time.ctime()+ "| "+"Too Few Arguments"
+    print " ["+pid+"] "+time.ctime()+ "| "+usage
+    sys.exit(EXIT_FAILURE)
+
+print " ["+pid+"] "+time.ctime()+ "| "+"Suffixing uuid to run name"
+sys.argv[2] = sys.argv[2].split(".")[0]+"_"+str(UUID)
+
+
+################
+
+#************************************************************************************
+# QSUB bash script Begin
+#************************************************************************************
+line="""
+
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/program/LIBRARIES/CMKL/8.1/lib/em64t
+#set
+cd $SCRATCH_DIR
+mkdir \$JOBNAME
+cd \$JOBNAME 
+
+cp $STARTDIR/$JOBINPUT ./
+cp $PACKAGE_DIR* ./
+
+touch $STARTDIR/$JOBNAME.log
+ln -s $STARTDIR/$JOBNAME.log output
+
+echo "Welcome to AUTO OCC">>output
+echo "Job Name: " \$JOBNAME>>output
+echo "Main Host:" \$HOSTNAME>>output
+echo "PBS JOB ID: " \$PBS_JOBID>>output
+echo "Job Start Date: " $DATETIME >> output 
+echo "----------------------------------------------------------------------------------------------------------" >> output
+
+
+# ============================================
+# SERIAL EXECUTION ONLY (PARALLEL NOT NEEDED)
+# ============================================
+
+AUTO_OCC_EXE=$PACKAGE_DIR00MN_AUTO_OCC
+\$AUTO_OCC_EXE $JOBINPUT $JOBNAME  >> output
+
+cp -r ../$JOBNAME $STARTDIR
+
+"""
+#************************************************************************************
+# QSUB bash script END
+#************************************************************************************
+
+
+def abort(message):
+    print message
+    print "*****No job submitted to queue*****"
+    sys.exit()
+
+if len(sys.argv) == 0:                 # Job name
+   abort ("Missing argument:  Need to specify the job name")
+else:
+   jobname = sys.argv[2]
+   if jobname[-3:]==".in":                          #Strip ".in" from argument
+      jobname=jobname[:-3]
+
+   jobinput = sys.argv[1]
+   if not os.path.exists(jobinput):            #check if jobname.in exists
+      abort ("Missing input file: "+jobinput+" could not be found.")
+
+
+# ------------------------------------------------------
+# Make sure that user has a directory on /shared_scratch
+# ------------------------------------------------------
+if not os.path.exists("/shared_scratch/"+username):
+   print "user "+username+ " does not have shared scratch diretory, creating.\n"
+   os.popen("mkdir /shared_scratch/"+username) 
+
+#------------------------------------------------------ 
+# Make replacements in the bash qsub script
+#------------------------------------------------------ 
+line=line.replace("$STARTDIR",os.getcwd())
+line=line.replace("$SCRATCH_DIR",scratch_dir)
+line=line.replace("$JOBNAME",jobname)
+line=line.replace("$NODES",str(n_cpus))
+line=line.replace("$JOBINPUT",jobinput)
+line=line.replace("$DATETIME",str(time.ctime()))
+line=line.replace("$PACKAGE_DIR",str(PACKAGE_DIR))
+
+#------------------------------------------------------ 
+# Construct PBS directives
+#------------------------------------------------------ 
+PBS_directives="""#PBS -m n
+#PBS -o std.out
+#PBS -j oe """
+
+
+#-----------------------------
+# Add jobname to PBS directive
+#-----------------------------
+PBS_directives="#PBS -N "+jobname+"\n"+PBS_directives
+
+
+line = "qsub << eof \n"+PBS_directives+"\n"+line
+
+os.system (line)
+#print line

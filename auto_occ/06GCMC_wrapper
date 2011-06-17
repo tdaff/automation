@@ -1,0 +1,145 @@
+#!/usr/bin/env python
+
+import os
+import sys
+import time
+from JOB_OPTIONS import *
+import subprocess
+
+
+pid = str(os.getpid())
+
+
+EXIT_SUCCESS = 0
+EXIT_FAILURE = 1
+
+usage  = '''
+---------------------------------------------------
+Usage:
+06GCMC_wrapper [GCMC JOB NAME]
+---------------------------------------------------
+'''
+
+#Checking for arguments array size
+if(len(sys.argv)!=2):
+    print " ["+pid+"] "+time.ctime()+ "| "+"Too many/few arguments"
+    print " ["+pid+"] "+time.ctime()+ "| "+usage
+    sys.exit(EXIT_FAILURE)
+
+
+dump = True
+basevars = dir()
+
+def vardump(newvars):
+    if dump:
+        for varname in basevars:
+            newvars.remove(str(varname))
+        for possiblefunction in newvars:
+            if str(eval(str(possiblefunction))).__contains__("0x"):
+                newvars.remove(str(possiblefunction))
+        for possiblefunction in newvars:
+            if str(eval(str(possiblefunction))).__contains__("0x"):
+               	newvars.remove(str(possiblefunction))
+        for newvarname in newvars:
+            print "#dump#%(name)35s evaluates to | %(eval)35s" % {'name':newvarname,'eval':eval(newvarname)}
+
+
+MAIN_GCMC_PACKAGE = init_variable("MAIN_GCMC_PACKAGE")
+GCMC_GCMCPAR = init_variable("GCMC_GCMCPAR")
+GCMC_NUM_PROCESSORS = int(init_variable("GCMC_NUM_PROCESSORS"))
+GCMC_GUEST_NAME = init_variable("GCMC_GUEST_NAME")
+NEW_DIR_NAME = os.popen("cat ACTIVE_DIR").readline().split()[0]
+
+goodtree = False
+
+
+def qexists(jobID):
+    qlist = subprocess.Popen('qstat',stdout=subprocess.PIPE,shell=True).stdout
+    first_line = qlist.readline()
+    if not(first_line.split() == ['Job', 'id', 'Name', 'User', 'Time', 'Use', 'S', 'Queue']):
+        print " ["+pid+"] "+time.ctime()+ "| "+"\nProblem with qstat. Not returning jobs.  Waiting . . \n"
+        found=1
+        return found
+    qlist.readline()
+    all_jobs = qlist.readlines()
+    found = 0
+    if len(all_jobs) == 0:
+        print " ["+pid+"] "+time.ctime()+ "| "+"Error. Submit script not outputting. Can't grab JobID"
+        sys.exit(EXIT_FAILURE)
+    job_found = False
+    for i in range(len(all_jobs)):
+        if(all_jobs[i].split(".")[0]==str(job_id)) :
+            found+=1
+    return found
+
+
+
+#Function to check branch of a GCMC run for convergence
+def check_branch(branchno):
+    branch = "branch%(bn)02d" % {'bn': branchno}
+    if not(os.path.exists('./'+branch+"/numguests.out")):
+        print " ["+pid+"] "+time.ctime()+ "| "+branch+" not found, too early in simulation?"
+        return False
+    window_guests = []
+    avg_guests = 0.0
+    check = 0.0
+    print " ["+pid+"] "+time.ctime()+ "| "+"Checking "+branch
+    numguests_file = open('./'+branch+"/numguests.out",'r')
+    numguests_list = numguests_file.readlines()
+    numguests_file.close()
+    if (len(numguests_list) < GCMC_WINDOW_SIZE):
+        print " ["+pid+"] "+time.ctime()+ "| "+"Not enough steps collected, waiting"
+        return False
+    else:
+        window_guests = numguests_list[-GCMC_WINDOW_SIZE-1:-1]
+        for i in range(len(window_guests)):
+            window_guests[i] = window_guests[i].split()
+        for i in range(GCMC_WINDOW_SIZE):
+            avg_guests += float(window_guests[i][1])
+        avg_guests /= float(GCMC_WINDOW_SIZE)
+        check = abs(avg_guests - float(window_guests[-1][1]))/float(window_guests[-1][1])
+        return (check < GCMC_CONVERGENCE_CRITERIA)
+
+
+os.chdir(os.getcwd()+"/"+NEW_DIR_NAME)	
+
+
+if MAIN_GCMC_PACKAGE == "DLPOLY":
+    gcmc_outstream = subprocess.Popen('mcsubmit2 '+sys.argv[1]+' '+str(GCMC_NUM_PROCESSORS)+' '+GCMC_GCMCPAR,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True).stdout
+elif MAIN_GCMC_PACKAGE == "FASTGCMC":
+    gcmc_outstream = subprocess.Popen('fastmcsubmit '+sys.argv[1],stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True).stdout
+
+job_lines = gcmc_outstream.readlines()
+
+print " ["+pid+"] "+time.ctime()+ "| "+str(job_lines)
+
+job_id = "x.x"
+for i in range(len(job_lines)):
+    if(len(job_lines[i].split("."))>1):
+        if(job_lines[i].split(".")[1] == "wooki"):
+            job_id = job_lines[i].split(".")[0]
+            break
+print " ["+pid+"] "+time.ctime()+ "| "+"GCMC Queue ID: "+job_id
+
+#Monitors GCMC for convergence and tells it when to start averaging
+while(qexists(job_id)==1):
+    time.sleep(10)
+dawn_time = time.time()
+while(qexists(job_id)==2):
+    print " ["+pid+"] "+time.ctime()+ "| "+"Sleeping for "+str(int(GCMC_WAIT_TIME))+ " seconds"
+    time.sleep(int(GCMC_WAIT_TIME))
+    if not(goodtree):
+        print " ["+pid+"] "+time.ctime()+ "| "+"Checking GCMC tree . . . ."
+        goodbranches = 0
+        for i in range(GCMC_NUM_PROCESSORS):
+            if(check_branch(i+1)):
+                goodbranches+=1 
+            else:
+                print " ["+pid+"] "+time.ctime()+ "| "+"One or more branches failed covergence test, waiting to retest"
+                break
+        if (goodbranches == GCMC_NUM_PROCESSORS):
+            goodtree = True
+            os.system("echo STARTAVERAGING "+str(GCMC_NUMBER_TO_AVERAGE)+" > jobcontrol.in")
+
+
+vardump(dir())

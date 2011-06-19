@@ -3,7 +3,7 @@
 """
 PyTurds
 
-Automated high throughput strucutre analysis
+Automated high throughput strucutre adsorption properties analysis
 
 """
 
@@ -47,16 +47,21 @@ class Simulation(object):
     A single set of calculations for a structure
 
     """
+    # TODO(tdaff): automate the whole thing unless told otherwise
     def __init__(self, options):
         self.options = options
         self.struct = Structure("moffy")
+
+    def run_vasp(self):
+
 
 
 
 class Structure(object):
     """
-    All information realting to a structure for simulation and methods to
-    manipulate them
+    The current state of the structure; updates as the calculation proceeds.
+    All simulation methods are defined for the structure inculding input file
+    formats etc.
 
     """
     # FIXME: no symmetry right now, eh?
@@ -87,6 +92,10 @@ class Structure(object):
         print self.cell.to_dl_poly(scale=2)
         print self.atoms
         sys.stdout.writelines(self.to_vasp())
+
+    def charges_from_repeat(self):
+        pass
+
 
     def _update_types(self):
         """Regenrate the list of atom types"""

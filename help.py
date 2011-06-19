@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 
 """
-PyTurds
+PyTurds -- high throughput strucutre adsorption property analysis
 
-Automated high throughput strucutre adsorption properties analysis
+As a script, run analysis on a structure. Provides classes and methods
+for adapting the simulation or only doing select parts:
 
 """
 
@@ -17,15 +18,26 @@ DEG2RAD = pi/180
 
 class Options(object):
     """
+    Transparent options handling.
+
     A single object to deal with input files and command line options but
-    delivering reasonable defaults for unspecified values.
+    delivering reasonable defaults for unspecified values. Accessible through
+    attributes of the instance.
 
     """
     def __init__(self):
+        """Initialize optiaons as site.ini, job.ini and commandline."""
         self._commandline()
 
+    def __getattr__(self, item):
+        """Maps values to attributes from sources with different priorities."""
+        try:
+            return self.options.__getitem__(item)
+        except KeyError:
+            raise AttributeError(item)
+
     def _commandline(self):
-        """Define usage options, some error checking"""
+        """Specified options, highest priority."""
         usage = "usage: %prog [options] COMMAND"
         parser = OptionParser(usage=usage, version="%prog 0.1",
                               description=__doc__)
@@ -44,23 +56,24 @@ class Options(object):
 
 class Simulation(object):
     """
-    A single set of calculations for a structure
+    A single property calculation for one structure.
 
     """
     # TODO(tdaff): automate the whole thing unless told otherwise
     def __init__(self, options):
         self.options = options
-        self.struct = Structure("moffy")
+        self.structure = Structure("moffy")
 
     def run_vasp(self):
-
+        pass
 
 
 
 class Structure(object):
     """
     The current state of the structure; updates as the calculation proceeds.
-    All simulation methods are defined for the structure inculding input file
+
+    All simulation methods are defined for the structure as their input file
     formats etc.
 
     """
@@ -93,16 +106,26 @@ class Structure(object):
         print self.atoms
         sys.stdout.writelines(self.to_vasp())
 
-    def charges_from_repeat(self):
-        pass
-
+    def charges_from_repeat(self, filename):
+        charges = []
+        filetemp = open(filename)
+        for line in filetemp:
+            if line.startswith(" Charge"):
+                line = line.split()
+                charges.append((int(line[1]), int(line[4]), float(line[6])))
+            if "Error" in line:
+                if float(line.split()[-1]) > 0.6:
+                    print("Error in repeat charges is very high!")
+        filetemp.close()
+        # TODO: update structure
 
     def _update_types(self):
-        """Regenrate the list of atom types"""
+        """Regenrate the list of atom types."""
         # FIXME: better ways of dealing with this; will come with mols/symmetry
         self.types = [atom.type for atom in self.atoms]
 
     def to_vasp(self, optim_h=True):
+        """Return a vasp5 poscar as a list of lines."""
         poscar = ["%s\n" % self.name[:80],
                   " 1.0\n"]
         poscar.extend(self.cell.to_vasp())
@@ -141,13 +164,13 @@ class Cell(object):
 
 
     def from_pdb(self, line):
-        """Extract cell from CRYST1 line in a pdb"""
+        """Extract cell from CRYST1 line in a pdb."""
         # TODO: space groups?
         self.params = tuple(float(x) for x in line.split()[1:7])
         self._mkcell()
 
     def _mkcell(self):
-        """Update the cell representation to match the parameters"""
+        """Update the cell representation to match the parameters."""
         a_mag, b_mag, c_mag = self.params[:3]
         alpha, beta, gamma = [x*DEG2RAD for x in self.params[3:]]
         a_vec = array([a_mag, 0.0, 0.0])
@@ -158,7 +181,7 @@ class Cell(object):
         self.cell = array([a_vec, b_vec, c_vec])
 
     def _mkparam(self):
-        """Update the parameters to match the cell"""
+        """Update the parameters to match the cell."""
         cell_a = sqrt(sum(x**2 for x in self.cell[0:10:3])) # Sum of x
         cell_b = sqrt(sum(x**2 for x in self.cell[1:10:3]))
         cell_c = sqrt(sum(x**2 for x in self.cell[2:10:3]))
@@ -172,20 +195,20 @@ class Cell(object):
 
 
     def to_dl_poly(self, scale=1):
-        """[Super]cell vectors for dl_poly CONFIG"""
+        """[Super]cell vectors for dl_poly CONFIG."""
         return ["%20.12f%20.12f%20.12f\n" % tuple(scale*self.cell[0]),
                 "%20.12f%20.12f%20.12f\n" % tuple(scale*self.cell[1]),
                 "%20.12f%20.12f%20.12f\n" % tuple(scale*self.cell[2])]
 
     def to_vasp(self, scale=1):
-        """[Super]cell vectors for VASP POSCAR"""
+        """[Super]cell vectors for VASP POSCAR."""
         return ["%23.16f%22.16f%22.16f\n" % tuple(scale*self.cell[0]),
                 "%23.16f%22.16f%22.16f\n" % tuple(scale*self.cell[1]),
                 "%23.16f%22.16f%22.16f\n" % tuple(scale*self.cell[2])]
 
 
 class Atom(object):
-    """Base atom type, minimally requires type and position"""
+    """Base atom type, minimally requires type and position."""
 
     def __init__(self, at_type=False, pos=False):
         self.type = at_type
@@ -201,7 +224,7 @@ class Atom(object):
         return "Atom(%r,%r)" % (self.type, self.pos)
 
     def from_pdb(self, line):
-        """Parse the ATOM line from a pdb file"""
+        """Parse the ATOM line from a pdb file."""
         # Better to do this fixed width fields rather than splitting?
         self.idx = int(line[6:11])
         self.site = line[12:16].strip()
@@ -211,7 +234,7 @@ class Atom(object):
         self.type = line[76:78].strip()
 
     def translate(self, vec):
-        """Move the atom by the given vector"""
+        """Move the atom by the given vector."""
         self.pos = [x + y for x, y in zip(self.pos, vec)]
 
 

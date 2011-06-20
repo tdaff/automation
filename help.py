@@ -84,6 +84,7 @@ class Structure(object):
         self.cell = Cell()
         self.atoms = []
         self.types = []
+        self.esp = None
         # testing pdb reader for now
         self.from_pdb()
 
@@ -146,6 +147,10 @@ class Structure(object):
                     if atom.type == type:
                         poscar.append("%20.16f%20.16f%20.16f\n" % tuple(atom.pos))
         return poscar
+
+    def to_cpmd(self, optim_h=True):
+        """Return a cpmd input file as a list of lines."""
+        pass
 
 
 class Cell(object):

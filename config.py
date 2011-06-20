@@ -24,7 +24,7 @@ class Options(object):
 
     """
     def __init__(self):
-        """Initialize optiaons as site.ini, job.ini and commandline."""
+        """Initialize options as site.ini, job.ini and commandline."""
         self.cwd = ''
         self.script_dir = ''
         self.args = []

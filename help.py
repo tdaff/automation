@@ -10,6 +10,7 @@ for adapting the simulation or only doing select parts:
 
 import sys
 import pickle
+import shutil
 from optparse import OptionParser
 from numpy import pi, cos, sin, sqrt, arccos
 from numpy import array
@@ -25,7 +26,15 @@ class Simulation(object):
     # TODO(tdaff): automate the whole thing unless told otherwise
     def __init__(self, options):
         self.options = options
-        self.structure = Structure("moffy")
+        self.structure = Structure('moffy')
+        self.state = {'h_opt': 0,
+                      'repeat': 0,
+                      'gcmc': 0}
+
+    def job_dispatcher(self):
+        if self.options.h_optimize:
+            print self.options.repeat_exe
+
 
     def run_vasp(self):
         pass
@@ -50,7 +59,7 @@ class Structure(object):
         # testing pdb reader for now
         self.from_pdb()
 
-    def from_pdb(self, filename="MOF-5.pdb"):
+    def from_pdb(self, filename='MOF-5.pdb'):
         """Read an initial structure from a pdb file"""
         filetemp = open(filename)
         pdbfile = filetemp.readlines()
@@ -204,6 +213,40 @@ class Atom(object):
         """Move the atom by the given vector."""
         self.pos = [x + y for x, y in zip(self.pos, vec)]
 
+
+def run_repeat(cube_name='REPEAT_ESP.cube', symmetry=False):
+    # TODO(tdaff): charged systems?
+    if symmetry:
+        symmetry_flag = 1
+        # TODO(tdaff): connectivity.ff
+    else:
+        symmetry_flag = 0
+    repeat_input = [
+        "Input ESP file name in cube format\n",
+        "%s\n" % cube_name,
+        "Fit molecular(0) or periodic(1:default) system?\n",
+        "1\n",
+        "van der Waals scaling factor (default = 1.0)\n",
+        "1.00000\n",
+        "Apply RESP penalties?, no(0:default), yes(1)\n",
+        "0\n",
+        "Read cutoff radius? no(0), yes(1:default)\n",
+        "1\n",
+        "If flag above=1 provide R_cutoff next (in Bohrs)\n",
+        "20.00000\n",
+        "Apply symmetry restrain? no(0:default), yes(1)\n",
+        "%i\n" % symmetry_flag,
+        "Use Goddard-type restrains? no(0:default), yes(1)\n",
+        "0\n",
+        "If flag above=1 then provide weight next\n",
+        "0.00000\n",
+        "Enter total charge of the system\n",
+        "0.00000\n"]
+
+    filetemp = open('REPEAT_param.inp', 'w')
+    filetemp.writelines(repeat_input)
+    filetemp.close()
+    repeatsubmit()
 
 
 if __name__ == '__main__':

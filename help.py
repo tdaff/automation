@@ -13,46 +13,9 @@ import pickle
 from optparse import OptionParser
 from numpy import pi, cos, sin, sqrt, arccos
 from numpy import array
+from config import Options
 
 DEG2RAD = pi/180
-
-class Options(object):
-    """
-    Transparent options handling.
-
-    A single object to deal with input files and command line options but
-    delivering reasonable defaults for unspecified values. Accessible through
-    attributes of the instance.
-
-    """
-    def __init__(self):
-        """Initialize optiaons as site.ini, job.ini and commandline."""
-        self._commandline()
-
-    def __getattr__(self, item):
-        """Maps values to attributes from sources with different priorities."""
-        try:
-            return self.options.__getitem__(item)
-        except KeyError:
-            raise AttributeError(item)
-
-    def _commandline(self):
-        """Specified options, highest priority."""
-        usage = "usage: %prog [options] COMMAND"
-        parser = OptionParser(usage=usage, version="%prog 0.1",
-                              description=__doc__)
-        parser.add_option("-v", "--verbose", action="store_true", dest="verbose",
-                          help="write extra information to stdout [default]",
-                          default=True)
-        parser.add_option("-q", "--quiet", action="store_false", dest="verbose",
-                          help="silence all output")
-        (local_options, local_args) = parser.parse_args()
-
-        #if len(local_args) != 1:
-        #    parser.error("No command given (try %prog --help)")
-
-        self.options = local_options
-        self.args = local_args
 
 class Simulation(object):
     """
@@ -66,7 +29,6 @@ class Simulation(object):
 
     def run_vasp(self):
         pass
-
 
 
 class Structure(object):

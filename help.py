@@ -11,6 +11,8 @@ for adapting the simulation or only doing select parts:
 import sys
 import pickle
 import shutil
+import os
+import subprocess
 from optparse import OptionParser
 from numpy import pi, cos, sin, sqrt, arccos
 from numpy import array
@@ -27,7 +29,7 @@ class Simulation(object):
     # TODO(tdaff): automate the whole thing unless told otherwise
     def __init__(self, options):
         self.options = options
-        self.structure = Structure('moffy')
+        self.structure = Structure(options.job_name)
         self.state = {'h_opt': 0,
                       'repeat': 0,
                       'gcmc': 0}
@@ -40,8 +42,38 @@ class Simulation(object):
             print self.options.repeat_exe
 
 
-    def run_vasp(self):
-        pass
+    def run_vasp(self, nproc=16):
+        """Make inputs and run vasp job."""
+        job_name = options.job_name
+
+        filetemp = open(job_name + ".poscar")
+        filetemp.writelines(self.structure.to_vasp())
+        filetemp.close()
+
+        filetemp = open(job_name + ".incar")
+        filetemp.writelines(mk_incar(job_name))
+        filetemp.close()
+
+        filetemp = open(job_name + ".kpoints")
+        filetemp.writelines(mk_kpoints())
+        filetemp.close()
+
+        filetemp = open(job_name + ".potcar")
+        for type in self.structure.types:
+            potcar_src = os.path.join(options.potcar_dir, type, "POTCAR")
+            shutil.copyfileobj(open(potcar_src), filetemp)
+        filetemp.close()
+
+        # TODO(tdaff): wooki specific at the moment
+        vaspargs = ["vaspsubmit-beta", job_name, "%i" % nproc]
+        submit = subprocess.Popen(vaspargs, stdout=subprocess.PIPE)
+        for line in submit.stdout.readlines():
+            if "wooki" in line:
+                jobid = line.split(".")[0]
+        else:
+            print("Job failed?")
+
+
 
     def run_repeat(self):
         pass
@@ -252,7 +284,7 @@ class Atom(object):
         self.pos = [x + y for x, y in zip(self.pos, vec)]
 
 
-def run_repeat(cube_name='REPEAT_ESP.cube', symmetry=False):
+def mk_repeat(cube_name='REPEAT_ESP.cube', symmetry=False):
     # TODO(tdaff): charged systems?
     if symmetry:
         symmetry_flag = 1
@@ -286,6 +318,48 @@ def run_repeat(cube_name='REPEAT_ESP.cube', symmetry=False):
     filetemp.close()
     repeatsubmit()
 
+def mk_incar(job_name, h_opt=True):
+    """Basic vasp INCAR; use defaults as much as possible."""
+    incar = [
+        "SYSTEM  = %s\n" % job_name,
+        "ALGO    = Fast\n",
+        "EDIFF   = 1E-5\n",
+        "EDIFFG  = -0.02\n",
+        "POTIM   = 0.4\n",
+        "LVDW    = .TRUE.\n",
+        "NWRITE  = 0\n",
+        "LREAL   = Auto\n",
+        "LVTOT   = .TRUE.\n",
+        "LVHAR   = .TRUE.\n",
+        "ISMEAR  = 0\n",
+        "SIGMA   = 0.05\n"]
+    if h_opt:
+        incar.extend([
+            "IBRION  = 2\n",
+            "NSW     = 300\n",
+            "ISIF    = 2\n"])
+    else:
+        incar.extend([
+            "IBRION  = 0\n",
+            "NSW     = 0\n",
+            "ISIF    = 0\n"])
+
+    # TODO(tdaff)
+        # "ENCUT = 520\n"
+        # "#PREC    = high\n",
+        # "ISPIN    = 2    ! Spin polarized plz\n",
+
+    return incar
+
+def mk_kpoints(num_kpt=1):
+    """Defaults to gamma point only, or specified number."""
+    kpoints = [
+        "Auto\n",
+        "0\n",
+        "Gamma\n",
+        "%i %i %i\n" % (num_kpt, num_kpt, num_kpt),
+        "0 0 0\n"]
+    return kpoints
 
 if __name__ == '__main__':
     global_options = Options()

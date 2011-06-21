@@ -33,12 +33,16 @@ class Options(object):
         self.load_job_defaults()
         self.commandline()
 
-    def __getattr__(self, item):
+    def __getattribute__(self, item):
         """Maps values to attributes from sources with different priorities."""
-        try:
-            return self.options.__getitem__(item)
-        except KeyError:
-            raise AttributeError(item)
+        if hasattr(self, item):
+            return object.__getattribute__(self, item)
+        elif item in self.options and self.options.get_option(item) is not None:
+            return self.options.get_option(item)
+#        try:
+#            return self.options.__getitem__(item)
+#        except KeyError:
+#            raise AttributeError(item)
 
     def commandline(self):
         """Specified options, highest priority."""
@@ -56,7 +60,7 @@ class Options(object):
         #    parser.error("No arguments given (try %prog --help)")
         #else:
         #    self.job_name = local_args.pop()
-        #    if 
+        #    if
         self.job_name = 'testjob'
 
         self.options = local_options

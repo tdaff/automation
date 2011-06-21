@@ -42,7 +42,7 @@ class Options(object):
 
     def commandline(self):
         """Specified options, highest priority."""
-        usage = "usage: %prog [options] COMMAND"
+        usage = "usage: %prog [options] [COMMAND] JOB_NAME"
         parser = OptionParser(usage=usage, version="%prog 0.1",
                               description=__doc__)
         parser.add_option("-v", "--verbose", action="store_true",
@@ -52,8 +52,12 @@ class Options(object):
                           help="silence all output")
         (local_options, local_args) = parser.parse_args()
 
-        #if len(local_args) != 1:
-        #    parser.error("No command given (try %prog --help)")
+        #if len(local_args) < 1:
+        #    parser.error("No arguments given (try %prog --help)")
+        #else:
+        #    self.job_name = local_args.pop()
+        #    if 
+        self.job_name = 'testjob'
 
         self.options = local_options
         self.args = local_args

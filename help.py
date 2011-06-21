@@ -17,6 +17,7 @@ from numpy import array
 from config import Options
 
 DEG2RAD = pi/180
+BOHR2ANG = 0.52917720859
 
 class Simulation(object):
     """
@@ -32,11 +33,23 @@ class Simulation(object):
                       'gcmc': 0}
 
     def job_dispatcher(self):
+        if self.state['gcmc'] == 2:
+            # Everything finished
+            print("GCMC run has finished")
         if self.options.h_optimize:
             print self.options.repeat_exe
 
 
     def run_vasp(self):
+        pass
+
+    def run_repeat(self):
+        pass
+
+    def run_cpmd(self):
+        pass
+
+    def run_fastmc(self):
         pass
 
 
@@ -48,10 +61,15 @@ class Structure(object):
     formats etc.
 
     """
+    # Methods are grouped:
+    # * Structure parsers
+    # * Output file parsers to update structure
+    # * Input file generation
+    # * internal manipulation methods
     # FIXME: no symmetry right now, eh?
     def __init__(self, name):
+        """Just instance an empty structure initially"""
         self.name = name
-        self.remark = False
         self.cell = Cell()
         self.atoms = []
         self.types = []
@@ -78,6 +96,10 @@ class Structure(object):
         print self.atoms
         sys.stdout.writelines(self.to_vasp())
 
+    def from_cif(self, filename="structure.cif"):
+        """Genereate structure from a .cif file"""
+        raise NotImplementedError
+
     def charges_from_repeat(self, filename):
         charges = []
         filetemp = open(filename)
@@ -90,11 +112,6 @@ class Structure(object):
                     print("Error in repeat charges is very high!")
         filetemp.close()
         # TODO: update structure
-
-    def _update_types(self):
-        """Regenrate the list of atom types."""
-        # FIXME: better ways of dealing with this; will come with mols/symmetry
-        self.types = [atom.type for atom in self.atoms]
 
     def to_vasp(self, optim_h=True):
         """Return a vasp5 poscar as a list of lines."""
@@ -123,6 +140,15 @@ class Structure(object):
         """Return a cpmd input file as a list of lines."""
         pass
 
+    def to_fastmc(self):
+        """Return the FIELD and CONFIG needed for a fastmc run"""
+        pass
+
+    def _update_types(self):
+        """Regenrate the list of atom types."""
+        # FIXME: better ways of dealing with this; will come with mols/symmetry
+        self.types = [atom.type for atom in self.atoms]
+
 
 class Cell(object):
     """
@@ -132,12 +158,18 @@ class Cell(object):
     setter method [ick] that calls the private interconversion methods.
 
     """
+
     def __init__(self):
+        """Default to a 1A box"""
         self.cell = array([[1.0, 0.0, 0.0],
                            [0.0, 1.0, 0.0],
                            [0.0, 0.0, 1.0]])
         self.params = (1.0, 1.0, 1.0, 90.0, 90.0, 90.0)
 
+    def from_params(self, params):
+        """Set the params and update the cell representation."""
+        self.params = params
+        self._mkcell()
 
     def from_pdb(self, line):
         """Extract cell from CRYST1 line in a pdb."""
@@ -169,15 +201,21 @@ class Cell(object):
                            for j in range(3))/(cell_a*cell_b))*180/pi
         self.params = (cell_a, cell_b, cell_c, alpha, beta, gamma)
 
-
     def to_dl_poly(self, scale=1):
-        """[Super]cell vectors for dl_poly CONFIG."""
+        """[Super]cell vectors for DL_POLY CONFIG."""
         return ["%20.12f%20.12f%20.12f\n" % tuple(scale*self.cell[0]),
                 "%20.12f%20.12f%20.12f\n" % tuple(scale*self.cell[1]),
                 "%20.12f%20.12f%20.12f\n" % tuple(scale*self.cell[2])]
 
     def to_vasp(self, scale=1):
         """[Super]cell vectors for VASP POSCAR."""
+        return ["%23.16f%22.16f%22.16f\n" % tuple(scale*self.cell[0]),
+                "%23.16f%22.16f%22.16f\n" % tuple(scale*self.cell[1]),
+                "%23.16f%22.16f%22.16f\n" % tuple(scale*self.cell[2])]
+
+    def to_cpmd(self, scale=1):
+        """[Super]cell vectors for CPMD input."""
+        scale = scale/BOHR2ANG
         return ["%23.16f%22.16f%22.16f\n" % tuple(scale*self.cell[0]),
                 "%23.16f%22.16f%22.16f\n" % tuple(scale*self.cell[1]),
                 "%23.16f%22.16f%22.16f\n" % tuple(scale*self.cell[2])]
@@ -251,5 +289,7 @@ def run_repeat(cube_name='REPEAT_ESP.cube', symmetry=False):
 
 if __name__ == '__main__':
     global_options = Options()
+    # try to unpickle the job
+    # fall back to starting a new simulation
     my_simulation = Simulation(global_options)
     #print(pickle.dumps(my_simulation))

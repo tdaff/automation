@@ -33,11 +33,11 @@ class Options(object):
         self.load_job_defaults()
         self.commandline()
 
-    def __getattribute__(self, item):
+    def __getattr__(self, item):
         """Maps values to attributes from sources with different priorities."""
-        if hasattr(self, item):
+        if item in self.__dict__:
             return object.__getattribute__(self, item)
-        elif item in self.options and self.options.get_option(item) is not None:
+        elif item in self.options.__dict__:
             return self.options.get_option(item)
 #        try:
 #            return self.options.__getitem__(item)

@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 
 """
-PyTurds -- high throughput strucutre adsorption property analysis
+PyFaps -- Fully Automated Pickles of Systems.
 
-As a script, run analysis on a structure. Provides classes and methods
-for adapting the simulation or only doing select parts:
+High throughput strucutre adsorption property analysis. When run as a script,
+will automatically run complete analysis on a structure. Provides classes and
+methods for adapting the simulation or only doing select parts:
 
 """
 
@@ -21,8 +22,10 @@ from config import Options
 DEG2RAD = pi/180
 BOHR2ANG = 0.52917720859
 
-class Simulation(object):
+class PyNiss(object):
     """
+    PyNiss -- Negotiation of Intermediate System States
+
     A single property calculation for one structure.
 
     """
@@ -35,6 +38,8 @@ class Simulation(object):
                       'gcmc': 0}
 
     def job_dispatcher(self):
+        if "opt" in self.options.args:
+            self.run_vasp()
         if self.state['gcmc'] == 2:
             # Everything finished
             print("GCMC run has finished")
@@ -44,23 +49,23 @@ class Simulation(object):
 
     def run_vasp(self, nproc=16):
         """Make inputs and run vasp job."""
-        job_name = options.job_name
+        job_name = self.options.job_name
 
-        filetemp = open(job_name + ".poscar")
+        filetemp = open(job_name + ".poscar", "wb")
         filetemp.writelines(self.structure.to_vasp())
         filetemp.close()
 
-        filetemp = open(job_name + ".incar")
+        filetemp = open(job_name + ".incar", "wb")
         filetemp.writelines(mk_incar(job_name))
         filetemp.close()
 
-        filetemp = open(job_name + ".kpoints")
+        filetemp = open(job_name + ".kpoints", "wb")
         filetemp.writelines(mk_kpoints())
         filetemp.close()
 
-        filetemp = open(job_name + ".potcar")
+        filetemp = open(job_name + ".potcar", "wb")
         for type in self.structure.types:
-            potcar_src = os.path.join(options.potcar_dir, type, "POTCAR")
+            potcar_src = os.path.join(self.options.potcar_dir, type, "POTCAR")
             shutil.copyfileobj(open(potcar_src), filetemp)
         filetemp.close()
 
@@ -365,5 +370,13 @@ if __name__ == '__main__':
     global_options = Options()
     # try to unpickle the job
     # fall back to starting a new simulation
-    my_simulation = Simulation(global_options)
-    #print(pickle.dumps(my_simulation))
+    my_simulation = PyNiss(global_options)
+    my_niss = open(global_options.job_name + ".niss", "wb")
+    #pickle.dump(my_simulation, my_niss)
+    my_niss.close()
+
+#    load_niss = open(global_options.job_name + ".niss")
+#    my_simulation = pickle.load(load_niss)
+#    load_niss.close()
+#    print(my_simulation.structure.cell.to_dl_poly())
+    my_simulation.job_dispatcher()

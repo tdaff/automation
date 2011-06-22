@@ -7,6 +7,18 @@ High throughput strucutre adsorption property analysis. When run as a script,
 will automatically run complete analysis on a structure. Provides classes and
 methods for adapting the simulation or only doing select parts:
 
+RUN -- run or continue until job is finished
+STEP -- run only the next step and stop (specify multiple times for more steps)
+STATUS -- print some information about the state of the system
+
+valid steps:
+XXX optimise and ESP
+XXX new postions
+XXX repeat
+XXX new charges
+XXX gcmc
+XXX postproc
+
 """
 
 import sys
@@ -37,6 +49,10 @@ class PyNiss(object):
                       'gcmc': 0}
 
     def job_dispatcher(self):
+        if self.options.interactive:
+            import code
+            console = code.InteractiveConsole(locals())
+            console.interact()
         if "opt" in self.options.args:
             self.run_vasp()
         if self.state['gcmc'] == 2:
@@ -63,8 +79,8 @@ class PyNiss(object):
         filetemp.close()
 
         filetemp = open(job_name + ".potcar", "wb")
-        for type in self.structure.types:
-            potcar_src = os.path.join(self.options.potcar_dir, type, "POTCAR")
+        for at_type in set(self.structure.types):
+            potcar_src = os.path.join(self.options.potcar_dir, at_type, "POTCAR")
             shutil.copyfileobj(open(potcar_src), filetemp)
         filetemp.close()
 
@@ -74,8 +90,9 @@ class PyNiss(object):
         for line in submit.stdout.readlines():
             if "wooki" in line:
                 jobid = line.split(".")[0]
-        else:
-            print("Job failed?")
+                print jobid
+            else:
+                print("Job failed?")
 
 
 
@@ -111,7 +128,7 @@ class Structure(object):
         self.types = []
         self.esp = None
         # testing pdb reader for now
-        self.from_pdb()
+        self.from_pdb(self.name + '.pdb')
 
     def from_pdb(self, filename='MOF-5.pdb'):
         """Read an initial structure from a pdb file"""
@@ -372,7 +389,7 @@ if __name__ == '__main__':
     # fall back to starting a new simulation
     my_simulation = PyNiss(global_options)
     my_niss = open(global_options.job_name + ".niss", "wb")
-    #pickle.dump(my_simulation, my_niss)
+    pickle.dump(my_simulation, my_niss)
     my_niss.close()
 
 #    load_niss = open(global_options.job_name + ".niss")

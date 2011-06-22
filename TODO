@@ -1,7 +1,8 @@
 TODO(tdaff):
 Job running
 stopping and continuing
-.ini files
 cpmd support (pseudopotentials)
 UUID naming
 vdw potentials
+interactive mode help?
+where do the jobs run?

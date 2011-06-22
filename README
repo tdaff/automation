@@ -1,3 +1,16 @@
-PyTurds
+PyFaps 
+------
 
-Automated high throughput structure analysis and library.
+Automated high throughput structure adsorption analysis and library of python
+methods for customising simulations.
+
+Running
+=======
+
+Simulation requires a structure (as a .pdb). Executing the script in the working
+directory of the structure will try to automatically run all steps for a
+complete anlysis.
+
+
+
+# vim:textwidth=80

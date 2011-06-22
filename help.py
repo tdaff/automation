@@ -14,7 +14,6 @@ import pickle
 import shutil
 import os
 import subprocess
-from optparse import OptionParser
 from numpy import pi, cos, sin, sqrt, arccos
 from numpy import array
 from config import Options
@@ -246,9 +245,10 @@ class Cell(object):
 
     def to_vasp(self, scale=1):
         """[Super]cell vectors for VASP POSCAR."""
-        return ["%23.16f%22.16f%22.16f\n" % tuple(scale*self.cell[0]),
-                "%23.16f%22.16f%22.16f\n" % tuple(scale*self.cell[1]),
-                "%23.16f%22.16f%22.16f\n" % tuple(scale*self.cell[2])]
+        # Vasp usually has 16 dp but we get rounding errors eg cubic :(
+        return ["%23.14f%22.14f%22.14f\n" % tuple(scale*self.cell[0]),
+                "%23.14f%22.14f%22.14f\n" % tuple(scale*self.cell[1]),
+                "%23.14f%22.14f%22.14f\n" % tuple(scale*self.cell[2])]
 
     def to_cpmd(self, scale=1):
         """[Super]cell vectors for CPMD input."""

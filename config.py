@@ -1,5 +1,5 @@
 """
-configuration for PyTurds
+configuration for PyFaps
 
 Provides the Options class that will set up directories, defaults, user options
 and job options
@@ -27,8 +27,13 @@ class Options(object):
         """Initialize options as site.ini, job.ini and commandline."""
         self.cwd = ''
         self.script_dir = ''
+        self.job_name = ''
         self.args = []
         self.options = {}
+        self.defaults = ConfigParser.SafeConfigParser()
+        self.site_ini = ConfigParser.SafeConfigParser()
+        self.job_ini = ConfigParser.SafeConfigParser()
+        self.load_defaults()
         self.load_site_defaults()
         self.load_job_defaults()
         self.commandline()
@@ -36,13 +41,35 @@ class Options(object):
     def __getattr__(self, item):
         """Maps values to attributes from sources with different priorities."""
         if item in self.__dict__:
+            print "an attribute: %s" % item
             return object.__getattribute__(self, item)
         elif item in self.options.__dict__:
-            return self.options.get_option(item)
-#        try:
-#            return self.options.__getitem__(item)
+            print "an option: %s" % item
+            return self.options.__dict__[item]
+        elif self.job_ini.has_option('job_config', item):
+            print "a job option: %s" % item
+            return self.job_ini.get('job_config', item)
+        elif self.site_ini.has_option('site_config', item):
+            print "a site option: %s" % item
+            return self.site_ini.get('site_config', item)
+        elif self.defaults.has_option('defaults', item):
+            print "a default: %s" % item
+            return self.defaults.get('defaults', item)
+        else:
+            print "unspecified option: %s" % item
+
 #        except KeyError:
+#        else:
 #            raise AttributeError(item)
+
+    def _init_paths(self):
+        """Find the script directory and set up working directory"""
+        if __name__ != '__main__':
+            self.script_dir = os.path.dirname(__file__)
+        else:
+            self.script_dir = os.path.abspath(sys.path[0])
+        self.cwd = os.getcwd()
+
 
     def commandline(self):
         """Specified options, highest priority."""
@@ -56,29 +83,37 @@ class Options(object):
                           help="silence all output")
         (local_options, local_args) = parser.parse_args()
 
-        #if len(local_args) < 1:
-        #    parser.error("No arguments given (try %prog --help)")
-        #else:
-        #    self.job_name = local_args.pop()
-        #    if
-        self.job_name = 'testjob'
+        if len(local_args) < 1:
+            parser.error("No arguments given (try %prog --help)")
+        else:
+            self.job_name = local_args.pop()
+#        self.job_name = 'testjob'
 
         self.options = local_options
+        # Args are only the COMMANDS for the run
         self.args = local_args
+
+    def load_defaults(self):
+        """Load program defaults"""
+        default_ini_path = os.path.join(self.script_dir, 'defaults.ini')
+        self.defaults.read(default_ini_path)
 
     def load_site_defaults(self):
         """Find where the script is and load defaults"""
-        if __name__ != '__main__':
-            self.script_dir = os.path.dirname(__file__)
-        else:
-            self.script_dir = os.path.abspath(sys.path[0])
         site_ini_path = os.path.join(self.script_dir, 'site.ini')
-        self.site_ini = ConfigParser.SafeConfigParser()
         self.site_ini.read(site_ini_path)
 
     def load_job_defaults(self):
         """Find where the job is running and load defaults"""
-        self.cwd = os.getcwd()
         job_ini_path = os.path.join(self.cwd, 'job.ini')
-        self.job_ini = ConfigParser.SafeConfigParser()
         self.job_ini.read(job_ini_path)
+
+
+if __name__ == '__main__':
+    testopts = Options()
+    print(testopts.job_name)
+    print(testopts.args)
+    print(testopts.verbose)
+    print(testopts.script_dir)
+    print(testopts.cwd)
+    print(testopts.repeat_exe)

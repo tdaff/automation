@@ -2,7 +2,7 @@
 configuration for PyFaps
 
 Provides the Options class that will set up directories, defaults, user options
-and job options
+and job options.
 
 """
 

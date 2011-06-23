@@ -29,7 +29,7 @@ import subprocess
 import shlex
 import time
 from numpy import pi, cos, sin, sqrt, arccos
-from numpy import array
+from numpy import array, identity
 from config import Options
 
 DEG2RAD = pi/180
@@ -149,7 +149,7 @@ class Structure(object):
     # * internal manipulation methods
     # FIXME: no symmetry right now, eh?
     def __init__(self, name):
-        """Just instance an empty structure initially"""
+        """Just instance an empty structure initially."""
         self.name = name
         self.cell = Cell()
         self.atoms = []
@@ -159,7 +159,7 @@ class Structure(object):
         self.from_pdb(self.name + '.pdb')
 
     def from_pdb(self, filename='MOF-5.pdb'):
-        """Read an initial structure from a pdb file"""
+        """Read an initial structure from a pdb file."""
         filetemp = open(filename)
         pdbfile = filetemp.readlines()
         filetemp.close()
@@ -173,12 +173,9 @@ class Structure(object):
                 self.atoms.append(newatom)
 
         self._update_types()
-        print self.cell.to_dl_poly(scale=2)
-        print self.atoms
-        sys.stdout.writelines(self.to_vasp())
 
     def from_cif(self, filename="structure.cif"):
-        """Genereate structure from a .cif file"""
+        """Genereate structure from a .cif file."""
         raise NotImplementedError
 
     def charges_from_repeat(self, filename):
@@ -190,7 +187,7 @@ class Structure(object):
                 charges.append((int(line[1]), int(line[4]), float(line[6])))
             if "Error" in line:
                 if float(line.split()[-1]) > 0.6:
-                    print("Error in repeat charges is very high!")
+                    print("Error in repeat charges is very high -- check cube!")
         filetemp.close()
         # TODO: update structure
 
@@ -225,6 +222,35 @@ class Structure(object):
         """Return the FIELD and CONFIG needed for a fastmc run"""
         pass
 
+    def from_vasp(self, filename='CONTCAR'):
+        """Read a structure from a vasp [POS,CONT]CAR file."""
+        #TODO(tdaff): difference between initial and update?
+        filetemp = open(filename)
+        contcar = filetemp.readlines()
+        filetemp.close()
+        atom_list = []
+        scale = float(contcar[1])
+        self.cell.from_vasp(contcar[2:4], scale)
+        if contcar[5].split()[0].isalpha():
+            # vasp 5 with atom names
+            self.types = [x for x in contcar[5].split()]
+            del contcar[5]
+        else:
+            #TODO atom ids when not in poscar?
+            pass
+        if contcar[7].strip()[0].lower() in "s":
+            # 's'elective dynamics
+            del contcar[7]
+        if contcar[7].strip()[0].lower() in "ck":
+            mcell = identity(3)*scale
+        else:
+            mcell = self.cell
+
+        atom_counts = [int(x) for x in contcar[5].split()]
+
+        self._update_types()
+
+
     def _update_types(self):
         """Regenrate the list of atom types."""
         # FIXME: better ways of dealing with this; will come with mols/symmetry
@@ -257,6 +283,13 @@ class Cell(object):
         # TODO: space groups?
         self.params = tuple(float(x) for x in line.split()[1:7])
         self._mkcell()
+
+    def from_vasp(self, lines, scale=1.0):
+        """Extract cell from a POSCAR cell representation."""
+        self.cell = array([[float(x)*scale for x in lines[0].split()],
+                           [float(x)*scale for x in lines[1].split()],
+                           [float(x)*scale for x in lines[2].split()]])
+        self._mkparam()
 
     def _mkcell(self):
         """Update the cell representation to match the parameters."""
@@ -328,6 +361,11 @@ class Atom(object):
         at_pos = float(line[30:38]), float(line[38:46]), float(line[47:54])
         self.pos = at_pos
         self.type = line[76:78].strip()
+
+    def from_vasp(self, line, at_type, cell=identity(3)):
+        """Set the atom data from vasp input"""
+        self.pos = dot([float (x) for x in line.split()[:3]], cell)
+        self.type = at_type
 
     def translate(self, vec):
         """Move the atom by the given vector."""

@@ -26,6 +26,8 @@ import pickle
 import shutil
 import os
 import subprocess
+import shlex
+import time
 from numpy import pi, cos, sin, sqrt, arccos
 from numpy import array
 from config import Options
@@ -55,6 +57,10 @@ class PyNiss(object):
             console.interact()
         if "opt" in self.options.args:
             self.run_vasp()
+        if "esp" in self.options.args:
+            self.esp2cube()
+        if "repeat" in self.options.args:
+            self.run_repeat()
         if self.state['gcmc'] == 2:
             # Everything finished
             print("GCMC run has finished")
@@ -85,8 +91,8 @@ class PyNiss(object):
         filetemp.close()
 
         # TODO(tdaff): wooki specific at the moment
-        vaspargs = ["vaspsubmit-beta", job_name, "%i" % nproc]
-        submit = subprocess.Popen(vaspargs, stdout=subprocess.PIPE)
+        vasp_args = ["vaspsubmit-beta", job_name, "%i" % nproc]
+        submit = subprocess.Popen(vasp_args, stdout=subprocess.PIPE)
         for line in submit.stdout.readlines():
             if "wooki" in line:
                 jobid = line.split(".")[0]
@@ -94,10 +100,32 @@ class PyNiss(object):
             else:
                 print("Job failed?")
 
-
+    def esp2cube(self):
+        """Make the cube for repeat input."""
+        job_name = self.options.job_name
+        if self.options.esp_calc == 'vasp':
+            os.chdir(job_name + ".restart_DIR")
+            esp2cube_args = shlex.split(self.options.vasp2cube)
+            submit = subprocess.Popen(esp2cube_args)
+            # TODO(tdaff): maybe background this?
+            submit.wait()
+            # TODO(tdaff): leave the cube name as job-name..
+#            shutil.move(job_name+'.cube', os.path.join('..', 'REPEAT_ESP.cube'))
+            shutil.move(job_name+'.cube', self.options.cwd)
+            os.chdir(self.options.cwd)
 
     def run_repeat(self):
-        pass
+        """Submit the repeat calc to the queue."""
+        job_name = self.options.job_name
+        mk_repeat(cube_name=job_name+'.cube')
+        repeat_args = ['repeatsubmit', job_name+'.cube']
+        submit = subprocess.Popen(repeat_args, stdout=subprocess.PIPE)
+        for line in submit.stdout.readlines():
+            if "wooki" in line:
+                jobid = line.split(".")[0]
+                print jobid
+            else:
+                print("Job failed?")
 
     def run_cpmd(self):
         pass
@@ -175,17 +203,17 @@ class Structure(object):
         poscar.append("".join("%6i" % self.types.count(x) for x in set(self.types)) + "\n")
         if optim_h:
             poscar.extend(["Selective dynamics\n", "Cartesian\n"])
-            for type in set(self.types):
+            for at_type in set(self.types):
                 for atom in self.atoms:
-                    if atom.type == type and type == "H":
+                    if atom.type == at_type and at_type == "H":
                         poscar.append("%20.16f%20.16f%20.16f   T   T   T\n" % tuple(atom.pos))
-                    elif  atom.type == type:
+                    elif  atom.type == at_type:
                         poscar.append("%20.16f%20.16f%20.16f   F   F   F\n" % tuple(atom.pos))
         else:
             poscar.append("Cartesian\n")
-            for type in set(self.types):
+            for at_type in set(self.types):
                 for atom in self.atoms:
-                    if atom.type == type:
+                    if atom.type == at_type:
                         poscar.append("%20.16f%20.16f%20.16f\n" % tuple(atom.pos))
         return poscar
 
@@ -338,7 +366,6 @@ def mk_repeat(cube_name='REPEAT_ESP.cube', symmetry=False):
     filetemp = open('REPEAT_param.inp', 'w')
     filetemp.writelines(repeat_input)
     filetemp.close()
-    repeatsubmit()
 
 def mk_incar(job_name, h_opt=True):
     """Basic vasp INCAR; use defaults as much as possible."""

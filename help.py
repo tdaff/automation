@@ -28,6 +28,7 @@ import os
 import subprocess
 import shlex
 import time
+from copy import copy
 from numpy import pi, cos, sin, sqrt, arccos
 from numpy import array, identity
 from config import Options
@@ -148,6 +149,7 @@ class Structure(object):
     # * Input file generation
     # * internal manipulation methods
     # FIXME: no symmetry right now, eh?
+    # TODO: dft energy?
     def __init__(self, name):
         """Just instance an empty structure initially."""
         self.name = name
@@ -218,9 +220,28 @@ class Structure(object):
         """Return a cpmd input file as a list of lines."""
         pass
 
-    def to_fastmc(self):
+    def to_fastmc(self, supercell=(1,1,1)):
         """Return the FIELD and CONFIG needed for a fastmc run"""
-        pass
+        # TODO(tdaff): guess imcon
+        levcfg = 0
+        imcon = 3
+        natoms = len(self.atoms)
+        config = [
+            "%s\n" % self.name[:80],
+            "%10i%10i%10i\n" % (levcfg, imcon, natoms)]
+        config.extend(cell.to_vector_string(scale=supercell))
+        for idx, atom in enumerate(self.supercell(supercell)):
+            config.extend(["%-6s%10i\n" % (atom.type, idx),
+                          ["%20.12f%20.12f%20.12f\n" % tuple(atom.pos)]])
+# TODO(tdaff): ntypes = nguests + nummols
+        ntypes = 2
+        field = [
+            "%s\n" % self.name[:80],
+            "UNITS   kcal\n",
+            "molecular types %i\n" % ntypes]
+# TODO(tdaff): guests
+
+
 
     def from_vasp(self, filename='CONTCAR'):
         """Read a structure from a vasp [POS,CONT]CAR file."""
@@ -258,6 +279,19 @@ class Structure(object):
         self.atoms = atom_list
         self._update_types()
 
+    def supercell(self, dimensions):
+        """Generate the atoms for a supercell"""
+        if len(dimensions) == 1:
+            dimensions = (dimensions, dimensions, dimensions)
+        for x_super in range(dimensions[0]):
+            for y_super in range(dimensions[1]):
+                for z_super in range(dimensions[2]):
+                    offset = dot((x_super, y_super, z_super), self.cell)
+                    for atom in self.atoms:
+                        newatom = copy(atom)
+                        newatom.translate(offset)
+                        yield newatom
+
 
     def _update_types(self):
         """Regenrate the list of atom types."""
@@ -285,6 +319,11 @@ class Cell(object):
         """Set the params and update the cell representation."""
         self.params = params
         self._mkcell()
+
+    def from_cell(self, cell):
+        """Set the params and update the cell representation."""
+        self.cell = cell
+        self._mkparam()
 
     def from_pdb(self, line):
         """Extract cell from CRYST1 line in a pdb."""
@@ -351,6 +390,8 @@ class Cell(object):
                 "%23.16f%22.16f%22.16f\n" % tuple(scale*self.cell[1]),
                 "%23.16f%22.16f%22.16f\n" % tuple(scale*self.cell[2])]
 
+    cell = property(fset=from_cell)
+    params = property(fset=from_params)
 
 class Atom(object):
     """Base atom type, minimally requires type and position."""

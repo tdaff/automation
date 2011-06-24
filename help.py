@@ -231,9 +231,13 @@ class Structure(object):
         atom_list = []
         scale = float(contcar[1])
         self.cell.from_vasp(contcar[2:4], scale)
+        atom_counts = [int(x) for x in contcar[5].split()]
         if contcar[5].split()[0].isalpha():
             # vasp 5 with atom names
-            self.types = [x for x in contcar[5].split()]
+            self.types = []
+            poscar_types = [x for x in contcar[5].split()]
+            for at_count, at_type in zip(atom_counts, poscar_types):
+                self.types.extend([at_type]*at_count)
             del contcar[5]
         else:
             #TODO atom ids when not in poscar?
@@ -246,8 +250,12 @@ class Structure(object):
         else:
             mcell = self.cell
 
-        atom_counts = [int(x) for x in contcar[5].split()]
+        for at_type, at_line in zip(self.types, contcar[8:]):
+            this_atom = Atom()
+            this_atom.from_vasp(at_line, at_type, mcell)
+            atom_list.append(this_atom)
 
+        self.atoms = atom_list
         self._update_types()
 
 
@@ -314,6 +322,14 @@ class Cell(object):
         gamma = arccos(sum(self.cell[0 + 3*j]*self.cell[1 + 3*j]
                            for j in range(3))/(cell_a*cell_b))*180/pi
         self.params = (cell_a, cell_b, cell_c, alpha, beta, gamma)
+
+    def to_vector_string(self, scale=1, bohr=False):
+        """Generic [Super]cell vectors."""
+        if bohr:
+            scale = scale/BOHR2ANG
+        return ["%20.12f%20.12f%20.12f\n" % tuple(scale*self.cell[0]),
+                "%20.12f%20.12f%20.12f\n" % tuple(scale*self.cell[1]),
+                "%20.12f%20.12f%20.12f\n" % tuple(scale*self.cell[2])]
 
     def to_dl_poly(self, scale=1):
         """[Super]cell vectors for DL_POLY CONFIG."""

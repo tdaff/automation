@@ -29,9 +29,11 @@ import subprocess
 import shlex
 import time
 from copy import copy
-from numpy import pi, cos, sin, sqrt, arccos
+from numpy import pi, cos, sin, sqrt, arccos, prod
 from numpy import array, identity
+from numpy import dot
 from config import Options
+from elements import WEIGHT, UFF
 
 DEG2RAD = pi/180
 BOHR2ANG = 0.52917720859
@@ -62,6 +64,8 @@ class PyNiss(object):
             self.esp2cube()
         if "repeat" in self.options.args:
             self.run_repeat()
+        if "gcmc" in self.options.args:
+            self.run_fastmc()
         if self.state['gcmc'] == 2:
             # Everything finished
             print("GCMC run has finished")
@@ -86,7 +90,7 @@ class PyNiss(object):
         filetemp.close()
 
         filetemp = open(job_name + ".potcar", "wb")
-        for at_type in set(self.structure.types):
+        for at_type in unique(self.structure.types):
             potcar_src = os.path.join(self.options.potcar_dir, at_type, "POTCAR")
             shutil.copyfileobj(open(potcar_src), filetemp)
         filetemp.close()
@@ -132,7 +136,7 @@ class PyNiss(object):
         pass
 
     def run_fastmc(self):
-        pass
+        confy, feeld = self.structure.to_fastmc(supercell=(2, 1, 1))
 
 
 class Structure(object):
@@ -158,6 +162,7 @@ class Structure(object):
         self.types = []
         self.esp = None
         self.dft_energy = 0.0
+        self.guests = [Guest()]
         # testing pdb reader for now
         self.from_pdb(self.name + '.pdb')
 
@@ -175,6 +180,7 @@ class Structure(object):
                 newatom.from_pdb(line)
                 self.atoms.append(newatom)
 
+        self.oreder_by_types()
         self._update_types()
 
     def from_cif(self, filename="structure.cif"):
@@ -196,14 +202,15 @@ class Structure(object):
 
     def to_vasp(self, optim_h=True):
         """Return a vasp5 poscar as a list of lines."""
+        ordered_types = unique(self.types)
         poscar = ["%s\n" % self.name[:80],
                   " 1.0\n"]
         poscar.extend(self.cell.to_vasp())
-        poscar.append("".join("%5s" % x for x in set(self.types)) + "\n")
-        poscar.append("".join("%6i" % self.types.count(x) for x in set(self.types)) + "\n")
+        poscar.append("".join("%5s" % x for x in ordered_types) + "\n")
+        poscar.append("".join("%6i" % self.types.count(x) for x in ordered_types) + "\n")
         if optim_h:
             poscar.extend(["Selective dynamics\n", "Cartesian\n"])
-            for at_type in set(self.types):
+            for at_type in ordered_types:
                 for atom in self.atoms:
                     if atom.type == at_type and at_type == "H":
                         poscar.append("%20.16f%20.16f%20.16f   T   T   T\n" % tuple(atom.pos))
@@ -211,7 +218,7 @@ class Structure(object):
                         poscar.append("%20.16f%20.16f%20.16f   F   F   F\n" % tuple(atom.pos))
         else:
             poscar.append("Cartesian\n")
-            for at_type in set(self.types):
+            for at_type in ordered_types:
                 for atom in self.atoms:
                     if atom.type == at_type:
                         poscar.append("%20.16f%20.16f%20.16f\n" % tuple(atom.pos))
@@ -221,42 +228,63 @@ class Structure(object):
         """Return a cpmd input file as a list of lines."""
         pass
 
-    def to_fastmc(self, supercell=(1,1,1)):
+    def to_fastmc(self, supercell=(1, 1, 1)):
         """Return the FIELD and CONFIG needed for a fastmc run"""
+        # CONFIG
         # TODO(tdaff): guess imcon
         levcfg = 0
         imcon = 3
-        natoms = len(self.atoms)
+        natoms = len(self.atoms)*prod(supercell)
+        atom_set = []
         config = [
             "%s\n" % self.name[:80],
             "%10i%10i%10i\n" % (levcfg, imcon, natoms)]
-        config.extend(cell.to_vector_string(scale=supercell))
+        config.extend(self.cell.to_vector_string(scale=supercell))
         for idx, atom in enumerate(self.supercell(supercell)):
             config.extend(["%-6s%10i\n" % (atom.type, idx),
-                          ["%20.12f%20.12f%20.12f\n" % tuple(atom.pos)]])
+                           "%20.12f%20.12f%20.12f\n" % tuple(atom.pos)])
+
+        # FIELD
 # TODO(tdaff): ntypes = nguests + nummols
-        ntypes = 2
+        ntypes = 1 + len(self.guests)
         field = [
             "%s\n" % self.name[:80],
             "UNITS   kcal\n",
             "molecular types %i\n" % ntypes]
-# TODO(tdaff): guests
+        # Guests
+        for guest in self.guests:
+            field.extend([
+                "&guest %s\n" % guest.name,
+                "NUMMOLS %i\n" % 0,
+                "ATOMS %i\n" % len(guest.atoms)
+            ])
+            for atom in guest.atoms:
+                field.append(("%-6s %12.6f %12.6f" %
+                              tuple([atom.type, atom.mass, atom.charge])) +
+                             ("%12.6f %12.6f %12.6f\n" % atom.pos))
+            field.append("finish\n")
+        # Framework
         field.extend([
-            "Framework\n"
-            "NUMMOLS $i\n" % (supercell[0]*supercell[1]*supercell[2]),
+            "Framework\n",
+            "NUMMOLS %i\n" % prod(supercell),
             "ATOMS %i\n" % len(self.atoms)])
         for atom in self.atoms:
-            field.append("%-6s %.6f %.14f %i %i\n" % tuple(
-                atom.name, atom.mass, atom.charge, 1, 1))
+            field.append("%-6s %12.6f %20.14f %6i %6i\n" %
+                         (atom.type, atom.mass, atom.charge, 1, 1))
         field.append("finish\n")
-        # vdw potentials!
-        atom_set = unique(self.types)
-        field.append("VDW %i" % (len(atom_set)*(len(atom_set-1))))
+        # VDW potentials
+        atom_set = self.types
+        for guest in self.guests:
+            atom_set.extend(guest.types)
+        atom_set = unique(atom_set) # TODO(tdaff) + guest types
+        field.append("VDW %i\n" % ((len(atom_set)*(len(atom_set)+1))/2))
         for idxl in range(len(atom_set)):
             for idxr in range(idxl, len(atom_set)):
                 field.append(len_jones(atom_set[idxl], atom_set[idxr]))
 
+        sys.stdout.writelines(field)
 
+        return config, field
 
 
 
@@ -303,7 +331,7 @@ class Structure(object):
         for x_super in range(dimensions[0]):
             for y_super in range(dimensions[1]):
                 for z_super in range(dimensions[2]):
-                    offset = dot((x_super, y_super, z_super), self.cell)
+                    offset = dot((x_super, y_super, z_super), self.cell.cell)
                     for atom in self.atoms:
                         newatom = copy(atom)
                         newatom.translate(offset)
@@ -314,6 +342,11 @@ class Structure(object):
         """Regenrate the list of atom types."""
         # FIXME: better ways of dealing with this; will come with mols/symmetry
         self.types = [atom.type for atom in self.atoms]
+
+    def oreder_by_types(self):
+        """Sort the atoms alphabetically and group them."""
+        self.atoms.sort(key=lambda x: (x.type, x.site))
+        # TODO(tdaff): different for molecules
 
 
 class Cell(object):
@@ -326,7 +359,7 @@ class Cell(object):
     """
 
     def __init__(self):
-        """Default to a 1A box"""
+        """Default to a 1A cubic box."""
         self.cell = array([[1.0, 0.0, 0.0],
                            [0.0, 1.0, 0.0],
                            [0.0, 0.0, 1.0]])
@@ -407,18 +440,17 @@ class Cell(object):
                 "%23.16f%22.16f%22.16f\n" % tuple(scale*self.cell[1]),
                 "%23.16f%22.16f%22.16f\n" % tuple(scale*self.cell[2])]
 
-    cell = property(fset=from_cell)
-    params = property(fset=from_params)
 
 class Atom(object):
-    """Base atom type, minimally requires type and position."""
+    """Base atom type."""
 
-    def __init__(self, at_type=False, pos=False):
+    def __init__(self, at_type=False, pos=False, charge=0.0):
         self.type = at_type
         self.pos = pos
-        self.charge = 0
+        self.charge = charge
         self.idx = False
         self.site = None
+        self.mass = 0.0
 
     def __str__(self):
         return "%s %f %f %f" % tuple([self.type] + list(self.pos))
@@ -428,22 +460,35 @@ class Atom(object):
 
     def from_pdb(self, line):
         """Parse the ATOM line from a pdb file."""
-        # Better to do this fixed width fields rather than splitting?
+        # pdb is defined with fixed width fields rather than splitting
         self.idx = int(line[6:11])
         self.site = line[12:16].strip()
         self.molecule = int(line[22:26])
         at_pos = float(line[30:38]), float(line[38:46]), float(line[47:54])
         self.pos = at_pos
         self.type = line[76:78].strip()
+        self.mass = WEIGHT[self.type]
 
     def from_vasp(self, line, at_type, cell=identity(3)):
         """Set the atom data from vasp input"""
         self.pos = dot([float (x) for x in line.split()[:3]], cell)
         self.type = at_type
+        self.mass = WEIGHT[at_type]
 
     def translate(self, vec):
         """Move the atom by the given vector."""
         self.pos = [x + y for x, y in zip(self.pos, vec)]
+
+
+class Guest(object):
+    """Guest molecule and properties."""
+    def __init__(self):
+        self.name = "Carbon Dioxide"
+        self.atoms = [
+            Atom("Cx", pos=(0.0000000, 0.000000, 0.000000), charge=0.65120),
+            Atom("Ox", pos=(1.1605000, 0.000000, 0.000000), charge=-0.32560),
+            Atom("Ox", pos=(-1.1605000, 0.000000, 0.000000), charge=-0.32560)]
+        self.types = [atom.type for atom in self.atoms]
 
 
 def mk_repeat(cube_name='REPEAT_ESP.cube', symmetry=False):
@@ -530,12 +575,28 @@ def unique(in_list):
             uniq.append(item)
     return uniq
 
+def mk_gcmc_control(num_guests, pressure):
+    """Standard GCMC CONTROL file."""
+    control = [
+        "temperature               273\n",
+        "&guest 1\n",
+        "  pressure  (bar)  1.0\n",
+        "&end\n",
+        "steps                   40000000\n",
+        "equilibration           4000000\n",
+        "# jobcontrol\n",
+        "cutoff          12.5 angstrom\n",
+        "delr            1.0 angstrom\n",
+        "ewald precision  1d-6\n",
+        "finish\n"]
+    return control
+
 def len_jones(left, right):
     """Lorentz-Berthelot mixing rules for atom types"""
-    epsilon = (epsilon[left]*epsilon[right])**0.5
-    sigma = (sigma[left] + sigma[right])/2.0
+    sigma = (UFF[left][0] + UFF[right][0])/2.0
+    epsilon = (UFF[left][1]*UFF[right][1])**0.5
     #TODO(tdaff): zero for zero?
-    return "%-6s %-6s lj %f %f" % tuple(left, right, epsilon, sigma)
+    return "%-6s %-6s lj %f %f\n" % (left, right, epsilon, sigma)
 
 
 if __name__ == '__main__':

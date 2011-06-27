@@ -1,0 +1,12 @@
+# define the system-wide options options that do
+# not change
+
+[site_config]
+
+queue = wooki
+repeat_exe = ./repeat.x
+potcar_dir = /home/program/CHEMISTRY/VASP/potpaw_PBE_2011/
+esp_calc = vasp
+vasp2cube = /home/program/CHEMISTRY/REPEAT/bin/vasp2cube 2
+cpmd2cube = cpmd2cube.x
+

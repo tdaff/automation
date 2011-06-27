@@ -157,6 +157,7 @@ class Structure(object):
         self.atoms = []
         self.types = []
         self.esp = None
+        self.dft_energy = 0.0
         # testing pdb reader for now
         self.from_pdb(self.name + '.pdb')
 
@@ -240,6 +241,22 @@ class Structure(object):
             "UNITS   kcal\n",
             "molecular types %i\n" % ntypes]
 # TODO(tdaff): guests
+        field.extend([
+            "Framework\n"
+            "NUMMOLS $i\n" % (supercell[0]*supercell[1]*supercell[2]),
+            "ATOMS %i\n" % len(self.atoms)])
+        for atom in self.atoms:
+            field.append("%-6s %.6f %.14f %i %i\n" % tuple(
+                atom.name, atom.mass, atom.charge, 1, 1))
+        field.append("finish\n")
+        # vdw potentials!
+        atom_set = unique(self.types)
+        field.append("VDW %i" % (len(atom_set)*(len(atom_set-1))))
+        for idxl in range(len(atom_set)):
+            for idxr in range(idxl, len(atom_set)):
+                field.append(len_jones(atom_set[idxl], atom_set[idxr]))
+
+
 
 
 
@@ -504,6 +521,22 @@ def mk_kpoints(num_kpt=1):
         "%i %i %i\n" % (num_kpt, num_kpt, num_kpt),
         "0 0 0\n"]
     return kpoints
+
+def unique(in_list):
+    """Set of unique values in list ordered by first occurance"""
+    uniq = []
+    for item in in_list:
+        if item not in uniq:
+            uniq.append(item)
+    return uniq
+
+def len_jones(left, right):
+    """Lorentz-Berthelot mixing rules for atom types"""
+    epsilon = (epsilon[left]*epsilon[right])**0.5
+    sigma = (sigma[left] + sigma[right])/2.0
+    #TODO(tdaff): zero for zero?
+    return "%-6s %-6s lj %f %f" % tuple(left, right, epsilon, sigma)
+
 
 if __name__ == '__main__':
     global_options = Options()

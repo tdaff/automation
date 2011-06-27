@@ -199,6 +199,10 @@ class Structure(object):
                     print("Error in repeat charges is very high -- check cube!")
         filetemp.close()
         # TODO: update structure
+        # TODO(tdaff): no symmetry here yet!
+        for atom, charge in zip(self.atoms, charges):
+            atom.charge = charge[2]
+
 
     def to_vasp(self, optim_h=True):
         """Return a vasp5 poscar as a list of lines."""

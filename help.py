@@ -28,6 +28,7 @@ import os
 import subprocess
 import shlex
 import time
+import numpy as np
 from copy import copy
 from numpy import pi, cos, sin, sqrt, arccos, prod
 from numpy import array, identity
@@ -37,6 +38,7 @@ from elements import WEIGHT, UFF
 
 DEG2RAD = pi / 180.0
 BOHR2ANG = 0.52917720859
+EV2KCAL = 23.060542301389
 
 
 class PyNiss(object):
@@ -141,17 +143,19 @@ class PyNiss(object):
 
 class Structure(object):
     """
-    The current state of the structure; updates as the calculation proceeds.
+    The current state of the structure; update as the calculations proceed.
 
-    All simulation methods are defined for the structure as their input file
-    formats etc.
+    Structure provides methods to produce input files for and take output from
+    various computational chemistry packages but needs to be told what to do.
+    Internal energy units are kcal/mol.
+
+    Methods are grouped:
+    * Initial structure parsers
+    * Output file parsers to update structure
+    * Input file generation
+    * Internal manipulation methods
 
     """
-    # Methods are grouped:
-    # * Structure parsers
-    # * Output file parsers to update structure
-    # * Input file generation
-    # * internal manipulation methods
     # FIXME: no symmetry right now, eh?
     # TODO: dft energy?
     def __init__(self, name):
@@ -159,11 +163,11 @@ class Structure(object):
         self.name = name
         self.cell = Cell()
         self.atoms = []
-        self.types = []
+        self.types = []  # TODO(tdaff): remove and just use sorted self.atoms?
         self.esp = None
         self.dft_energy = 0.0
         self.guests = [Guest()]
-        # testing pdb reader for now
+        # FIXME(tdaff): just testing pdb reader for now
         self.from_pdb(self.name + '.pdb')
 
     def from_pdb(self, filename='MOF-5.pdb'):
@@ -194,97 +198,96 @@ class Structure(object):
         for line in filetemp:
             if line.startswith(" Charge"):
                 line = line.split()
+                # index, type, charge
                 charges.append((int(line[1]), int(line[4]), float(line[6])))
             if "Error" in line:
                 if float(line.split()[-1]) > 0.6:
                     print("Error in repeat charges is very high - check cube!")
         filetemp.close()
-        # TODO: update structure
         # TODO(tdaff): no symmetry here yet!
         for atom, charge in zip(self.atoms, charges):
             atom.charge = charge[2]
 
-    def to_vasp(self, optim_h=True):
+    def to_vasp(self, optim_h=True, optim_all=False):
         """Return a vasp5 poscar as a list of lines."""
-        ordered_types = unique(self.types)
+        types = [atom.type for atom in self.atoms]
+        ordered_types = unique(types)
         poscar = ["%s\n" % self.name[:80],
                   " 1.0\n"]
-        poscar.extend(self.cell.to_vasp())
+        # Vasp does 16 dp but we get rounding errors eg cubic -> 14
+        poscar.extend(self.cell.to_vector_string(fmt="%23.14f"))
         poscar.append("".join("%5s" % x for x in ordered_types) + "\n")
-        poscar.append("".join("%6i" % self.types.count(x)
+        poscar.append("".join("%6i" % types.count(x)
                               for x in ordered_types) + "\n")
-        if optim_h:
+        if optim_all:
             poscar.extend(["Selective dynamics\n", "Cartesian\n"])
-            for at_type in ordered_types:
-                for atom in self.atoms:
-                    if atom.type == at_type and at_type == "H":
-                        poscar.append("%20.16f%20.16f%20.16f   T   T   T\n" %
-                                      tuple(atom.pos))
-                    elif  atom.type == at_type:
-                        poscar.append("%20.16f%20.16f%20.16f   F   F   F\n" %
-                                      tuple(atom.pos))
+            fix_h = 'T'
+            fix_all = 'T'
+        elif optim_h:
+            poscar.extend(["Selective dynamics\n", "Cartesian\n"])
+            fix_h = 'T'
+            fix_all = 'F'
         else:
             poscar.append("Cartesian\n")
-            for at_type in ordered_types:
-                for atom in self.atoms:
-                    if atom.type == at_type:
-                        poscar.append("%20.16f%20.16f%20.16f\n" %
-                                      tuple(atom.pos))
+            fix_h = 'F'
+            fix_all = 'F'
+
+        # assume atoms are ordered
+        for atom in self.atoms:
+            if atom.type == "H":
+                poscar.append("%20.16f%20.16f%20.16f" % tuple(atom.pos) +
+                              "%4s%4s%4s\n" % (fix_h, fix_h, fix_h))
+            else:
+                poscar.append("%20.16f%20.16f%20.16f" % tuple(atom.pos) +
+                              "%4s%4s%4s\n" % (fix_all, fix_all, fix_all))
         return poscar
 
     def to_cpmd(self, optim_h=True):
         """Return a cpmd input file as a list of lines."""
-        pass
+        raise NotImplementedError
 
     def to_fastmc(self, supercell=(1, 1, 1)):
         """Return the FIELD and CONFIG needed for a fastmc run"""
         # CONFIG
-        # TODO(tdaff): guess imcon
-        levcfg = 0
-        imcon = 3
+        levcfg = 0  # always
+        imcon = self.cell.imcon()
         natoms = len(self.atoms) * prod(supercell)
-        atom_set = []
-        config = [
-            "%s\n" % self.name[:80],
-            "%10i%10i%10i\n" % (levcfg, imcon, natoms)]
+        config = ["%s\n" % self.name[:80],
+                  "%10i%10i%10i\n" % (levcfg, imcon, natoms)]
         config.extend(self.cell.to_vector_string(scale=supercell))
         for idx, atom in enumerate(self.supercell(supercell)):
             config.extend(["%-6s%10i\n" % (atom.type, idx),
                            "%20.12f%20.12f%20.12f\n" % tuple(atom.pos)])
 
         # FIELD
-# TODO(tdaff): ntypes = nguests + nummols
+        # TODO(tdaff): ntypes = nguests + nummols
         ntypes = 1 + len(self.guests)
-        field = [
-            "%s\n" % self.name[:80],
-            "UNITS   kcal\n",
-            "molecular types %i\n" % ntypes]
+        field = ["%s\n" % self.name[:80],
+                 "UNITS   kcal\n",
+                 "molecular types %i\n" % ntypes]
         # Guests
         for guest in self.guests:
-            field.extend([
-                "&guest %s\n" % guest.name,
-                "NUMMOLS %i\n" % 0,
-                "ATOMS %i\n" % len(guest.atoms)
-            ])
+            field.extend(["&guest %s\n" % guest.name,
+                          "NUMMOLS %i\n" % 0,
+                          "ATOMS %i\n" % len(guest.atoms)])
             for atom in guest.atoms:
                 field.append(("%-6s %12.6f %12.6f" %
                               tuple([atom.type, atom.mass, atom.charge])) +
                              ("%12.6f %12.6f %12.6f\n" % atom.pos))
             field.append("finish\n")
         # Framework
-        field.extend([
-            "Framework\n",
-            "NUMMOLS %i\n" % prod(supercell),
-            "ATOMS %i\n" % len(self.atoms)])
+        field.extend(["Framework\n",
+                      "NUMMOLS %i\n" % prod(supercell),
+                      "ATOMS %i\n" % len(self.atoms)])
         for atom in self.atoms:
             field.append("%-6s %12.6f %20.14f %6i %6i\n" %
                          (atom.type, atom.mass, atom.charge, 1, 1))
         field.append("finish\n")
         # VDW potentials
-        atom_set = self.types
+        atom_set = [atom.type for atom in self.atoms]
         for guest in self.guests:
-            atom_set.extend(guest.types)
-        atom_set = unique(atom_set)  # TODO(tdaff) + guest types
+            atom_set.extend(atom.type for atom in guest.atoms)
+        atom_set = unique(atom_set)
         field.append("VDW %i\n" % ((len(atom_set) * (len(atom_set) + 1)) / 2))
         for idxl in range(len(atom_set)):
             for idxr in range(idxl, len(atom_set)):
@@ -334,13 +337,13 @@ class Structure(object):
         self.atoms = atom_list
         self._update_types()
 
-    def supercell(self, dimensions):
-        """Generate the atoms for a supercell"""
-        if len(dimensions) == 1:
-            dimensions = (dimensions, dimensions, dimensions)
-        for x_super in range(dimensions[0]):
-            for y_super in range(dimensions[1]):
-                for z_super in range(dimensions[2]):
+    def supercell(self, scale):
+        """Iterate over all the atoms of supercell."""
+        if isinstance(scale, int):
+            scale = (scale, scale, scale)
+        for x_super in range(scale[0]):
+            for y_super in range(scale[1]):
+                for z_super in range(scale[2]):
                     offset = dot((x_super, y_super, z_super), self.cell.cell)
                     for atom in self.atoms:
                         newatom = copy(atom)
@@ -381,7 +384,7 @@ class Cell(object):
 
     def from_cell(self, cell):
         """Set the params and update the cell representation."""
-        self.cell = cell
+        self.cell = array(cell)
         self._mkparam()
 
     def from_pdb(self, line):
@@ -410,24 +413,28 @@ class Cell(object):
 
     def _mkparam(self):
         """Update the parameters to match the cell."""
-        cell_a = sqrt(sum(x**2 for x in self.cell[0:10:3]))  # Sum of x
-        cell_b = sqrt(sum(x**2 for x in self.cell[1:10:3]))
-        cell_c = sqrt(sum(x**2 for x in self.cell[2:10:3]))
-        alpha = arccos(sum(self.cell[1 + 3 * j] * self.cell[2 + 3 * j]
-                           for j in range(3)) / (cell_b * cell_c)) * 180 / pi
-        beta = arccos(sum(self.cell[0 + 3 * j] * self.cell[2 + 3 * j]
-                          for j in range(3)) / (cell_a * cell_c)) * 180 / pi
-        gamma = arccos(sum(self.cell[0 + 3 * j] * self.cell[1 + 3 * j]
-                           for j in range(3)) / (cell_a * cell_b)) * 180 / pi
+        cell_a = sqrt(sum(x**2 for x in self.cell[0]))
+        cell_b = sqrt(sum(x**2 for x in self.cell[1]))
+        cell_c = sqrt(sum(x**2 for x in self.cell[2]))
+        alpha = arccos(sum(self.cell[:, 1] * self.cell[:, 2]) /
+                       (cell_b * cell_c)) * 180 / pi
+        beta = arccos(sum(self.cell[:, 0] * self.cell[:, 2]) /
+                      (cell_a * cell_c)) * 180 / pi
+        gamma = arccos(sum(self.cell[:, 0] * self.cell[:, 1]) /
+                       (cell_a * cell_b)) * 180 / pi
         self.params = (cell_a, cell_b, cell_c, alpha, beta, gamma)
 
-    def to_vector_string(self, scale=1, bohr=False):
-        """Generic [Super]cell vectors."""
+    def to_vector_strings(self, scale=1, bohr=False, fmt="%20.12f"):
+        """Generic [Super]cell vectors as a list of strings."""
+        format = 3 * fmt + "\n"
+        if isinstance(scale, int):
+            scale = [scale, scale, scale]
+            # else assume an iterable
         if bohr:
-            scale = scale / BOHR2ANG
-        return ["%20.12f%20.12f%20.12f\n" % tuple(scale * self.cell[0]),
-                "%20.12f%20.12f%20.12f\n" % tuple(scale * self.cell[1]),
-                "%20.12f%20.12f%20.12f\n" % tuple(scale * self.cell[2])]
+            scale = [x / BOHR2ANG for x in scale]
+        return [format % tuple(scale[0] * self.cell[0]),
+                format % tuple(scale[1] * self.cell[1]),
+                format % tuple(scale[2] * self.cell[2])]
 
     def to_dl_poly(self, scale=1):
         """[Super]cell vectors for DL_POLY CONFIG."""
@@ -437,7 +444,6 @@ class Cell(object):
 
     def to_vasp(self, scale=1):
         """[Super]cell vectors for VASP POSCAR."""
-        # Vasp usually has 16 dp but we get rounding errors eg cubic :(
         return ["%23.14f%22.14f%22.14f\n" % tuple(scale * self.cell[0]),
                 "%23.14f%22.14f%22.14f\n" % tuple(scale * self.cell[1]),
                 "%23.14f%22.14f%22.14f\n" % tuple(scale * self.cell[2])]
@@ -448,6 +454,22 @@ class Cell(object):
         return ["%23.16f%22.16f%22.16f\n" % tuple(scale * self.cell[0]),
                 "%23.16f%22.16f%22.16f\n" % tuple(scale * self.cell[1]),
                 "%23.16f%22.16f%22.16f\n" % tuple(scale * self.cell[2])]
+
+    def imcon():
+        """Guess cell shape and return DL_POLY imcon key."""
+        if np.all(self.cell == 0):
+            # no PBC
+            return 0
+        elif np.all(self.cell[3:] == 90):
+            if self.cell[0] == self.cell[1] == celf.cell[2]:
+                # cubic
+                return 1
+            else:
+                # orthorhombic
+                return 2
+        else:
+            # parallelepiped
+            return 3
 
 
 class Atom(object):

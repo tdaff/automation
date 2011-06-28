@@ -35,8 +35,9 @@ from numpy import dot
 from config import Options
 from elements import WEIGHT, UFF
 
-DEG2RAD = pi/180
+DEG2RAD = pi / 180.0
 BOHR2ANG = 0.52917720859
+
 
 class PyNiss(object):
     """
@@ -72,7 +73,6 @@ class PyNiss(object):
         if self.options.h_optimize:
             print self.options.repeat_exe
 
-
     def run_vasp(self, nproc=16):
         """Make inputs and run vasp job."""
         job_name = self.options.job_name
@@ -91,7 +91,8 @@ class PyNiss(object):
 
         filetemp = open(job_name + ".potcar", "wb")
         for at_type in unique(self.structure.types):
-            potcar_src = os.path.join(self.options.potcar_dir, at_type, "POTCAR")
+            potcar_src = os.path.join(self.options.potcar_dir, at_type,
+                                      "POTCAR")
             shutil.copyfileobj(open(potcar_src), filetemp)
         filetemp.close()
 
@@ -115,15 +116,14 @@ class PyNiss(object):
             # TODO(tdaff): maybe background this?
             submit.wait()
             # TODO(tdaff): leave the cube name as job-name..
-#            shutil.move(job_name+'.cube', os.path.join('..', 'REPEAT_ESP.cube'))
-            shutil.move(job_name+'.cube', self.options.cwd)
+            shutil.move(job_name + '.cube', self.options.cwd)
             os.chdir(self.options.cwd)
 
     def run_repeat(self):
         """Submit the repeat calc to the queue."""
         job_name = self.options.job_name
-        mk_repeat(cube_name=job_name+'.cube')
-        repeat_args = ['repeatsubmit', job_name+'.cube']
+        mk_repeat(cube_name=job_name + '.cube')
+        repeat_args = ['repeatsubmit', job_name + '.cube']
         submit = subprocess.Popen(repeat_args, stdout=subprocess.PIPE)
         for line in submit.stdout.readlines():
             if "wooki" in line:
@@ -188,6 +188,7 @@ class Structure(object):
         raise NotImplementedError
 
     def charges_from_repeat(self, filename):
+        """Parse charges and update structure."""
         charges = []
         filetemp = open(filename)
         for line in filetemp:
@@ -196,13 +197,12 @@ class Structure(object):
                 charges.append((int(line[1]), int(line[4]), float(line[6])))
             if "Error" in line:
                 if float(line.split()[-1]) > 0.6:
-                    print("Error in repeat charges is very high -- check cube!")
+                    print("Error in repeat charges is very high - check cube!")
         filetemp.close()
         # TODO: update structure
         # TODO(tdaff): no symmetry here yet!
         for atom, charge in zip(self.atoms, charges):
             atom.charge = charge[2]
-
 
     def to_vasp(self, optim_h=True):
         """Return a vasp5 poscar as a list of lines."""
@@ -211,21 +211,25 @@ class Structure(object):
                   " 1.0\n"]
         poscar.extend(self.cell.to_vasp())
         poscar.append("".join("%5s" % x for x in ordered_types) + "\n")
-        poscar.append("".join("%6i" % self.types.count(x) for x in ordered_types) + "\n")
+        poscar.append("".join("%6i" % self.types.count(x)
+                              for x in ordered_types) + "\n")
         if optim_h:
             poscar.extend(["Selective dynamics\n", "Cartesian\n"])
             for at_type in ordered_types:
                 for atom in self.atoms:
                     if atom.type == at_type and at_type == "H":
-                        poscar.append("%20.16f%20.16f%20.16f   T   T   T\n" % tuple(atom.pos))
+                        poscar.append("%20.16f%20.16f%20.16f   T   T   T\n" %
+                                      tuple(atom.pos))
                     elif  atom.type == at_type:
-                        poscar.append("%20.16f%20.16f%20.16f   F   F   F\n" % tuple(atom.pos))
+                        poscar.append("%20.16f%20.16f%20.16f   F   F   F\n" %
+                                      tuple(atom.pos))
         else:
             poscar.append("Cartesian\n")
             for at_type in ordered_types:
                 for atom in self.atoms:
                     if atom.type == at_type:
-                        poscar.append("%20.16f%20.16f%20.16f\n" % tuple(atom.pos))
+                        poscar.append("%20.16f%20.16f%20.16f\n" %
+                                      tuple(atom.pos))
         return poscar
 
     def to_cpmd(self, optim_h=True):
@@ -238,7 +242,7 @@ class Structure(object):
         # TODO(tdaff): guess imcon
         levcfg = 0
         imcon = 3
-        natoms = len(self.atoms)*prod(supercell)
+        natoms = len(self.atoms) * prod(supercell)
         atom_set = []
         config = [
             "%s\n" % self.name[:80],
@@ -280,8 +284,8 @@ class Structure(object):
         atom_set = self.types
         for guest in self.guests:
             atom_set.extend(guest.types)
-        atom_set = unique(atom_set) # TODO(tdaff) + guest types
-        field.append("VDW %i\n" % ((len(atom_set)*(len(atom_set)+1))/2))
+        atom_set = unique(atom_set)  # TODO(tdaff) + guest types
+        field.append("VDW %i\n" % ((len(atom_set) * (len(atom_set) + 1)) / 2))
         for idxl in range(len(atom_set)):
             for idxr in range(idxl, len(atom_set)):
                 field.append(len_jones(atom_set[idxl], atom_set[idxr]))
@@ -290,9 +294,7 @@ class Structure(object):
 
         return config, field
 
-
-
-    def from_vasp(self, filename='CONTCAR'):
+    def from_vasp(self, filename='CONTCAR', update=True):
         """Read a structure from a vasp [POS,CONT]CAR file."""
         #TODO(tdaff): difference between initial and update?
         filetemp = open(filename)
@@ -301,29 +303,33 @@ class Structure(object):
         atom_list = []
         scale = float(contcar[1])
         self.cell.from_vasp(contcar[2:4], scale)
-        atom_counts = [int(x) for x in contcar[5].split()]
         if contcar[5].split()[0].isalpha():
             # vasp 5 with atom names
-            self.types = []
+#            self.types = []
             poscar_types = [x for x in contcar[5].split()]
-            for at_count, at_type in zip(atom_counts, poscar_types):
-                self.types.extend([at_type]*at_count)
+#            for at_count, at_type in zip(atom_counts, poscar_types):
+#                self.types.extend([at_type]*at_count)
             del contcar[5]
         else:
             #TODO atom ids when not in poscar?
             pass
+        atom_counts = [int(x) for x in contcar[5].split()]
         if contcar[7].strip()[0].lower() in "s":
-            # 's'elective dynamics
+            # 's'elective dynamics line
             del contcar[7]
+        # mcell converts frac -> cart and scales
         if contcar[7].strip()[0].lower() in "ck":
-            mcell = identity(3)*scale
+            mcell = identity(3) * scale
         else:
             mcell = self.cell
-
-        for at_type, at_line in zip(self.types, contcar[8:]):
-            this_atom = Atom()
-            this_atom.from_vasp(at_line, at_type, mcell)
-            atom_list.append(this_atom)
+        if update:
+            for atom in self.atoms:
+                atom.from_vasp(at_line, cell=mcell)
+        else:
+            for at_type, at_line in zip(self.types, contcar[8:]):
+                this_atom = Atom()
+                this_atom.from_vasp(at_line, at_type, mcell)
+                atom_list.append(this_atom)
 
         self.atoms = atom_list
         self._update_types()
@@ -340,7 +346,6 @@ class Structure(object):
                         newatom = copy(atom)
                         newatom.translate(offset)
                         yield newatom
-
 
     def _update_types(self):
         """Regenrate the list of atom types."""
@@ -387,62 +392,62 @@ class Cell(object):
 
     def from_vasp(self, lines, scale=1.0):
         """Extract cell from a POSCAR cell representation."""
-        self.cell = array([[float(x)*scale for x in lines[0].split()],
-                           [float(x)*scale for x in lines[1].split()],
-                           [float(x)*scale for x in lines[2].split()]])
+        self.cell = array([[float(x) * scale for x in lines[0].split()],
+                           [float(x) * scale for x in lines[1].split()],
+                           [float(x) * scale for x in lines[2].split()]])
         self._mkparam()
 
     def _mkcell(self):
         """Update the cell representation to match the parameters."""
         a_mag, b_mag, c_mag = self.params[:3]
-        alpha, beta, gamma = [x*DEG2RAD for x in self.params[3:]]
+        alpha, beta, gamma = [x * DEG2RAD for x in self.params[3:]]
         a_vec = array([a_mag, 0.0, 0.0])
-        b_vec = array([b_mag*cos(gamma), b_mag*sin(gamma), 0.0])
-        c_x = c_mag*cos(beta)
-        c_y = c_mag*(cos(alpha)-cos(gamma)*cos(beta))/sin(gamma)
-        c_vec = array([c_x, c_y, (c_mag**2 - c_x**2 - c_y **2)**0.5])
+        b_vec = array([b_mag * cos(gamma), b_mag * sin(gamma), 0.0])
+        c_x = c_mag * cos(beta)
+        c_y = c_mag * (cos(alpha) - cos(gamma) * cos(beta)) / sin(gamma)
+        c_vec = array([c_x, c_y, (c_mag**2 - c_x**2 - c_y**2)**0.5])
         self.cell = array([a_vec, b_vec, c_vec])
 
     def _mkparam(self):
         """Update the parameters to match the cell."""
-        cell_a = sqrt(sum(x**2 for x in self.cell[0:10:3])) # Sum of x
+        cell_a = sqrt(sum(x**2 for x in self.cell[0:10:3]))  # Sum of x
         cell_b = sqrt(sum(x**2 for x in self.cell[1:10:3]))
         cell_c = sqrt(sum(x**2 for x in self.cell[2:10:3]))
-        alpha = arccos(sum(self.cell[1 + 3*j]*self.cell[2 + 3*j]
-                           for j in range(3))/(cell_b*cell_c))*180/pi
-        beta = arccos(sum(self.cell[0 + 3*j]*self.cell[2 + 3*j]
-                          for j in range(3))/(cell_a*cell_c))*180/pi
-        gamma = arccos(sum(self.cell[0 + 3*j]*self.cell[1 + 3*j]
-                           for j in range(3))/(cell_a*cell_b))*180/pi
+        alpha = arccos(sum(self.cell[1 + 3 * j] * self.cell[2 + 3 * j]
+                           for j in range(3)) / (cell_b * cell_c)) * 180 / pi
+        beta = arccos(sum(self.cell[0 + 3 * j] * self.cell[2 + 3 * j]
+                          for j in range(3)) / (cell_a * cell_c)) * 180 / pi
+        gamma = arccos(sum(self.cell[0 + 3 * j] * self.cell[1 + 3 * j]
+                           for j in range(3)) / (cell_a * cell_b)) * 180 / pi
         self.params = (cell_a, cell_b, cell_c, alpha, beta, gamma)
 
     def to_vector_string(self, scale=1, bohr=False):
         """Generic [Super]cell vectors."""
         if bohr:
-            scale = scale/BOHR2ANG
-        return ["%20.12f%20.12f%20.12f\n" % tuple(scale*self.cell[0]),
-                "%20.12f%20.12f%20.12f\n" % tuple(scale*self.cell[1]),
-                "%20.12f%20.12f%20.12f\n" % tuple(scale*self.cell[2])]
+            scale = scale / BOHR2ANG
+        return ["%20.12f%20.12f%20.12f\n" % tuple(scale * self.cell[0]),
+                "%20.12f%20.12f%20.12f\n" % tuple(scale * self.cell[1]),
+                "%20.12f%20.12f%20.12f\n" % tuple(scale * self.cell[2])]
 
     def to_dl_poly(self, scale=1):
         """[Super]cell vectors for DL_POLY CONFIG."""
-        return ["%20.12f%20.12f%20.12f\n" % tuple(scale*self.cell[0]),
-                "%20.12f%20.12f%20.12f\n" % tuple(scale*self.cell[1]),
-                "%20.12f%20.12f%20.12f\n" % tuple(scale*self.cell[2])]
+        return ["%20.12f%20.12f%20.12f\n" % tuple(scale * self.cell[0]),
+                "%20.12f%20.12f%20.12f\n" % tuple(scale * self.cell[1]),
+                "%20.12f%20.12f%20.12f\n" % tuple(scale * self.cell[2])]
 
     def to_vasp(self, scale=1):
         """[Super]cell vectors for VASP POSCAR."""
         # Vasp usually has 16 dp but we get rounding errors eg cubic :(
-        return ["%23.14f%22.14f%22.14f\n" % tuple(scale*self.cell[0]),
-                "%23.14f%22.14f%22.14f\n" % tuple(scale*self.cell[1]),
-                "%23.14f%22.14f%22.14f\n" % tuple(scale*self.cell[2])]
+        return ["%23.14f%22.14f%22.14f\n" % tuple(scale * self.cell[0]),
+                "%23.14f%22.14f%22.14f\n" % tuple(scale * self.cell[1]),
+                "%23.14f%22.14f%22.14f\n" % tuple(scale * self.cell[2])]
 
     def to_cpmd(self, scale=1):
         """[Super]cell vectors for CPMD input."""
-        scale = scale/BOHR2ANG
-        return ["%23.16f%22.16f%22.16f\n" % tuple(scale*self.cell[0]),
-                "%23.16f%22.16f%22.16f\n" % tuple(scale*self.cell[1]),
-                "%23.16f%22.16f%22.16f\n" % tuple(scale*self.cell[2])]
+        scale = scale / BOHR2ANG
+        return ["%23.16f%22.16f%22.16f\n" % tuple(scale * self.cell[0]),
+                "%23.16f%22.16f%22.16f\n" % tuple(scale * self.cell[1]),
+                "%23.16f%22.16f%22.16f\n" % tuple(scale * self.cell[2])]
 
 
 class Atom(object):
@@ -455,6 +460,7 @@ class Atom(object):
         self.idx = False
         self.site = None
         self.mass = 0.0
+        self.molecule = None
 
     def __str__(self):
         return "%s %f %f %f" % tuple([self.type] + list(self.pos))
@@ -473,10 +479,11 @@ class Atom(object):
         self.type = line[76:78].strip()
         self.mass = WEIGHT[self.type]
 
-    def from_vasp(self, line, at_type, cell=identity(3)):
+    def from_vasp(self, line, at_type=None, cell=identity(3)):
         """Set the atom data from vasp input"""
-        self.pos = dot([float (x) for x in line.split()[:3]], cell)
-        self.type = at_type
+        self.pos = dot([float(x) for x in line.split()[:3]], cell)
+        if at_type is not None:
+            self.type = at_type
         self.mass = WEIGHT[at_type]
 
     def translate(self, vec):
@@ -496,6 +503,7 @@ class Guest(object):
 
 
 def mk_repeat(cube_name='REPEAT_ESP.cube', symmetry=False):
+    """Standard REPEAT input file."""
     # TODO(tdaff): charged systems?
     if symmetry:
         symmetry_flag = 1
@@ -527,6 +535,7 @@ def mk_repeat(cube_name='REPEAT_ESP.cube', symmetry=False):
     filetemp = open('REPEAT_param.inp', 'w')
     filetemp.writelines(repeat_input)
     filetemp.close()
+
 
 def mk_incar(job_name, h_opt=True):
     """Basic vasp INCAR; use defaults as much as possible."""
@@ -561,6 +570,7 @@ def mk_incar(job_name, h_opt=True):
 
     return incar
 
+
 def mk_kpoints(num_kpt=1):
     """Defaults to gamma point only, or specified number."""
     kpoints = [
@@ -571,6 +581,7 @@ def mk_kpoints(num_kpt=1):
         "0 0 0\n"]
     return kpoints
 
+
 def unique(in_list):
     """Set of unique values in list ordered by first occurance"""
     uniq = []
@@ -578,6 +589,7 @@ def unique(in_list):
         if item not in uniq:
             uniq.append(item)
     return uniq
+
 
 def mk_gcmc_control(num_guests, pressure):
     """Standard GCMC CONTROL file."""
@@ -595,10 +607,11 @@ def mk_gcmc_control(num_guests, pressure):
         "finish\n"]
     return control
 
+
 def len_jones(left, right):
     """Lorentz-Berthelot mixing rules for atom types"""
-    sigma = (UFF[left][0] + UFF[right][0])/2.0
-    epsilon = (UFF[left][1]*UFF[right][1])**0.5
+    sigma = (UFF[left][0] + UFF[right][0]) / 2.0
+    epsilon = (UFF[left][1] * UFF[right][1])**0.5
     #TODO(tdaff): zero for zero?
     return "%-6s %-6s lj %f %f\n" % (left, right, epsilon, sigma)
 

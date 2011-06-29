@@ -138,7 +138,8 @@ class PyNiss(object):
         pass
 
     def run_fastmc(self):
-        confy, feeld = self.structure.to_fastmc(supercell=(2, 1, 1))
+        """Submit a fastmc job to the queue."""
+        confy, feeld = self.structure.to_fastmc(supercell=(1, 2, 1))
 
 
 class Structure(object):
@@ -169,6 +170,8 @@ class Structure(object):
         self.guests = [Guest()]
         # FIXME(tdaff): just testing pdb reader for now
         self.from_pdb(self.name + '.pdb')
+        self.from_vasp(self.name + '.contcar')
+        self.charges_from_repeat(self.name + '.esp_fit.out')
 
     def from_pdb(self, filename='MOF-5.pdb'):
         """Read an initial structure from a pdb file."""
@@ -215,7 +218,7 @@ class Structure(object):
         poscar = ["%s\n" % self.name[:80],
                   " 1.0\n"]
         # Vasp does 16 dp but we get rounding errors eg cubic -> 14
-        poscar.extend(self.cell.to_vector_string(fmt="%23.14f"))
+        poscar.extend(self.cell.to_vector_strings(fmt="%23.14f"))
         poscar.append("".join("%5s" % x for x in ordered_types) + "\n")
         poscar.append("".join("%6i" % types.count(x)
                               for x in ordered_types) + "\n")
@@ -254,10 +257,12 @@ class Structure(object):
         natoms = len(self.atoms) * prod(supercell)
         config = ["%s\n" % self.name[:80],
                   "%10i%10i%10i\n" % (levcfg, imcon, natoms)]
-        config.extend(self.cell.to_vector_string(scale=supercell))
+        config.extend(self.cell.to_vector_strings(scale=supercell))
         for idx, atom in enumerate(self.supercell(supercell)):
             config.extend(["%-6s%10i\n" % (atom.type, idx),
                            "%20.12f%20.12f%20.12f\n" % tuple(atom.pos)])
+
+        sys.stdout.writelines(config)
 
         # FIELD
         # TODO(tdaff): ntypes = nguests + nummols
@@ -305,36 +310,32 @@ class Structure(object):
         filetemp.close()
         atom_list = []
         scale = float(contcar[1])
-        self.cell.from_vasp(contcar[2:4], scale)
+        self.cell.from_vasp(contcar[2:5], scale)
         if contcar[5].split()[0].isalpha():
             # vasp 5 with atom names
-#            self.types = []
-            poscar_types = [x for x in contcar[5].split()]
-#            for at_count, at_type in zip(atom_counts, poscar_types):
-#                self.types.extend([at_type]*at_count)
             del contcar[5]
-        else:
-            #TODO atom ids when not in poscar?
-            pass
-        atom_counts = [int(x) for x in contcar[5].split()]
-        if contcar[7].strip()[0].lower() in "s":
-            # 's'elective dynamics line
-            del contcar[7]
-        # mcell converts frac -> cart and scales
-        if contcar[7].strip()[0].lower() in "ck":
+        poscar_counts = [int(x) for x in contcar[5].split()]
+        natoms = sum(poscar_counts)
+        if contcar[6].strip()[0].lower() in "s":
+            # 's'elective dynamics line; we don't care
+            del contcar[6]
+
+        # mcell converts frac -> cart if necessary and scales
+        if contcar[6].strip()[0].lower() in "ck":
             mcell = identity(3) * scale
         else:
-            mcell = self.cell
+            mcell = self.cell.cell
+
+        # parsing positions
         if update:
-            for atom in self.atoms:
+            for atom, at_line in zip(self.atoms, contcar[7:7+natoms]):
                 atom.from_vasp(at_line, cell=mcell)
         else:
-            for at_type, at_line in zip(self.types, contcar[8:]):
+            for at_type, at_line in zip(self.types, contcar[7:7+natoms]):
                 this_atom = Atom()
                 this_atom.from_vasp(at_line, at_type, mcell)
                 atom_list.append(this_atom)
-
-        self.atoms = atom_list
+            self.atoms = atom_list
         self._update_types()
 
     def supercell(self, scale):
@@ -425,43 +426,24 @@ class Cell(object):
         self.params = (cell_a, cell_b, cell_c, alpha, beta, gamma)
 
     def to_vector_strings(self, scale=1, bohr=False, fmt="%20.12f"):
-        """Generic [Super]cell vectors as a list of strings."""
-        format = 3 * fmt + "\n"
+        """Generic [Super]cell vectors in Angstrom as a list of strings."""
+        out_format = 3 * fmt + "\n"
         if isinstance(scale, int):
             scale = [scale, scale, scale]
             # else assume an iterable
         if bohr:
             scale = [x / BOHR2ANG for x in scale]
-        return [format % tuple(scale[0] * self.cell[0]),
-                format % tuple(scale[1] * self.cell[1]),
-                format % tuple(scale[2] * self.cell[2])]
+        return [out_format % tuple(scale[0] * self.cell[0]),
+                out_format % tuple(scale[1] * self.cell[1]),
+                out_format % tuple(scale[2] * self.cell[2])]
 
-    def to_dl_poly(self, scale=1):
-        """[Super]cell vectors for DL_POLY CONFIG."""
-        return ["%20.12f%20.12f%20.12f\n" % tuple(scale * self.cell[0]),
-                "%20.12f%20.12f%20.12f\n" % tuple(scale * self.cell[1]),
-                "%20.12f%20.12f%20.12f\n" % tuple(scale * self.cell[2])]
-
-    def to_vasp(self, scale=1):
-        """[Super]cell vectors for VASP POSCAR."""
-        return ["%23.14f%22.14f%22.14f\n" % tuple(scale * self.cell[0]),
-                "%23.14f%22.14f%22.14f\n" % tuple(scale * self.cell[1]),
-                "%23.14f%22.14f%22.14f\n" % tuple(scale * self.cell[2])]
-
-    def to_cpmd(self, scale=1):
-        """[Super]cell vectors for CPMD input."""
-        scale = scale / BOHR2ANG
-        return ["%23.16f%22.16f%22.16f\n" % tuple(scale * self.cell[0]),
-                "%23.16f%22.16f%22.16f\n" % tuple(scale * self.cell[1]),
-                "%23.16f%22.16f%22.16f\n" % tuple(scale * self.cell[2])]
-
-    def imcon():
+    def imcon(self):
         """Guess cell shape and return DL_POLY imcon key."""
         if np.all(self.cell == 0):
             # no PBC
             return 0
-        elif np.all(self.cell[3:] == 90):
-            if self.cell[0] == self.cell[1] == celf.cell[2]:
+        elif np.all(self.params[3:] == 90):
+            if self.params[0] == self.params[1] == self.params[2]:
                 # cubic
                 return 1
             else:
@@ -502,11 +484,11 @@ class Atom(object):
         self.mass = WEIGHT[self.type]
 
     def from_vasp(self, line, at_type=None, cell=identity(3)):
-        """Set the atom data from vasp input"""
+        """Set the atom data from vasp input. Only pass cell for fractionals."""
         self.pos = dot([float(x) for x in line.split()[:3]], cell)
         if at_type is not None:
             self.type = at_type
-        self.mass = WEIGHT[at_type]
+            self.mass = WEIGHT[at_type]
 
     def translate(self, vec):
         """Move the atom by the given vector."""
@@ -559,36 +541,35 @@ def mk_repeat(cube_name='REPEAT_ESP.cube', symmetry=False):
     filetemp.close()
 
 
-def mk_incar(job_name, h_opt=True):
+def mk_incar(job_name, pos_opt=True, full_opt=False, spin=False):
     """Basic vasp INCAR; use defaults as much as possible."""
-    incar = [
-        "SYSTEM  = %s\n" % job_name,
-        "ALGO    = Fast\n",
-        "EDIFF   = 1E-5\n",
-        "EDIFFG  = -0.02\n",
-        "POTIM   = 0.4\n",
-        "LVDW    = .TRUE.\n",
-        "NWRITE  = 0\n",
-        "LREAL   = Auto\n",
-        "LVTOT   = .TRUE.\n",
-        "LVHAR   = .TRUE.\n",
-        "ISMEAR  = 0\n",
-        "SIGMA   = 0.05\n"]
-    if h_opt:
-        incar.extend([
-            "IBRION  = 2\n",
-            "NSW     = 300\n",
-            "ISIF    = 2\n"])
+    incar = ["SYSTEM  = %s\n" % job_name,
+             "ALGO    = Fast\n",
+             "EDIFF   = 1E-5\n",
+             "EDIFFG  = -0.02\n",
+             "POTIM   = 0.4\n",
+             "LVDW    = .TRUE.\n",
+             "NWRITE  = 0\n",
+             "LREAL   = Auto\n",
+             "LVTOT   = .TRUE.\n",
+             "LVHAR   = .TRUE.\n",
+             "ISMEAR  = 0\n",
+             "SIGMA   = 0.05\n"]
+    if full_opt:
+        incar.extend(["ENCUT = 520\n",
+                      "IBRION  = 2\n",
+                      "NSW     = 300\n",
+                      "ISIF    = 3\n"])
+    elif pos_opt:
+        incar.extend(["IBRION  = 2\n",
+                      "NSW     = 300\n",
+                      "ISIF    = 2\n"])
     else:
-        incar.extend([
-            "IBRION  = 0\n",
-            "NSW     = 0\n",
-            "ISIF    = 0\n"])
-
-    # TODO(tdaff)
-        # "ENCUT = 520\n"
-        # "#PREC    = high\n",
-        # "ISPIN    = 2    ! Spin polarized plz\n",
+        incar.extend(["IBRION  = 0\n",
+                      "NSW     = 0\n",
+                      "ISIF    = 0\n"])
+    if spin:
+        incar.append("ISPIN   = 2\n")
 
     return incar
 
@@ -634,7 +615,8 @@ def len_jones(left, right):
     """Lorentz-Berthelot mixing rules for atom types"""
     sigma = (UFF[left][0] + UFF[right][0]) / 2.0
     epsilon = (UFF[left][1] * UFF[right][1])**0.5
-    #TODO(tdaff): zero for zero?
+    if epsilon == 0:
+        sigma = 0
     return "%-6s %-6s lj %f %f\n" % (left, right, epsilon, sigma)
 
 
@@ -650,5 +632,4 @@ if __name__ == '__main__':
 #    load_niss = open(global_options.job_name + ".niss")
 #    my_simulation = pickle.load(load_niss)
 #    load_niss.close()
-#    print(my_simulation.structure.cell.to_dl_poly())
     my_simulation.job_dispatcher()

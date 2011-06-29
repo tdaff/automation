@@ -9,4 +9,5 @@ potcar_dir = /home/program/CHEMISTRY/VASP/potpaw_PBE_2011/
 esp_calc = vasp
 vasp2cube = /home/program/CHEMISTRY/REPEAT/bin/vasp2cube 2
 cpmd2cube = cpmd2cube.x
+mc_supercell = (2, 2, 2)
 

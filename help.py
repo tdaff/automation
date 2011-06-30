@@ -40,6 +40,10 @@ DEG2RAD = pi / 180.0
 BOHR2ANG = 0.52917720859
 EV2KCAL = 23.060542301389
 
+NOT_RUN = 0
+RUNNING = 1
+FINISHED = 2
+
 
 class PyNiss(object):
     """
@@ -52,9 +56,9 @@ class PyNiss(object):
     def __init__(self, options):
         self.options = options
         self.structure = Structure(options.job_name)
-        self.state = {'h_opt': 0,
-                      'repeat': 0,
-                      'gcmc': 0}
+        self.state = {'dft': (NOT_RUN, False),
+                      'repeat': (NOT_RUN, False),
+                      'gcmc': (NOT_RUN, False)}
 
     def job_dispatcher(self):
         if self.options.interactive:
@@ -74,6 +78,10 @@ class PyNiss(object):
             print("GCMC run has finished")
         if self.options.h_optimize:
             print self.options.repeat_exe
+
+    def status(self):
+        """Print the current status to the terminal."""
+        print(self.status)
 
     def run_vasp(self, nproc=16):
         """Make inputs and run vasp job."""
@@ -105,8 +113,10 @@ class PyNiss(object):
             if "wooki" in line:
                 jobid = line.split(".")[0]
                 print jobid
-            else:
-                print("Job failed?")
+                self.state['dft'] = (RUNNING, jobid)
+                break
+        else:
+            print("Job failed?")
 
     def esp2cube(self):
         """Make the cube for repeat input."""
@@ -127,12 +137,16 @@ class PyNiss(object):
         mk_repeat(cube_name=job_name + '.cube')
         repeat_args = ['repeatsubmit', job_name + '.cube']
         submit = subprocess.Popen(repeat_args, stdout=subprocess.PIPE)
+        jobid = None
         for line in submit.stdout.readlines():
             if "wooki" in line:
                 jobid = line.split(".")[0]
                 print jobid
-            else:
-                print("Job failed?")
+#        if jobid:
+                self.state['repeat'] = (RUNNING, jobid)
+                break
+        else:
+            print("Job failed?")
 
     def run_cpmd(self):
         pass
@@ -601,8 +615,8 @@ def mk_gcmc_control(num_guests, pressure):
         "&guest 1\n",
         "  pressure  (bar)  1.0\n",
         "&end\n",
-        "steps                   40000000\n",
-        "equilibration           4000000\n",
+        "steps                   1000000\n",
+        "equilibration           100000\n",
         "# jobcontrol\n",
         "cutoff          12.5 angstrom\n",
         "delr            1.0 angstrom\n",
@@ -613,6 +627,8 @@ def mk_gcmc_control(num_guests, pressure):
 
 def len_jones(left, right):
     """Lorentz-Berthelot mixing rules for atom types"""
+    # UFF is found in elements.py
+    # TODO(tdaff): better way of defaults/custom
     sigma = (UFF[left][0] + UFF[right][0]) / 2.0
     epsilon = (UFF[left][1] * UFF[right][1])**0.5
     if epsilon == 0:
@@ -622,14 +638,21 @@ def len_jones(left, right):
 
 if __name__ == '__main__':
     global_options = Options()
-    # try to unpickle the job
+    # try to unpickle the job or
     # fall back to starting a new simulation
-    my_simulation = PyNiss(global_options)
+    if os.path.exists(global_options.job_name + ".niss"):
+        print("Existing simulation found; loading...")
+        load_niss = open(global_options.job_name + ".niss")
+        my_simulation = pickle.load(load_niss)
+        load_niss.close()
+    else:
+        print("Starting a new simulation...")
+        my_simulation = PyNiss(global_options)
+    
+    # run requested jobs
+    my_simulation.job_dispatcher()
+
+    # dump the final system state
     my_niss = open(global_options.job_name + ".niss", "wb")
     pickle.dump(my_simulation, my_niss)
     my_niss.close()
-
-#    load_niss = open(global_options.job_name + ".niss")
-#    my_simulation = pickle.load(load_niss)
-#    load_niss.close()
-    my_simulation.job_dispatcher()

@@ -55,13 +55,13 @@ class PyNiss(object):
     # TODO(tdaff): automate the whole thing unless told otherwise
     def __init__(self, options):
         self.options = options
-        self.structure = Structure(options.job_name)
+        self.structure = Structure(options.get('job_name'))
         self.state = {'dft': (NOT_RUN, False),
                       'repeat': (NOT_RUN, False),
                       'gcmc': (NOT_RUN, False)}
 
     def job_dispatcher(self):
-        if self.options.interactive:
+        if self.options.get('interactive'):
             import code
             console = code.InteractiveConsole(locals())
             console.interact()
@@ -76,8 +76,8 @@ class PyNiss(object):
         if self.state['gcmc'] == 2:
             # Everything finished
             print("GCMC run has finished")
-        if self.options.h_optimize:
-            print self.options.repeat_exe
+        if self.options.get('h_optimize'):
+            print self.options.get('repeat_exe')
 
     def status(self):
         """Print the current status to the terminal."""
@@ -85,7 +85,7 @@ class PyNiss(object):
 
     def run_vasp(self, nproc=16):
         """Make inputs and run vasp job."""
-        job_name = self.options.job_name
+        job_name = self.options.get('job_name')
 
         filetemp = open(job_name + ".poscar", "wb")
         filetemp.writelines(self.structure.to_vasp())
@@ -101,7 +101,7 @@ class PyNiss(object):
 
         filetemp = open(job_name + ".potcar", "wb")
         for at_type in unique(self.structure.types):
-            potcar_src = os.path.join(self.options.potcar_dir, at_type,
+            potcar_src = os.path.join(self.options.get('potcar_dir'), at_type,
                                       "POTCAR")
             shutil.copyfileobj(open(potcar_src), filetemp)
         filetemp.close()
@@ -120,20 +120,20 @@ class PyNiss(object):
 
     def esp2cube(self):
         """Make the cube for repeat input."""
-        job_name = self.options.job_name
-        if self.options.esp_calc == 'vasp':
+        job_name = self.options.get('job_name')
+        if self.options.get('esp_calc') == 'vasp':
             os.chdir(job_name + ".restart_DIR")
-            esp2cube_args = shlex.split(self.options.vasp2cube)
+            esp2cube_args = shlex.split(self.options.get('vasp2cube'))
             submit = subprocess.Popen(esp2cube_args)
             # TODO(tdaff): maybe background this?
             submit.wait()
             # TODO(tdaff): leave the cube name as job-name..
-            shutil.move(job_name + '.cube', self.options.cwd)
-            os.chdir(self.options.cwd)
+            shutil.move(job_name + '.cube', self.options.get('cwd'))
+            os.chdir(self.options.get('cwd'))
 
     def run_repeat(self):
         """Submit the repeat calc to the queue."""
-        job_name = self.options.job_name
+        job_name = self.options.get('job_name')
         mk_repeat(cube_name=job_name + '.cube')
         repeat_args = ['repeatsubmit', job_name + '.cube']
         submit = subprocess.Popen(repeat_args, stdout=subprocess.PIPE)
@@ -183,11 +183,11 @@ class Structure(object):
         self.dft_energy = 0.0
         self.guests = [Guest()]
         # FIXME(tdaff): just testing pdb reader for now
-        self.from_pdb(self.name + '.pdb')
-        self.from_vasp(self.name + '.contcar')
-        self.charges_from_repeat(self.name + '.esp_fit.out')
+        #self.from_pdb(self.name + '.pdb')
+        #self.from_vasp(self.name + '.contcar')
+#        self.charges_from_repeat(self.name + '.esp_fit.out')
 
-    def from_pdb(self, filename='MOF-5.pdb'):
+    def from_pdb(self, filename):
         """Read an initial structure from a pdb file."""
         filetemp = open(filename)
         pdbfile = filetemp.readlines()
@@ -640,19 +640,20 @@ if __name__ == '__main__':
     global_options = Options()
     # try to unpickle the job or
     # fall back to starting a new simulation
-    if os.path.exists(global_options.job_name + ".niss"):
+    if os.path.exists(global_options.get('job_name') + ".niss"):
         print("Existing simulation found; loading...")
-        load_niss = open(global_options.job_name + ".niss")
+        load_niss = open(global_options.get('job_name') + ".niss")
         my_simulation = pickle.load(load_niss)
         load_niss.close()
+        my_simulation.options = global_options
     else:
         print("Starting a new simulation...")
         my_simulation = PyNiss(global_options)
-    
+
     # run requested jobs
     my_simulation.job_dispatcher()
 
     # dump the final system state
-    my_niss = open(global_options.job_name + ".niss", "wb")
+    my_niss = open(global_options.get('job_name') + ".niss", "wb")
     pickle.dump(my_simulation, my_niss)
     my_niss.close()

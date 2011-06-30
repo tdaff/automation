@@ -41,7 +41,7 @@ class Options(object):
         self.load_job_defaults()
         self.commandline()
 
-    def __getattr__(self, item):
+    def get(self, item):
         """Map values to attributes from many sources, based on priorities."""
         if item in self.__dict__:
             print "an attribute: %s" % item
@@ -123,10 +123,10 @@ class Options(object):
 
 if __name__ == '__main__':
     testopts = Options()
-    print(testopts.job_name)
-    print(testopts.cmdopts)
-    print(testopts.args)
-    print(testopts.verbose)
-    print(testopts.script_dir)
-    print(testopts.cwd)
-    print(testopts.repeat_exe)
+    print(testopts.get('job_name'))
+    print(testopts.get('cmdopts'))
+    print(testopts.get('args'))
+    print(testopts.get('verbose'))
+    print(testopts.get('script_dir'))
+    print(testopts.get('cwdt'))
+    print(testopts.get('repeat_exe'))

@@ -31,8 +31,7 @@ import time
 import numpy as np
 from copy import copy
 from numpy import pi, cos, sin, sqrt, arccos, prod
-from numpy import array, identity
-from numpy import dot
+from numpy import array, identity, dot
 from config import Options
 from elements import WEIGHT, UFF
 
@@ -43,6 +42,7 @@ EV2KCAL = 23.060542301389
 NOT_RUN = 0
 RUNNING = 1
 FINISHED = 2
+UPDATED = 3
 
 
 class PyNiss(object):
@@ -58,42 +58,112 @@ class PyNiss(object):
         self.options = options
         self.structure = Structure(options.get('job_name'))
         self.state = {'init': (NOT_RUN, False),
-                      'dft': (NOT_RUN, False),
-                      'repeat': (NOT_RUN, False),
+                      'opt': (NOT_RUN, False),
+                      'charges': (NOT_RUN, False),
                       'gcmc': (NOT_RUN, False)}
+
+    def dump_state(self):
+        """Write the .niss file holding the current system state."""
+        my_niss = open(global_options.get('job_name') + ".niss", "wb")
+        pickle.dump(self, my_niss)
+        my_niss.close()
+
 
     def job_dispatcher(self):
         """
-        Drop to interactive mode if requested. Run parts explicity specified
-        or the next step in automated run.
+        Drop to interactive mode, if requested. Run parts explicity specified
+        on the command line or do the next step in an automated run.
 
         """
 
+        print self.status()
         if self.options.get('interactive'):
             import code
             console = code.InteractiveConsole(locals())
             console.interact()
-        if self.state['init'][0] == NOT_RUN:
+        if self.state['init'] == NOT_RUN:
+            print("getting structure")
             # No structure, should get one
-            self.structure.from_file(options.get('job_name'),
-                                     options.get('initial_structure_type'))
-        if "opt" in self.options.args:
-            self.run_vasp()
-        if "esp" in self.options.args:
-            self.esp2cube()
-        if "repeat" in self.options.args:
-            self.run_repeat()
-        if "gcmc" in self.options.args:
-            self.run_fastmc()
-        if self.state['gcmc'] == 2:
+            self.structure.from_file(
+                self.options.get('job_name'),
+                self.options.get('initial_structure_format'))
+            self.state['init'] = UPDATED
+
+        # TODO(tdaff): does dft/optim always generate ESP?
+        if self.state['opt'][0] is not UPDATED:
+            if self.options.get('no_optimize'):
+                self.state['opt'] = (UPDATED, False)
+            elif self.state['opt'][0] == RUNNING:
+                new_state = jobcheck(self.state['opt'][1])
+                if not new_state or new_state == 'C':
+                    # Finished running update positions
+                    self.structure.update_pos(self.options.get('optim_code'))
+                    self.state['opt'] = (UPDATED, False)
+                    self.dump_state()
+                else:
+                    # Still running
+                    print("Optimization still in progress")
+                    raise SystemExit
+            elif self.state['opt'][0] == NOT_RUN or 'opt' in self.options.args:
+                self.run_optimization()
+                self.dump_state()
+                raise SystemExit
+
+        if self.state['charges'][0] is not UPDATED:
+            if self.options.get('no_charges'):
+                self.state['charges'] = (UPDATED, False)
+            elif self.state['charges'][0] == RUNNING:
+                new_state = jobcheck(self.state['charges'][1])
+                if not new_state or new_state == 'C':
+                    self.structure.update_charges(self.options.get('charge_method'))
+                    self.state['charges'] = (UPDATED, False)
+                    self.dump_state()
+                else:
+                    print("Charge calculation still running")
+                    raise SystemExit
+            elif self.state['charges'] == NOT_RUN or 'charges' in self.options.args:
+                self.run_charges()
+                self.dump_state()
+                raise SystemExit
+
+        if self.state['gcmc'][0] is not UPDATED:
+            if self.options.get('no_gcmc'):
+                self.state['gcmc'] = (UPDATED, False)
+            elif self.state['gcmc'][0] == RUNNING:
+                new_state = jobcheck(self.state['gcmc'][1])
+                if not new_state or new_state == 'C':
+                    # Read in GCMC data
+                    self.state['gcmc'] = (UPDATED, False)
+                    self.dump_state()
+                else:
+                    print("GCMC still running")
+                    raise SystemExit
+            elif self.state['gcmc'] == NOT_RUN or 'gcmc' in self.options.args:
+                self.run_fastmc()
+                self.dump_state()
+                raise SystemExit
+        else:
             # Everything finished
             print("GCMC run has finished")
-        if self.options.get('h_optimize'):
-            print self.options.get('repeat_exe')
 
     def status(self):
         """Print the current status to the terminal."""
-        print(self.status)
+        print(self.state)
+
+
+    def run_optimization(self):
+        """Select correct method for running the dft/optim."""
+        optim_code = self.options.get('optim_code')
+        if optim_code == 'vasp':
+            self.run_vasp(self.options.get('vasp_ncpu'))
+
+    def run_charges(self):
+        """Select correct charge processing methods."""
+        if self.options.get('charge_method') == 'repeat':
+            # Get ESP
+            self.esp2cube()
+            self.run_repeat()
+
 
     def run_vasp(self, nproc=16):
         """Make inputs and run vasp job."""
@@ -165,7 +235,33 @@ class PyNiss(object):
 
     def run_fastmc(self):
         """Submit a fastmc job to the queue."""
-        confy, feeld = self.structure.to_fastmc(supercell=(1, 2, 1))
+        job_name = self.options.get('job_name')
+        config, field = self.structure.to_fastmc(supercell=(1, 2, 1))
+
+        filetemp = open("CONFIG", "wb")
+        filetemp.writelines(config)
+        filetemp.close()
+
+        filetemp = open("FIELD", "wb")
+        filetemp.writelines(field)
+        filetemp.close()
+
+        filetemp = open("CONTROL", "wb")
+        filetemp.writelines(mk_gcmc_control(1, 1.0))
+        filetemp.close()
+
+        fastmc_args = ['fastmcsubmit', job_name]
+        submit = subprocess.Popen(fastmc_args, stdout=subprocess.PIPE)
+        jobid = None
+        for line in submit.stdout.readlines():
+            if "wooki" in line:
+                jobid = line.split(".")[0]
+                print jobid
+#        if jobid:
+                self.state['gcmc'] = (RUNNING, jobid)
+                break
+        else:
+            print("Job failed?")
 
 
 class Structure(object):
@@ -194,8 +290,6 @@ class Structure(object):
         self.esp = None
         self.dft_energy = 0.0
         self.guests = [Guest()]
-        # FIXME(tdaff): just testing pdb reader for now
-        #self.from_pdb(self.name + '.pdb')
         #self.from_vasp(self.name + '.contcar')
 #        self.charges_from_repeat(self.name + '.esp_fit.out')
 
@@ -207,6 +301,17 @@ class Structure(object):
         elif filetype.lower() in ['vasp', 'poscar', 'contcar']:
             self.from_vasp()
 
+    def update_pos(self, dft_program):
+        """Select the method for updating atomic positions."""
+        if dft_program == 'vasp':
+            self.from_vasp(self.name + '.contcar', update=True)
+        elif dft_program == 'cpmd':
+            self.from_cpmd(update=True)
+
+    def update_charges(self, charge_method):
+        """Select the method for updating charges."""
+        if charge_method == 'repeat':
+            self.charges_from_repeat(self.name + '.esp_fit.out')
 
     def from_pdb(self, filename):
         """Read an initial structure from a pdb file."""
@@ -620,15 +725,6 @@ def mk_kpoints(num_kpt=1):
     return kpoints
 
 
-def unique(in_list):
-    """Set of unique values in list ordered by first occurance"""
-    uniq = []
-    for item in in_list:
-        if item not in uniq:
-            uniq.append(item)
-    return uniq
-
-
 def mk_gcmc_control(num_guests, pressure):
     """Standard GCMC CONTROL file."""
     control = [
@@ -646,6 +742,15 @@ def mk_gcmc_control(num_guests, pressure):
     return control
 
 
+def unique(in_list):
+    """Set of unique values in list ordered by first occurance"""
+    uniq = []
+    for item in in_list:
+        if item not in uniq:
+            uniq.append(item)
+    return uniq
+
+
 def len_jones(left, right):
     """Lorentz-Berthelot mixing rules for atom types"""
     # UFF is found in elements.py
@@ -655,6 +760,21 @@ def len_jones(left, right):
     if epsilon == 0:
         sigma = 0
     return "%-6s %-6s lj %f %f\n" % (left, right, epsilon, sigma)
+
+
+def jobcheck(jobid):
+    """Get job status."""
+    jobid = "%s" % jobid
+    repeat_args = ['repeatsubmit', job_name + '.cube']
+    qstat = subprocess.Popen(['qstat', '%s' % jobid], stdout=subprocess.PIPE)
+    for line in qstat.stdout.readlines():
+        if "Unknown Job Id" in line:
+            return False
+        elif line.startswith(jobid):
+            status = line[68:69]
+            return status
+    else:
+        print("Failed to get job information.")
 
 
 if __name__ == '__main__':
@@ -673,8 +793,4 @@ if __name__ == '__main__':
 
     # run requested jobs
     my_simulation.job_dispatcher()
-
-    # dump the final system state
-    my_niss = open(global_options.get('job_name') + ".niss", "wb")
-    pickle.dump(my_simulation, my_niss)
-    my_niss.close()
+    my_simulation.dump_state()

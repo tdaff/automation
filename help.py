@@ -54,17 +54,29 @@ class PyNiss(object):
     """
     # TODO(tdaff): automate the whole thing unless told otherwise
     def __init__(self, options):
+        """An empty structure; The dispatcher will fill it up with data."""
         self.options = options
         self.structure = Structure(options.get('job_name'))
-        self.state = {'dft': (NOT_RUN, False),
+        self.state = {'init': (NOT_RUN, False),
+                      'dft': (NOT_RUN, False),
                       'repeat': (NOT_RUN, False),
                       'gcmc': (NOT_RUN, False)}
 
     def job_dispatcher(self):
+        """
+        Drop to interactive mode if requested. Run parts explicity specified
+        or the next step in automated run.
+
+        """
+
         if self.options.get('interactive'):
             import code
             console = code.InteractiveConsole(locals())
             console.interact()
+        if self.state['init'][0] == NOT_RUN:
+            # No structure, should get one
+            self.structure.from_file(options.get('job_name'),
+                                     options.get('initial_structure_type'))
         if "opt" in self.options.args:
             self.run_vasp()
         if "esp" in self.options.args:
@@ -187,6 +199,15 @@ class Structure(object):
         #self.from_vasp(self.name + '.contcar')
 #        self.charges_from_repeat(self.name + '.esp_fit.out')
 
+    def from_file(self, basename, filetype):
+        """Select the correct file parser."""
+        filetype = filetype.lstrip('.')
+        if filetype.lower() in ['pdb']:
+            self.from_pdb(basename + '.' + filetype)
+        elif filetype.lower() in ['vasp', 'poscar', 'contcar']:
+            self.from_vasp()
+
+
     def from_pdb(self, filename):
         """Read an initial structure from a pdb file."""
         filetemp = open(filename)
@@ -207,6 +228,42 @@ class Structure(object):
     def from_cif(self, filename="structure.cif"):
         """Genereate structure from a .cif file."""
         raise NotImplementedError
+
+    def from_vasp(self, filename='CONTCAR', update=True):
+        """Read a structure from a vasp [POS,CONT]CAR file."""
+        #TODO(tdaff): difference between initial and update?
+        filetemp = open(filename)
+        contcar = filetemp.readlines()
+        filetemp.close()
+        atom_list = []
+        scale = float(contcar[1])
+        self.cell.from_vasp(contcar[2:5], scale)
+        if contcar[5].split()[0].isalpha():
+            # vasp 5 with atom names
+            del contcar[5]
+        poscar_counts = [int(x) for x in contcar[5].split()]
+        natoms = sum(poscar_counts)
+        if contcar[6].strip()[0].lower() in "s":
+            # 's'elective dynamics line; we don't care
+            del contcar[6]
+
+        # mcell converts frac -> cart if necessary and scales
+        if contcar[6].strip()[0].lower() in "ck":
+            mcell = identity(3) * scale
+        else:
+            mcell = self.cell.cell
+
+        # parsing positions
+        if update:
+            for atom, at_line in zip(self.atoms, contcar[7:7+natoms]):
+                atom.from_vasp(at_line, cell=mcell)
+        else:
+            for at_type, at_line in zip(self.types, contcar[7:7+natoms]):
+                this_atom = Atom()
+                this_atom.from_vasp(at_line, at_type, mcell)
+                atom_list.append(this_atom)
+            self.atoms = atom_list
+        self._update_types()
 
     def charges_from_repeat(self, filename):
         """Parse charges and update structure."""
@@ -315,42 +372,6 @@ class Structure(object):
         sys.stdout.writelines(field)
 
         return config, field
-
-    def from_vasp(self, filename='CONTCAR', update=True):
-        """Read a structure from a vasp [POS,CONT]CAR file."""
-        #TODO(tdaff): difference between initial and update?
-        filetemp = open(filename)
-        contcar = filetemp.readlines()
-        filetemp.close()
-        atom_list = []
-        scale = float(contcar[1])
-        self.cell.from_vasp(contcar[2:5], scale)
-        if contcar[5].split()[0].isalpha():
-            # vasp 5 with atom names
-            del contcar[5]
-        poscar_counts = [int(x) for x in contcar[5].split()]
-        natoms = sum(poscar_counts)
-        if contcar[6].strip()[0].lower() in "s":
-            # 's'elective dynamics line; we don't care
-            del contcar[6]
-
-        # mcell converts frac -> cart if necessary and scales
-        if contcar[6].strip()[0].lower() in "ck":
-            mcell = identity(3) * scale
-        else:
-            mcell = self.cell.cell
-
-        # parsing positions
-        if update:
-            for atom, at_line in zip(self.atoms, contcar[7:7+natoms]):
-                atom.from_vasp(at_line, cell=mcell)
-        else:
-            for at_type, at_line in zip(self.types, contcar[7:7+natoms]):
-                this_atom = Atom()
-                this_atom.from_vasp(at_line, at_type, mcell)
-                atom_list.append(this_atom)
-            self.atoms = atom_list
-        self._update_types()
 
     def supercell(self, scale):
         """Iterate over all the atoms of supercell."""

@@ -122,7 +122,7 @@ class PyNiss(object):
                 else:
                     print("Charge calculation still running")
                     raise SystemExit
-            elif self.state['charges'] == NOT_RUN or 'charges' in self.options.args:
+            elif self.state['charges'][0] == NOT_RUN or 'charges' in self.options.args:
                 self.run_charges()
                 self.dump_state()
                 raise SystemExit
@@ -139,7 +139,7 @@ class PyNiss(object):
                 else:
                     print("GCMC still running")
                     raise SystemExit
-            elif self.state['gcmc'] == NOT_RUN or 'gcmc' in self.options.args:
+            elif self.state['gcmc'][0] == NOT_RUN or 'gcmc' in self.options.args:
                 self.run_fastmc()
                 self.dump_state()
                 raise SystemExit
@@ -211,6 +211,7 @@ class PyNiss(object):
             # TODO(tdaff): maybe background this?
             submit.wait()
             # TODO(tdaff): leave the cube name as job-name..
+            # FIXME(tdaff): will not overwrite
             shutil.move(job_name + '.cube', self.options.get('cwd'))
             os.chdir(self.options.get('cwd'))
 
@@ -226,7 +227,7 @@ class PyNiss(object):
                 jobid = line.split(".")[0]
                 print jobid
 #        if jobid:
-                self.state['repeat'] = (RUNNING, jobid)
+                self.state['charges'] = (RUNNING, jobid)
                 break
         else:
             print("Job failed?")
@@ -766,8 +767,8 @@ def len_jones(left, right):
 def jobcheck(jobid):
     """Get job status."""
     jobid = "%s" % jobid
-    repeat_args = ['repeatsubmit', job_name + '.cube']
-    qstat = subprocess.Popen(['qstat', '%s' % jobid], stdout=subprocess.PIPE)
+    qstat = subprocess.Popen(['qstat', '%s' % jobid], stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
     for line in qstat.stdout.readlines():
         if "Unknown Job Id" in line:
             return False

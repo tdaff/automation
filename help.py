@@ -81,13 +81,14 @@ class PyNiss(object):
             import code
             console = code.InteractiveConsole(locals())
             console.interact()
-        if self.state['init'] == NOT_RUN:
+        if self.state['init'][0] == NOT_RUN:
             print("getting structure")
             # No structure, should get one
             self.structure.from_file(
                 self.options.get('job_name'),
                 self.options.get('initial_structure_format'))
-            self.state['init'] = UPDATED
+            self.state['init'] = (UPDATED, False)
+            self.dump_state()
 
         # TODO(tdaff): does dft/optim always generate ESP?
         if self.state['opt'][0] is not UPDATED:
@@ -195,7 +196,7 @@ class PyNiss(object):
             if "wooki" in line:
                 jobid = line.split(".")[0]
                 print jobid
-                self.state['dft'] = (RUNNING, jobid)
+                self.state['opt'] = (RUNNING, jobid)
                 break
         else:
             print("Job failed?")

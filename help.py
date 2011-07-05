@@ -91,7 +91,7 @@ class PyNiss(object):
 
         # TODO(tdaff): does dft/optim always generate ESP?
         if self.state['opt'][0] is not UPDATED:
-            if self.options.get('no_optimize'):
+            if self.options.getbool('no_optimize'):
                 self.state['opt'] = (UPDATED, False)
             elif self.state['opt'][0] == RUNNING:
                 new_state = jobcheck(self.state['opt'][1])
@@ -110,7 +110,7 @@ class PyNiss(object):
                 raise SystemExit
 
         if self.state['charges'][0] is not UPDATED:
-            if self.options.get('no_charges'):
+            if self.options.getbool('no_charges'):
                 self.state['charges'] = (UPDATED, False)
             elif self.state['charges'][0] == RUNNING:
                 new_state = jobcheck(self.state['charges'][1])
@@ -127,7 +127,7 @@ class PyNiss(object):
                 raise SystemExit
 
         if self.state['gcmc'][0] is not UPDATED:
-            if self.options.get('no_gcmc'):
+            if self.options.getbool('no_gcmc'):
                 self.state['gcmc'] = (UPDATED, False)
             elif self.state['gcmc'][0] == RUNNING:
                 new_state = jobcheck(self.state['gcmc'][1])

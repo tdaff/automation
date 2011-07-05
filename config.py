@@ -62,6 +62,27 @@ class Options(object):
             print "unspecified option: %s" % item
             raise AttributeError(item)
 
+    def getbool(self, item):
+        """
+        Parse option and if item is not a bool return True for "1", "yes",
+        "true" and "on" and False for "0", "no", "false", and "off".
+        Case-insensitive.
+
+        """
+        value = self.get(item)
+        if isinstance(value, bool):
+            return value
+        elif isinstance(value, string):
+            if value.lower() in ["1", "yes", "true", "on"]:
+                return True
+            elif value.lower() in ["0", "no", "false", "off"]:
+                return False
+            else:
+                raise ValueError(value)
+        else:
+            return bool(item)
+
+
     def _init_paths(self):
         """Find the script directory and set up working directory"""
         # Where the script is has the config defaults.

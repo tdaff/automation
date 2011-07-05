@@ -155,7 +155,7 @@ class PyNiss(object):
         """Select correct method for running the dft/optim."""
         optim_code = self.options.get('optim_code')
         if optim_code == 'vasp':
-            self.run_vasp(self.options.get('vasp_ncpu'))
+            self.run_vasp(self.options.getint('vasp_ncpu'))
 
     def run_charges(self):
         """Select correct charge processing methods."""

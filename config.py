@@ -72,7 +72,7 @@ class Options(object):
         value = self.get(item)
         if isinstance(value, bool):
             return value
-        elif isinstance(value, string):
+        elif isinstance(value, basestring):
             if value.lower() in ["1", "yes", "true", "on"]:
                 return True
             elif value.lower() in ["0", "no", "false", "off"]:
@@ -81,6 +81,16 @@ class Options(object):
                 raise ValueError(value)
         else:
             return bool(item)
+
+    def getint(self, item):
+        """Return item's value as an integer."""
+        value = self.get(item)
+        return int(value)
+
+    def getfoat(self, item):
+        """Return item's value as a float."""
+        value = self.get(item)
+        return float(value)
 
 
     def _init_paths(self):

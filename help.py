@@ -238,7 +238,8 @@ class PyNiss(object):
     def run_fastmc(self):
         """Submit a fastmc job to the queue."""
         job_name = self.options.get('job_name')
-        config, field = self.structure.to_fastmc(supercell=(1, 2, 1))
+        supercell = self.options.gettuple('supercell')
+        config, field = self.structure.to_fastmc(supercell=supercell)
 
         filetemp = open("CONFIG", "wb")
         filetemp.writelines(config)
@@ -475,6 +476,8 @@ class Structure(object):
         for idxl in range(len(atom_set)):
             for idxr in range(idxl, len(atom_set)):
                 field.append(len_jones(atom_set[idxl], atom_set[idxr]))
+        # EOF
+        field.append("close\n")
 
         sys.stdout.writelines(field)
 
@@ -599,14 +602,19 @@ class Cell(object):
 class Atom(object):
     """Base atom type."""
 
-    def __init__(self, at_type=False, pos=False, charge=0.0):
+    def __init__(self, at_type=False, pos=False, **kwargs):
+        """Accept arbritary kwargs as attributes."""
         self.type = at_type
         self.pos = pos
-        self.charge = charge
+        self.charge = 0.0
         self.idx = False
         self.site = None
         self.mass = 0.0
         self.molecule = None
+        # Sets anything else specified as an attribute
+        for k, v in kwargs:
+            setattr(self, k, v)
+
 
     def __str__(self):
         return "%s %f %f %f" % tuple([self.type] + list(self.pos))
@@ -642,9 +650,12 @@ class Guest(object):
     def __init__(self):
         self.name = "Carbon Dioxide"
         self.atoms = [
-            Atom("Cx", pos=(0.0000000, 0.000000, 0.000000), charge=0.65120),
-            Atom("Ox", pos=(1.1605000, 0.000000, 0.000000), charge=-0.32560),
-            Atom("Ox", pos=(-1.1605000, 0.000000, 0.000000), charge=-0.32560)]
+            Atom("Cx", pos=(0.0000000, 0.000000, 0.000000), charge=0.65120,
+                 mass=12.0107),
+            Atom("Ox", pos=(1.1605000, 0.000000, 0.000000), charge=-0.32560,
+                 mass=15.9994),
+            Atom("Ox", pos=(-1.1605000, 0.000000, 0.000000), charge=-0.32560,
+                 mass=15.9994)]
         self.types = [atom.type for atom in self.atoms]
 
 
@@ -730,6 +741,7 @@ def mk_kpoints(num_kpt=1):
 def mk_gcmc_control(num_guests, pressure):
     """Standard GCMC CONTROL file."""
     control = [
+        "GCMC Run\n"
         "temperature               273\n",
         "&guest 1\n",
         "  pressure  (bar)  1.0\n",

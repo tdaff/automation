@@ -92,6 +92,18 @@ class Options(object):
         value = self.get(item)
         return float(value)
 
+    def gettuple(self, item):
+        """Return item's value interpreted as a tuple (best guess)."""
+        value = self.get(item)
+        if isinstance(item, basestring):
+            # NOTE: be careful, eval can be dangerous
+            # TODO(tdaff): catch invalid values
+            value = eval(value, {}, {})
+            return tuple(value)
+        else:
+            # TODO(tdaff): check for iterables?
+            return tuple(value)
+
 
     def _init_paths(self):
         """Find the script directory and set up working directory"""

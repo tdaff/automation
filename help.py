@@ -183,6 +183,7 @@ class PyNiss(object):
         filetemp.close()
 
         filetemp = open(job_name + ".potcar", "wb")
+        # TODO(tdaff): _sv or _pv for some elements, eg barium...
         for at_type in unique(self.structure.types):
             potcar_src = os.path.join(self.options.get('potcar_dir'), at_type,
                                       "POTCAR")
@@ -238,8 +239,8 @@ class PyNiss(object):
     def run_fastmc(self):
         """Submit a fastmc job to the queue."""
         job_name = self.options.get('job_name')
-        supercell = self.options.gettuple('supercell')
-        config, field = self.structure.to_fastmc(supercell=supercell)
+        mc_supercell = self.options.gettuple('mc_supercell')
+        config, field = self.structure.to_fastmc(supercell=mc_supercell)
 
         filetemp = open("CONFIG", "wb")
         filetemp.writelines(config)
@@ -264,7 +265,7 @@ class PyNiss(object):
                 self.state['gcmc'] = (RUNNING, jobid)
                 break
         else:
-            print("Job failed?")
+            print("Job submission failed?")
 
 
 class Structure(object):
@@ -612,7 +613,7 @@ class Atom(object):
         self.mass = 0.0
         self.molecule = None
         # Sets anything else specified as an attribute
-        for k, v in kwargs:
+        for k, v in kwargs.iteritems():
             setattr(self, k, v)
 
 

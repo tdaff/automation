@@ -3,9 +3,9 @@
 """
 PyFaps -- Fully Automated Pickles of Systems.
 
-High throughput strucutre adsorption property analysis. When run as a script,
-will automatically run complete analysis on a structure. Provides classes and
-methods for adapting the simulation or only doing select parts:
+Strucutre adsorption property analysis for high throughput processing. When run
+as a script, will automatically run complete analysis on a structure. Provides
+classes and methods for adapting the simulation or only doing select parts:
 
 RUN -- run or continue until job is finished
 STEP -- run only the next step and stop (specify multiple times for more steps)
@@ -28,6 +28,7 @@ import os
 import subprocess
 import shlex
 import time
+import logging
 import numpy as np
 from copy import copy
 from numpy import pi, cos, sin, sqrt, arccos, prod
@@ -35,44 +36,55 @@ from numpy import array, identity, dot
 from config import Options
 from elements import WEIGHT, UFF
 
+# Global constants
 DEG2RAD = pi / 180.0
 BOHR2ANG = 0.52917720859
 EV2KCAL = 23.060542301389
 
+# ID values for system state
 NOT_RUN = 0
 RUNNING = 1
 FINISHED = 2
 UPDATED = 3
+SKIPPED = -1
 
 
 class PyNiss(object):
     """
     PyNiss -- Negotiation of Intermediate System States
 
-    A single property calculation for one structure.
+    A single property calculation for one structure. Instance with a set of
+    options, then run the job_dispatcher() to begin the calculation. The
+    calculation will pickle itself, or can be pickled at any time, by calling
+    dump_state().
 
     """
     # TODO(tdaff): automate the whole thing unless told otherwise
     def __init__(self, options):
-        """An empty structure; The dispatcher will fill it up with data."""
+        """
+        Instance an empty structure in the calculation; The dispatcher should
+        it up with data, as needed.
+
+        """
         self.options = options
         self.structure = Structure(options.get('job_name'))
         self.state = {'init': (NOT_RUN, False),
                       'opt': (NOT_RUN, False),
+                      'esp': (NOT_RUN, False),
                       'charges': (NOT_RUN, False),
                       'gcmc': (NOT_RUN, False)}
 
     def dump_state(self):
         """Write the .niss file holding the current system state."""
-        my_niss = open(global_options.get('job_name') + ".niss", "wb")
+        my_niss = open(self.options.get('job_name') + ".niss", "wb")
         pickle.dump(self, my_niss)
         my_niss.close()
 
 
     def job_dispatcher(self):
         """
-        Drop to interactive mode, if requested. Run parts explicity specified
-        on the command line or do the next step in an automated run.
+        Run parts explicity specified on the command line or do the next step
+        in an automated run. Drop to interactive mode, if requested.
 
         """
 
@@ -80,7 +92,10 @@ class PyNiss(object):
         if self.options.get('interactive'):
             import code
             console = code.InteractiveConsole(locals())
-            console.interact()
+            console.interact(
+                banner = """See manual for instructions for interactive use."""
+            )
+
         if self.state['init'][0] == NOT_RUN:
             print("getting structure")
             # No structure, should get one
@@ -442,8 +457,6 @@ class Structure(object):
             config.extend(["%-6s%10i\n" % (atom.type, idx),
                            "%20.12f%20.12f%20.12f\n" % tuple(atom.pos)])
 
-        sys.stdout.writelines(config)
-
         # FIELD
         # TODO(tdaff): ntypes = nguests + nummols
         ntypes = 1 + len(self.guests)
@@ -479,8 +492,6 @@ class Structure(object):
                 field.append(len_jones(atom_set[idxl], atom_set[idxr]))
         # EOF
         field.append("close\n")
-
-        sys.stdout.writelines(field)
 
         return config, field
 
@@ -792,7 +803,21 @@ def jobcheck(jobid):
         print("Failed to get job information.")
 
 
+def info(msg):
+    """Print info where it needs to go."""
+    print("INFO: %s" % msg)
+
+def warn(msg):
+    """Print warning where it needs to go."""
+    print("WARN: %s" % msg)
+
+def err(msg):
+    """Print error where it needs to go."""
+    print("ERROR: %s" % msg)
+
+
 if __name__ == '__main__':
+
     global_options = Options()
     # try to unpickle the job or
     # fall back to starting a new simulation

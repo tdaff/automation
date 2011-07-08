@@ -5,19 +5,9 @@ PyFaps -- Fully Automated Pickles of Systems.
 
 Strucutre adsorption property analysis for high throughput processing. When run
 as a script, will automatically run complete analysis on a structure. Provides
-classes and methods for adapting the simulation or only doing select parts:
-
-RUN -- run or continue until job is finished
-STEP -- run only the next step and stop (specify multiple times for more steps)
-STATUS -- print some information about the state of the system
-
-valid steps:
-XXX optimise and ESP
-XXX new postions
-XXX repeat
-XXX new charges
-XXX gcmc
-XXX postproc
+classes and methods for adapting the simulation or only doing select parts.
+Use the job.ini file to specify job-specific options; run each job in it's own
+directory.
 
 """
 
@@ -29,12 +19,15 @@ import subprocess
 import shlex
 import time
 import logging
-import numpy as np
 from copy import copy
+
+import numpy as np
 from numpy import pi, cos, sin, sqrt, arccos, prod
 from numpy import array, identity, dot
+
 from config import Options
-from elements import WEIGHT, UFF
+from elements import WEIGHT, UFF, VASP_PSEUDO_PREF
+
 
 # Global constants
 DEG2RAD = pi / 180.0
@@ -106,9 +99,9 @@ class PyNiss(object):
             self.dump_state()
 
         # TODO(tdaff): does dft/optim always generate ESP?
-        if self.state['opt'][0] is not UPDATED:
+        if self.state['opt'][0] not in [UPDATED, SKIPPED]:
             if self.options.getbool('no_optimize'):
-                self.state['opt'] = (UPDATED, False)
+                self.state['opt'] = (SKIPPED, False)
             elif self.state['opt'][0] == RUNNING:
                 new_state = jobcheck(self.state['opt'][1])
                 if not new_state or new_state == 'C':
@@ -120,14 +113,16 @@ class PyNiss(object):
                     # Still running
                     print("Optimization still in progress")
                     raise SystemExit
-            elif self.state['opt'][0] == NOT_RUN or 'opt' in self.options.args:
-                self.run_optimization()
-                self.dump_state()
-                raise SystemExit
 
-        if self.state['charges'][0] is not UPDATED:
+        if self.state['opt'][0] == NOT_RUN or 'opt' in self.options.args:
+            self.run_optimization()
+            info("Running optimizaton/dft step")
+            self.dump_state()
+            raise SystemExit
+
+        if self.state['charges'][0] not in [UPDATED, SKIPPED]:
             if self.options.getbool('no_charges'):
-                self.state['charges'] = (UPDATED, False)
+                self.state['charges'] = (SKIPPED, False)
             elif self.state['charges'][0] == RUNNING:
                 new_state = jobcheck(self.state['charges'][1])
                 if not new_state or new_state == 'C':
@@ -137,12 +132,14 @@ class PyNiss(object):
                 else:
                     print("Charge calculation still running")
                     raise SystemExit
-            elif self.state['charges'][0] == NOT_RUN or 'charges' in self.options.args:
-                self.run_charges()
-                self.dump_state()
-                raise SystemExit
 
-        if self.state['gcmc'][0] is not UPDATED:
+        if self.state['charges'][0] == NOT_RUN or 'charges' in self.options.args:
+            self.run_charges()
+            info("Running charge calculation")
+            self.dump_state()
+            raise SystemExit
+
+        if self.state['gcmc'][0] not in [UPDATED, SKIPPED]:
             if self.options.getbool('no_gcmc'):
                 self.state['gcmc'] = (UPDATED, False)
             elif self.state['gcmc'][0] == RUNNING:
@@ -154,17 +151,29 @@ class PyNiss(object):
                 else:
                     print("GCMC still running")
                     raise SystemExit
-            elif self.state['gcmc'][0] == NOT_RUN or 'gcmc' in self.options.args:
-                self.run_fastmc()
-                self.dump_state()
-                raise SystemExit
+
+        if self.state['gcmc'][0] == NOT_RUN or 'gcmc' in self.options.args:
+            self.run_fastmc()
+            info("Running gcmc step")
+            self.dump_state()
+            raise SystemExit
         else:
             # Everything finished
             print("GCMC run has finished")
 
     def status(self):
         """Print the current status to the terminal."""
-        print(self.state)
+        valid_states = {NOT_RUN: 'Not run',
+                        RUNNING: 'Running',
+                        FINISHED: 'Finished',
+                        UPDATED: 'Updated',
+                        SKIPPED: 'Skipped'}
+
+        for step, state in self.state.iteritems():
+            if state[0] is RUNNING:
+                info("State of %s: Running, jobid: %s" % (step, state[1]))
+            else:
+                info("State of %s: %s" % (step, valid_states[state[0]]))
 
 
     def run_optimization(self):
@@ -172,40 +181,54 @@ class PyNiss(object):
         optim_code = self.options.get('optim_code')
         if optim_code == 'vasp':
             self.run_vasp(self.options.getint('vasp_ncpu'))
+        elif optim_code == 'cpmd':
+            error("CPMD calculation not yet implemented")
+        else:
+            error("Unknown optimization method")
 
     def run_charges(self):
         """Select correct charge processing methods."""
-        if self.options.get('charge_method') == 'repeat':
+        chg_method = self.options.get('charge_method')
+        if chg_method == 'repeat':
             # Get ESP
             self.esp2cube()
             self.run_repeat()
+        else:
+            error("Unknown charge calculation method: %s" % chg_method)
 
 
     def run_vasp(self, nproc=16):
         """Make inputs and run vasp job."""
         job_name = self.options.get('job_name')
 
-        filetemp = open(job_name + ".poscar", "wb")
+        filetemp = open(job_name + "POSCAR", "wb")
         filetemp.writelines(self.structure.to_vasp())
         filetemp.close()
 
-        filetemp = open(job_name + ".incar", "wb")
+        filetemp = open(job_name + "INCAR", "wb")
         filetemp.writelines(mk_incar(job_name))
         filetemp.close()
 
-        filetemp = open(job_name + ".kpoints", "wb")
+        filetemp = open(job_name + "KPOINTS", "wb")
         filetemp.writelines(mk_kpoints())
         filetemp.close()
 
-        filetemp = open(job_name + ".potcar", "wb")
-        # TODO(tdaff): _sv or _pv for some elements, eg barium...
-        for at_type in unique(self.structure.types):
-            potcar_src = os.path.join(self.options.get('potcar_dir'), at_type,
+        potcar_types = unique([atom.type for atom in self.structure.atoms])
+        filetemp = open(job_name + "POTCAR", "wb")
+        for at_type in potcar_types:
+            # Try and get the preferred POTCARS
+            # TODO(tdaff): update these with custom pseudos
+            potcar_src = os.path.join(self.options.get('potcar_dir'),
+                                      VASP_PSEUDO_PREF.get(at_type, at_type),
                                       "POTCAR")
             shutil.copyfileobj(open(potcar_src), filetemp)
         filetemp.close()
 
-        # TODO(tdaff): wooki specific at the moment
+        # different names for input files on wooki
+        for vasp_file in ['POSCAR', 'INCAR', 'KPOINTS', 'POTCAR']:
+            shutil.copy(vasp_file, job_name + '.' + vasp_file.lower())
+
+        # FIXME(tdaff): wooki specific at the moment
         vasp_args = ["vaspsubmit-beta", job_name, "%i" % nproc]
         submit = subprocess.Popen(vasp_args, stdout=subprocess.PIPE)
         for line in submit.stdout.readlines():
@@ -220,11 +243,12 @@ class PyNiss(object):
     def esp2cube(self):
         """Make the cube for repeat input."""
         job_name = self.options.get('job_name')
-        if self.options.get('esp_calc') == 'vasp':
+        esp_calc = self.options.get('esp_calc')
+        if esp_calc == 'vasp':
             os.chdir(job_name + ".restart_DIR")
             esp2cube_args = shlex.split(self.options.get('vasp2cube'))
+            info("Converting esp to cube, this might take a minute...")
             submit = subprocess.Popen(esp2cube_args)
-            # TODO(tdaff): maybe background this?
             submit.wait()
             # TODO(tdaff): leave the cube name as job-name..
             # FIXME(tdaff): will not overwrite
@@ -242,7 +266,6 @@ class PyNiss(object):
             if "wooki" in line:
                 jobid = line.split(".")[0]
                 print jobid
-#        if jobid:
                 self.state['charges'] = (RUNNING, jobid)
                 break
         else:
@@ -276,7 +299,6 @@ class PyNiss(object):
             if "wooki" in line:
                 jobid = line.split(".")[0]
                 print jobid
-#        if jobid:
                 self.state['gcmc'] = (RUNNING, jobid)
                 break
         else:
@@ -305,12 +327,9 @@ class Structure(object):
         self.name = name
         self.cell = Cell()
         self.atoms = []
-        self.types = []  # TODO(tdaff): remove and just use sorted self.atoms?
         self.esp = None
         self.dft_energy = 0.0
         self.guests = [Guest()]
-        #self.from_vasp(self.name + '.contcar')
-#        self.charges_from_repeat(self.name + '.esp_fit.out')
 
     def from_file(self, basename, filetype):
         """Select the correct file parser."""
@@ -382,6 +401,7 @@ class Structure(object):
             for atom, at_line in zip(self.atoms, contcar[7:7+natoms]):
                 atom.from_vasp(at_line, cell=mcell)
         else:
+            # FIXME(tdaff): not working
             for at_type, at_line in zip(self.types, contcar[7:7+natoms]):
                 this_atom = Atom()
                 this_atom.from_vasp(at_line, at_type, mcell)
@@ -400,7 +420,7 @@ class Structure(object):
                 charges.append((int(line[1]), int(line[4]), float(line[6])))
             if "Error" in line:
                 if float(line.split()[-1]) > 0.6:
-                    print("Error in repeat charges is very high - check cube!")
+                    warn("Error in repeat charges is very high - check cube!")
         filetemp.close()
         # TODO(tdaff): no symmetry here yet!
         for atom, charge in zip(self.atoms, charges):
@@ -508,10 +528,9 @@ class Structure(object):
                         newatom.translate(offset)
                         yield newatom
 
-    def _update_types(self):
-        """Regenrate the list of atom types."""
-        # FIXME: better ways of dealing with this; will come with mols/symmetry
-        self.types = [atom.type for atom in self.atoms]
+    def types(self):
+        """Ordered list of atom types."""
+        return [atom.type for atom in self.atoms]
 
     def oreder_by_types(self):
         """Sort the atoms alphabetically and group them."""
@@ -794,6 +813,7 @@ def jobcheck(jobid):
     qstat = subprocess.Popen(['qstat', '%s' % jobid], stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
     for line in qstat.stdout.readlines():
+        print line
         if "Unknown Job Id" in line:
             return False
         elif line.startswith(jobid):

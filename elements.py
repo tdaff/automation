@@ -232,3 +232,38 @@ UFF = {
     "Cx": (2.745, 0.05948),
     "Ox": (3.017, 0.17023)
 }
+
+VASP_PSEUDO_PREF= {
+    "Li": "Li_sv",
+    "Na": "Na_pv",
+    "K": "K_sv",
+    "Ca": "Ca_pv",
+    "Sr": "Sr_sv",
+    "Rb": "Rb_sv",
+    "Cs": "Cs_sv",
+    "Ba": "Ba_sv",
+    "Cu": "Cu_new",
+    "Ti": "Ti_pv",
+    "V": "V_pv",
+    "Cr": "Cr_pv",
+    "Mn": "Mn_pv",
+    "Sc": "Sc_sv",
+    "Y": "Y_sv",
+    "Zr": "Zr_sv",
+    "Nb": "Nb_pv",
+    "Mo": "Mo_pv",
+    "Tc": "Tc_pv",
+    "Hf": "Hf_pv",
+    "Ta": "Ta_pv",
+    "W": "W_pv",
+    "Os": "Os_pv",
+    "Ga": "Ga_d",
+    "Ge": "Ge_d",
+    "In": "In_d",
+    "Sn": "Sn_d",
+    "Tl": "Tl_d",
+    "Pb": "Pb_d",
+    "Bi": "Bi_d",
+    "Po": "Po_d",
+    "At": "At_d"
+}

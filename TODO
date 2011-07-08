@@ -1,8 +1,10 @@
 TODO(tdaff):
-Job running
-stopping and continuing
+
+Generic running, not just wooki
+Automatic continuation
 cpmd support (pseudopotentials)
-UUID naming
-vdw potentials
-interactive mode help?
-where do the jobs run?
+cif file input
+vdw custom potentials and choice
+directories; where do the jobs run?
+guest library and choice
+

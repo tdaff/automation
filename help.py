@@ -56,7 +56,7 @@ class PyNiss(object):
     def __init__(self, options):
         """
         Instance an empty structure in the calculation; The dispatcher should
-        it up with data, as needed.
+        be called to fill it up with data, as needed.
 
         """
         self.options = options
@@ -81,7 +81,9 @@ class PyNiss(object):
 
         """
 
-        print self.status()
+        if 'status' in self.options.args:
+            print self.status()
+
         if self.options.get('interactive'):
             import code
             console = code.InteractiveConsole(locals())
@@ -366,7 +368,6 @@ class Structure(object):
                 self.atoms.append(newatom)
 
         self.oreder_by_types()
-        self._update_types()
 
     def from_cif(self, filename="structure.cif"):
         """Genereate structure from a .cif file."""
@@ -407,7 +408,6 @@ class Structure(object):
                 this_atom.from_vasp(at_line, at_type, mcell)
                 atom_list.append(this_atom)
             self.atoms = atom_list
-        self._update_types()
 
     def charges_from_repeat(self, filename):
         """Parse charges and update structure."""

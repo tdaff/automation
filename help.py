@@ -203,20 +203,20 @@ class PyNiss(object):
         """Make inputs and run vasp job."""
         job_name = self.options.get('job_name')
 
-        filetemp = open(job_name + "POSCAR", "wb")
+        filetemp = open("POSCAR", "wb")
         filetemp.writelines(self.structure.to_vasp())
         filetemp.close()
 
-        filetemp = open(job_name + "INCAR", "wb")
+        filetemp = open("INCAR", "wb")
         filetemp.writelines(mk_incar(job_name))
         filetemp.close()
 
-        filetemp = open(job_name + "KPOINTS", "wb")
+        filetemp = open("KPOINTS", "wb")
         filetemp.writelines(mk_kpoints())
         filetemp.close()
 
         potcar_types = unique([atom.type for atom in self.structure.atoms])
-        filetemp = open(job_name + "POTCAR", "wb")
+        filetemp = open("POTCAR", "wb")
         for at_type in potcar_types:
             # Try and get the preferred POTCARS
             # TODO(tdaff): update these with custom pseudos

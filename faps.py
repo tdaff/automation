@@ -73,7 +73,7 @@ class PyNiss(object):
 
     def re_init(self, new_options):
         """Re initialize simulation (with updated options)."""
-        if new_options.get('update_opts'):
+        if new_options.getbool('update_opts'):
             self.options = new_options
         else:
             # Just update command line stuff
@@ -91,7 +91,7 @@ class PyNiss(object):
         if 'status' in self.options.args:
             print self.status()
 
-        if self.options.get('interactive'):
+        if self.options.getbool('interactive'):
             console = code.InteractiveConsole(locals())
             console.interact(
                 banner="""See manual for instructions for interactive use.""")

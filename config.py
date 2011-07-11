@@ -99,7 +99,7 @@ class Options(object):
         value = self.get(item)
         return int(value)
 
-    def getfoat(self, item):
+    def getfloat(self, item):
         """Return item's value as a float."""
         value = self.get(item)
         return float(value)

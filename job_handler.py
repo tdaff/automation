@@ -7,7 +7,7 @@ are running on.
 
 """
 
-from subprocess import Popen, PIPE
+from subprocess import Popen, PIPE, STDOUT
 
 class JobHandler(object):
     """
@@ -35,7 +35,7 @@ class JobHandler(object):
     def _wooki_jobcheck(self, jobid):
         """Get job status."""
         jobid = "%s" % jobid
-        qstat = Popen(['qstat', '%s' % jobid], stdout=PIPE)
+        qstat = Popen(['qstat', '%s' % jobid], stdout=PIPE, stderr=STDOUT)
         for line in qstat.stdout.readlines():
             if "Unknown Job Id" in line:
                 return False

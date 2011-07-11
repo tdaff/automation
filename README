@@ -7,7 +7,7 @@ python methods for customising simulations.
 Installation
 ============
 
-Untar the package somewhere and put a link to help.py or a symlink in
+Untar the package somewhere and put a link to faps.py or a symlink in
 your path. Edit 'site.ini' in the installation directory to customize
 all simulations for the machine you will be running on (an example file
 is included)

@@ -3,13 +3,13 @@ Unit testing based on set of test cases.
 
 """
 
-from .. import help
+from .. import faps
 import unittest
 
 class TestStructureReaders(unittest.TestCase):
 
     def setUp(self):
-        self.structure = help.Structure('test')
+        self.structure = faps.Structure('test')
 
     def test_pdb(self):
         # make sure the shuffled sequence does not lose any elements

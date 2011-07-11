@@ -19,6 +19,7 @@ import subprocess
 import shlex
 import time
 import logging
+import code
 from copy import copy
 
 import numpy as np
@@ -85,7 +86,6 @@ class PyNiss(object):
             print self.status()
 
         if self.options.get('interactive'):
-            import code
             console = code.InteractiveConsole(locals())
             console.interact(
                 banner = """See manual for instructions for interactive use."""
@@ -184,9 +184,9 @@ class PyNiss(object):
         if optim_code == 'vasp':
             self.run_vasp(self.options.getint('vasp_ncpu'))
         elif optim_code == 'cpmd':
-            error("CPMD calculation not yet implemented")
+            err("CPMD calculation not yet implemented")
         else:
-            error("Unknown optimization method")
+            err("Unknown optimization method")
 
     def run_charges(self):
         """Select correct charge processing methods."""
@@ -196,7 +196,7 @@ class PyNiss(object):
             self.esp2cube()
             self.run_repeat()
         else:
-            error("Unknown charge calculation method: %s" % chg_method)
+            err("Unknown charge calculation method: %s" % chg_method)
 
 
     def run_vasp(self, nproc=16):
@@ -367,7 +367,7 @@ class Structure(object):
                 newatom.from_pdb(line)
                 self.atoms.append(newatom)
 
-        self.oreder_by_types()
+        self.order_by_types()
 
     def from_cif(self, filename="structure.cif"):
         """Genereate structure from a .cif file."""
@@ -532,7 +532,7 @@ class Structure(object):
         """Ordered list of atom types."""
         return [atom.type for atom in self.atoms]
 
-    def oreder_by_types(self):
+    def order_by_types(self):
         """Sort the atoms alphabetically and group them."""
         self.atoms.sort(key=lambda x: (x.type, x.site))
         # TODO(tdaff): different for molecules
@@ -811,7 +811,7 @@ def jobcheck(jobid):
     """Get job status."""
     jobid = "%s" % jobid
     qstat = subprocess.Popen(['qstat', '%s' % jobid], stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE)
+                             stderr=subprocess.STDOUT)
     for line in qstat.stdout.readlines():
         print line
         if "Unknown Job Id" in line:

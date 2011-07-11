@@ -19,18 +19,22 @@ class Options(object):
     """
     Transparent options handling.
 
-    A single object to deal with input files and command line options but
-    delivering reasonable defaults for unspecified values. Accessible through
-    attributes of the instance.
+    A single unified way of dealing with input files and command line options
+    delivering sensible defaults for unspecified values. Access options with
+    the .get() method (or the method that defines the type). It is recommended
+    to create a new instance each time the script is run, otherwise commandline
+    options or changed input files will not be picked up.
 
     """
     def __init__(self):
-        """Initialize options as site.ini, job.ini and commandline."""
+        """Initialize options from all .ini files and commandline."""
+        # use .get*() to read attributes, only access args directly
         self.cwd = ''
         self.script_dir = ''
         self.job_name = ''
         self.args = []
         self.options = {}
+        self.cmdopts = {}
         self.defaults = ConfigParser.SafeConfigParser()
         self.site_ini = ConfigParser.SafeConfigParser()
         self.job_ini = ConfigParser.SafeConfigParser()
@@ -42,13 +46,20 @@ class Options(object):
         self.commandline()
 
     def get(self, item):
-        """Map values to attributes from many sources, based on priorities."""
+        """Map values from different sources, based on priorities."""
+        # The original
         if item in self.__dict__:
+            # Instance attributes, such as cwd
             print "an attribute: %s" % item
             return object.__getattribute__(self, item)
-        elif item in self.options.__dict__:
+        elif self.options.__dict__.get(item) is not None:
+            # Commandline options from optparse
             print "an option: %s" % item
             return self.options.__dict__[item]
+        elif item in self.cmdopts:
+            # Commandline -o custom options
+            print "a custom -o option: %s" % item
+            return self.cmdopts[item]
         elif self.job_ini.has_option('job_config', item):
             print "a job option: %s" % item
             return self.job_ini.get('job_config', item)
@@ -59,13 +70,14 @@ class Options(object):
             print "a default: %s" % item
             return self.defaults.get('defaults', item)
         else:
+            # Shouldn't get here; everything should have a default!
             print "unspecified option: %s" % item
             raise AttributeError(item)
 
     def getbool(self, item):
         """
-        Parse option and if item is not a bool return True for "1", "yes",
-        "true" and "on" and False for "0", "no", "false", and "off".
+        Parse option and if item is not already a bool return True for "1",
+        "yes", "true" and "on" and False for "0", "no", "false", and "off".
         Case-insensitive.
 
         """
@@ -101,7 +113,6 @@ class Options(object):
             value = eval(value, {}, {})
             return tuple(value)
         else:
-            # TODO(tdaff): check for iterables?
             return tuple(value)
 
 
@@ -144,6 +155,15 @@ class Options(object):
         else:
             self.job_name = local_args.pop()
 
+        # key value options from the command line
+        if local_options.cmdopts is not None:
+            for pair in local_options.cmdopts:
+                if '=' in pair:
+                    pair = pair.split('=')
+                    self.cmdopts[pair[0]] = pair[1]
+                else:
+                    self.cmdopts[pair] = True
+
         self.options = local_options
         # Args are only the COMMANDS for the run
         self.args = [arg.lower() for arg in local_args]
@@ -164,12 +184,18 @@ class Options(object):
         self.job_ini.read(job_ini_path)
 
 
-if __name__ == '__main__':
+def options_test():
+    """Try and read a few options from different sources."""
     testopts = Options()
     print(testopts.get('job_name'))
     print(testopts.get('cmdopts'))
     print(testopts.get('args'))
     print(testopts.get('verbose'))
     print(testopts.get('script_dir'))
-    print(testopts.get('cwdt'))
+    print(testopts.get('interactive'))
+    print(testopts.get('whot'))
     print(testopts.get('repeat_exe'))
+
+
+if __name__ == '__main__':
+    options_test()

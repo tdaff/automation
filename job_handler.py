@@ -18,18 +18,21 @@ class JobHandler(object):
 
     def __init__(self, options):
         """Initialize for machine specified by options."""
+        self.queue = options.get('queue')
+        if self.queue == 'wooki':
+            self.submit = self._wooki_submit
+            self.jobcheck = self.wooki_jobcheck
+        else:
+            self.submit = self._pbs_submit
+            self.submit = self._pbs_jobcheck
+
+    def _wooki_submit(self, **kwargs):
         pass
 
-    def submit(self, options):
+    def _pbs_submit(self):
         pass
 
-    def _wooki(self):
-        pass
-
-    def _orca(self):
-        pass
-
-    def jobcheck(self, jobid):
+    def _wooki_jobcheck(self, jobid):
         """Get job status."""
         jobid = "%s" % jobid
         qstat = Popen(['qstat', '%s' % jobid], stdout=PIPE)

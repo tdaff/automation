@@ -1,7 +1,7 @@
 """
 elements.py
 
-Standard element properties
+Some standard element properties. Import as global constants.
 
 """
 

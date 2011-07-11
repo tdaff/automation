@@ -1,16 +1,32 @@
 PyFaps 
 ------
 
-Automated high throughput structure adsorption analysis and library of python
-methods for customising simulations.
+Automated high throughput structure adsorption analysis and library of
+python methods for customising simulations.
+
+Installation
+============
+
+Untar the package somewhere and put a link to help.py or a symlink in
+your path. Edit 'site.ini' in the installation directory to customize
+all simulations for the machine you will be running on (an example file
+is included)
 
 Running
 =======
 
-Simulation requires a structure (as a .pdb). Executing the script in the working
-directory of the structure will try to automatically run all steps for a
-complete anlysis.
+Simulation requires a structure (currently accepts a .pdb). Executing
+the script in the working directory of the structure will try to
+automatically run all steps for a complete analysis.
+
+Disclaimer
+==========
+
+This software is still pre-alpha stage. There will be serious bugs. The
+interfaces will change and break backwards and forward compatibility.
+Keep your simulation outputs so that you can reimport them at a later
+time.
 
 
 
-# vim:textwidth=80
+# vim:textwidth=72

@@ -11,14 +11,11 @@ directory.
 
 """
 
-import sys
 import pickle
 import shutil
 import os
 import subprocess
 import shlex
-import time
-import logging
 import code
 from copy import copy
 
@@ -74,6 +71,15 @@ class PyNiss(object):
         pickle.dump(self, my_niss)
         my_niss.close()
 
+    def re_init(self, new_options):
+        """Re initialize simulation (with updated options)."""
+        if new_options.get('update_opts'):
+            self.options = new_options
+        else:
+            # Just update command line stuff
+            self.options.args = new_options.args
+            self.options.options = new_options.options
+            self.options.cmdopts = new_options.cmdopts
 
     def job_dispatcher(self):
         """
@@ -88,8 +94,7 @@ class PyNiss(object):
         if self.options.get('interactive'):
             console = code.InteractiveConsole(locals())
             console.interact(
-                banner = """See manual for instructions for interactive use."""
-            )
+                banner="""See manual for instructions for interactive use.""")
 
         if self.state['init'][0] == NOT_RUN:
             print("getting structure")
@@ -128,7 +133,8 @@ class PyNiss(object):
             elif self.state['charges'][0] == RUNNING:
                 new_state = jobcheck(self.state['charges'][1])
                 if not new_state or new_state == 'C':
-                    self.structure.update_charges(self.options.get('charge_method'))
+                    self.structure.update_charges(
+                        self.options.get('charge_method'))
                     self.state['charges'] = (UPDATED, False)
                     self.dump_state()
                 else:
@@ -177,6 +183,13 @@ class PyNiss(object):
             else:
                 info("State of %s: %s" % (step, valid_states[state[0]]))
 
+    def import_old(self):
+        """Try and import any data from previous stopped simulation."""
+        self.structure.from_file(
+            self.options.get('job_name'),
+            self.options.get('initial_structure_format'))
+        self.structure.update_pos(self.options.get('optim_code'))
+        self.structure.update_charges(self.options.get('charge_method'))
 
     def run_optimization(self):
         """Select correct method for running the dft/optim."""
@@ -197,7 +210,6 @@ class PyNiss(object):
             self.run_repeat()
         else:
             err("Unknown charge calculation method: %s" % chg_method)
-
 
     def run_vasp(self, nproc=16):
         """Make inputs and run vasp job."""
@@ -279,6 +291,7 @@ class PyNiss(object):
     def run_fastmc(self):
         """Submit a fastmc job to the queue."""
         job_name = self.options.get('job_name')
+        # TODO(tdaff): supercell size guessing
         mc_supercell = self.options.gettuple('mc_supercell')
         config, field = self.structure.to_fastmc(supercell=mc_supercell)
 
@@ -291,7 +304,7 @@ class PyNiss(object):
         filetemp.close()
 
         filetemp = open("CONTROL", "wb")
-        filetemp.writelines(mk_gcmc_control(1, 1.0))
+        filetemp.writelines(mk_gcmc_control(self.options))
         filetemp.close()
 
         fastmc_args = ['fastmcsubmit', job_name]
@@ -643,9 +656,8 @@ class Atom(object):
         self.mass = 0.0
         self.molecule = None
         # Sets anything else specified as an attribute
-        for k, v in kwargs.iteritems():
-            setattr(self, k, v)
-
+        for key, val in kwargs.iteritems():
+            setattr(self, key, val)
 
     def __str__(self):
         return "%s %f %f %f" % tuple([self.type] + list(self.pos))
@@ -665,7 +677,7 @@ class Atom(object):
         self.mass = WEIGHT[self.type]
 
     def from_vasp(self, line, at_type=None, cell=identity(3)):
-        """Set the atom data from vasp input. Only pass cell for fractionals."""
+        """Set the atom data from vasp input. Only pass cell if fractional."""
         self.pos = dot([float(x) for x in line.split()[:3]], cell)
         if at_type is not None:
             self.type = at_type
@@ -769,16 +781,16 @@ def mk_kpoints(num_kpt=1):
     return kpoints
 
 
-def mk_gcmc_control(num_guests, pressure):
+def mk_gcmc_control(options):
     """Standard GCMC CONTROL file."""
     control = [
         "GCMC Run\n"
-        "temperature               273\n",
+        "temperature  %f\n" % options.getfloat('mc_temperature'),
         "&guest 1\n",
         "  pressure  (bar)  1.0\n",
         "&end\n",
-        "steps                   1000000\n",
-        "equilibration           100000\n",
+        "steps    %i\n" % options.getint('mc_prod_steps'),
+        "equilibration    %i\n" % options.getint('mc_eq_steps'),
         "# jobcontrol\n",
         "cutoff          12.5 angstrom\n",
         "delr            1.0 angstrom\n",
@@ -827,30 +839,36 @@ def info(msg):
     """Print info where it needs to go."""
     print("INFO: %s" % msg)
 
+
 def warn(msg):
     """Print warning where it needs to go."""
     print("WARN: %s" % msg)
+
 
 def err(msg):
     """Print error where it needs to go."""
     print("ERROR: %s" % msg)
 
 
-if __name__ == '__main__':
-
-    global_options = Options()
+def main():
+    """Do a standalone calculation when run as a script."""
+    main_options = Options()
     # try to unpickle the job or
     # fall back to starting a new simulation
-    if os.path.exists(global_options.get('job_name') + ".niss"):
-        print("Existing simulation found; loading...")
-        load_niss = open(global_options.get('job_name') + ".niss")
+    if os.path.exists(main_options.get('job_name') + ".niss"):
+        info("Existing simulation found; loading...")
+        load_niss = open(main_options.get('job_name') + ".niss")
         my_simulation = pickle.load(load_niss)
         load_niss.close()
-        my_simulation.options = global_options
+        my_simulation.re_init(main_options)
     else:
-        print("Starting a new simulation...")
-        my_simulation = PyNiss(global_options)
+        info("Starting a new simulation...")
+        my_simulation = PyNiss(main_options)
 
     # run requested jobs
     my_simulation.job_dispatcher()
     my_simulation.dump_state()
+
+
+if __name__ == '__main__':
+    main()

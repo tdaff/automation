@@ -26,14 +26,16 @@ class JobHandler(object):
             self.submit = self._pbs_submit
             self.submit = self._pbs_jobcheck
 
-    def _wooki_submit(self, **kwargs):
+    def _wooki_submit(self, job_type, nodes, **kwargs):
+        """Submit a job to wooki; return the jobid."""
         pass
 
-    def _pbs_submit(self):
+    def _pbs_submit(self, job_type, nodes, **kwargs):
+        """Submit a generic pbs job; return the jobid."""
         pass
 
     def _wooki_jobcheck(self, jobid):
-        """Get job status."""
+        """Get job status. Return status or False for non existent job."""
         jobid = "%s" % jobid
         qstat = Popen(['qstat', '%s' % jobid], stdout=PIPE, stderr=STDOUT)
         for line in qstat.stdout.readlines():
@@ -43,4 +45,4 @@ class JobHandler(object):
                 status = line[68:69]
                 return status
         else:
-            print("Failed to get job information.")
+            print("Failed to get job information.")  # qstat parsing failed?

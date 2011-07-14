@@ -67,13 +67,16 @@ class PyNiss(object):
 
     def dump_state(self):
         """Write the .niss file holding the current system state."""
-        my_niss = open(self.options.get('job_name') + ".niss", "wb")
+        job_name = self.options.get('job_name')
+        info("Writing state file, %s.niss." % job_name)
+        my_niss = open(job_name + ".niss", "wb")
         pickle.dump(self, my_niss)
         my_niss.close()
 
     def re_init(self, new_options):
         """Re initialize simulation (with updated options)."""
         if new_options.getbool('update_opts'):
+            info("Using new options.")
             self.options = new_options
         else:
             # Just update command line stuff
@@ -97,6 +100,7 @@ class PyNiss(object):
                 banner="""See manual for instructions for interactive use.""")
 
         if self.options.getbool('import'):
+            info("importing results from a previous simulation")
             self.import_old()
 
         if self.state['init'][0] == NOT_RUN:
@@ -209,6 +213,7 @@ class PyNiss(object):
     def run_optimization(self):
         """Select correct method for running the dft/optim."""
         optim_code = self.options.get('optim_code')
+        info("Running a %s optimization" % optim_code)
         if optim_code == 'vasp':
             self.run_vasp(self.options.getint('vasp_ncpu'))
         elif optim_code == 'cpmd':
@@ -219,6 +224,7 @@ class PyNiss(object):
     def run_charges(self):
         """Select correct charge processing methods."""
         chg_method = self.options.get('charge_method')
+        info("Calculating charges with %s" % chg_method)
         if chg_method == 'repeat':
             # Get ESP
             self.esp2cube()
@@ -229,9 +235,10 @@ class PyNiss(object):
     def run_vasp(self, nproc=16):
         """Make inputs and run vasp job."""
         job_name = self.options.get('job_name')
+        info("Running on %i nodes" % nproc)
 
         filetemp = open("POSCAR", "wb")
-        filetemp.writelines(self.structure.to_vasp())
+        filetemp.writelines(self.structure.to_vasp(options))
         filetemp.close()
 
         filetemp = open("INCAR", "wb")
@@ -454,8 +461,10 @@ class Structure(object):
         for atom, charge in zip(self.atoms, charges):
             atom.charge = charge[2]
 
-    def to_vasp(self, optim_h=True, optim_all=False):
+    def to_vasp(self, options):
         """Return a vasp5 poscar as a list of lines."""
+        optim_h = options.getbool('optim_h')
+        optim_all = options.getbool('optim_all')
         types = [atom.type for atom in self.atoms]
         ordered_types = unique(types)
         poscar = ["%s\n" % self.name[:80],

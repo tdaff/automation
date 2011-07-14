@@ -142,6 +142,8 @@ class Options(object):
                           help="set custom options as key=value pairs")
         parser.add_option("-i", "--interactive", action="store_true",
                           dest="interactive", help="enter interactive mode")
+        parser.add_option("-m", "--import", action="store_true",
+                          dest="import", help="try and import old data")
         parser.add_option("-n", "--nosub", action="store_true", dest="nosub",
                           help="create input files only, do not run any jobs")
         (local_options, local_args) = parser.parse_args()

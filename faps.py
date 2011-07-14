@@ -96,6 +96,9 @@ class PyNiss(object):
             console.interact(
                 banner="""See manual for instructions for interactive use.""")
 
+        if self.options.getbool('import'):
+            self.import_old()
+
         if self.state['init'][0] == NOT_RUN:
             print("getting structure")
             # No structure, should get one
@@ -185,11 +188,23 @@ class PyNiss(object):
 
     def import_old(self):
         """Try and import any data from previous stopped simulation."""
-        self.structure.from_file(
-            self.options.get('job_name'),
-            self.options.get('initial_structure_format'))
-        self.structure.update_pos(self.options.get('optim_code'))
-        self.structure.update_charges(self.options.get('charge_method'))
+        try:
+            self.structure.from_file(
+                self.options.get('job_name'),
+                self.options.get('initial_structure_format'))
+            self.state['init'] = (UPDATED, False)
+        except IOError:
+            info("No initial structure to import")
+        try:
+            self.structure.update_pos(self.options.get('optim_code'))
+            self.state['opt'] = (UPDATED, False)
+        except IOError:
+            info("No optimized structure to import")
+        try:
+            self.structure.update_charges(self.options.get('charge_method'))
+            self.state['charges'] = (UPDATED, False)
+        except IOError:
+            info("No charges to import")
 
     def run_optimization(self):
         """Select correct method for running the dft/optim."""

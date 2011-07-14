@@ -7,7 +7,10 @@ are running on.
 
 """
 
+import os
+import getpass
 from subprocess import Popen, PIPE, STDOUT
+
 
 class JobHandler(object):
     """
@@ -46,3 +49,247 @@ class JobHandler(object):
                 return status
         else:
             print("Failed to get job information.")  # qstat parsing failed?
+
+
+def _wooki_generic(job_name, nodes=1, attributes=None):
+    """Generic wooki submission to qsub."""
+
+    max_cpus = 64  # Max that can be requested
+    mem_default = None  # Passed to qsub
+    default_queue = None  # leave blank ("") to use Wooki default (NOT attribute)
+    shared_memory_only = False  # True if no infiniband version
+
+    serial_scratch_dir = "/shared_scratch"
+    parallel_scratch_dir = "/shared_scratch"
+
+    vasp_versions = {
+        "shm":
+            {"mpi": "/home/system/LIBRARIES/mpich-intel10-shmem/bin/mpirun",
+             "exe": "/home/program/CHEMISTRY/VASP/bin/vasp-5.2.11-ifort-shm"},
+        "par":
+            {"mpi": "/home/system/LIBRARIES/mvapich-intel/bin/mpirun",
+             "exe": "/home/program/CHEMISTRY/VASP/bin/vasp-5.2.11-ifort-par"}}
+
+    # Items in 'jobopts' are used to template the submit script
+    job_opts = {}
+
+    # Assume all files exist from calling script.
+    job_opts["job_name"] = job_name
+    job_opts["nodes"] = nodes
+
+    # -----------------------------------------------------------------------------
+    # As long as a specific attribute isn't selected as a command line option with
+    # the '-a' option, then the script will attempt to run a parallel job in shared
+    # memory mode first on the serial nodes, then on the parallel nodes. For a
+    # single CPU job, if there are no serial nodes available, then it will attempt
+    # to run on a parallel node
+    # -----------------------------------------------------------------------------
+    if not attributes is not None:
+        freenodes_serial = int(Popen(['/home/program/bin/freenodes', '-m'],
+                                     stdout=PIPE).communicate()[0])
+        freenodes_parallel = int(Popen(['/home/program/bin/freenodes', '-p'],
+                                       stdout=PIPE).communicate()[0])
+        if nodes <= freenodes_serial:
+#            print "Serial node is available to run in shared memory mode"
+            attributes = "serial"
+            scratch_dir = serial_scratch_dir
+            shared_memory_job = True
+        elif nodes <= freenodes_parallel:
+#            print "Infiniband node available to run in shared memory mode"
+            attributes = "infiniband"
+            scratch_dir = parallel_scratch_dir
+            shared_memory_job = False
+        elif shared_memory_only == True:
+        #------------------------------------------------------------------
+        # If neither serial or parallel nodes are available and the job is a
+        # shared memory only executable, then revert back to serial nodes
+        #------------------------------------------------------------------
+            attributes = "serial"
+            scratch_dir = serial_scratch_dir
+            shared_memory_job = True
+        else:
+            attributes = "infiniband"
+            shared_memory_job = False
+            print "Parallel execution on inifiband nodes "
+            scratch_dir = parallel_scratch_dir
+        if nodes == 1:
+            scratch_dir = serial_scratch_dir
+    else:
+        # attributes specified
+        if shared_memory_only == True or nodes == 1 or not "infini" in attributes:
+            scratch_dir = serial_scratch_dir
+            shared_memory_job = True
+        else:
+            scratch_dir = parallel_scratch_dir
+            shared_memory_job = False
+
+    job_opts["scratch"] = scratch_dir
+
+    # ------------------------------------------------------
+    # Make sure that user has a directory on /shared_scratch
+    # ------------------------------------------------------
+    job_dir = os.path.join("/shared_scratch/", getpass.getuser(), job_name)
+    if not os.path.exists(job_dir):
+        os.makedirs(job_dir)
+
+    #------------------------------------------------------
+    # Construct PBS directives
+    #------------------------------------------------------
+    pbs_directives = ["#PBS -N fap-%s" % job_name,
+                      "#PBS -m n",
+                      "#PBS -o std.out",
+                      "#PBS -j oe "]
+
+    # ----------------------------------------------
+    # -q --queue : specify a queue to run on
+    # ----------------------------------------------
+    #if options.queue_name:
+        # optparse will set the default
+    #    PBS_directives.append("#PBS -q %s" % options.queue_name)
+
+    # ----------------------------------------------
+    # -H --Hostname : specify the hostname to run on
+    # ----------------------------------------------
+    #if options.host_name:
+    #    host_name = options.host_name
+    #    print(">> Attempting to submit to host: %s" % host_name)
+    #    print(" * -H/--Host option overrrides all default/specified attributes")
+
+    #    PBS_directives.append("#PBS -l host=%s" % host_name)
+
+        # -------------------------------------------------------------
+        # Override other directives if host is specified
+        # -------------------------------------------------------------
+    #    options.min_mem = mem_default
+    #    node_attribute = "serial"
+
+    # -------------------------------------------------------------
+    # -m --mem Memory options
+    # -------------------------------------------------------------
+    #if options.min_mem:
+    #    print(">> Requesting node(s) with minimum memory of: %s" % options.min_mem)
+    #    PBS_directives.append("#PBS -l mem=%s" % options.min_mem)
+
+    # ----------------------------------------------
+    # Specify Node numbers
+    # ----------------------------------------------
+    if nodes == 1:
+        pbs_directives.append("#PBS -l nodes=1:%s" % attributes)
+        try:
+            job_opts.update(executable["ser"])
+        except KeyError:
+            try:
+                job_opts.update(executable["shm"])
+            except KeyError:
+                print("no serial executable -- will now crash")
+    elif shared_memory_job == True:
+        pbs_directives.append("#PBS -l nodes=1:ppn=%i:%s" % (nodes, attributes))
+        try:
+            job_opts.update(executable["shm"])
+        except KeyError:
+            print("Shared memory version not available for %s")
+    else:
+        pbs_directives.append("#PBS -l nodes=%i:%s" % (nodes, attributes))
+        try:
+            job_opts.update(executable["par"])
+        except KeyError:
+            print("Parallel version not available for %s")
+
+
+
+    #------------------------------------------------------
+    # JOB type specific checks i.e. Gaussian specific
+    #------------------------------------------------------
+
+    # ------------------------------------------------------------------------
+    # Define the bash script passed to qsub.  This can be cut out from the old
+    # bash based submit scripts.
+    #
+    #  REMOVE the 'qsub << eof' line and all of the "#PBS " directive lines from the
+    #  bash script.
+    #    i.e.   remove th following from the script:
+    #                qsub << eof
+    #                #PBS -N %(jobname)s
+    #                #PBS -l nodes=1:ppn=$NODES$ATTRIBUTE
+    #                #PBS -m n
+    #                 etc....
+    #
+    #  replace $QJOBNAME with %(jobname)s
+    # ------------------------------------------------------------------------
+
+    job_opts["startdir"] = os.getcwd()
+
+
+    #******************************************************************************
+    # QSUB bash script Begin
+    #******************************************************************************
+    line = """
+
+    echo $HOSTNAME
+    echo JOBID = $PBS_JOBID
+    echo ==========================
+    echo $PBS_NODEFILE
+    cat $PBS_NODEFILE
+    echo ==========================
+
+    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/program/LIBRARIES/CMKL/8.1/lib/em64t:/home/program/COMPILERS/Intel/fce/9.1.040/lib/:/home/program/COMPILERS/Intel/Compilers/11.0/069/mkl/lib/em64t/
+
+    #---------------------------------------------------------------
+    # make the run directory on /shared_scratch and a soft link to
+    # the directory from the launch directory.
+    #---------------------------------------------------------------
+    if [ ! -e /shared_scratch/`whoami` ]; then
+      mkdir /shared_scratch/`whoami`
+    fi
+    if [ ! -e /shared_scratch/`whoami`/%(job_name)s ]; then
+      mkdir /shared_scratch/`whoami`/%(job_name)s
+    fi
+    if [ ! -e %(startdir)s/%(job_name)s.restart_DIR ]; then
+      ln -s /shared_scratch/`whoami`/%(job_name)s %(startdir)s/%(job_name)s.restart_DIR
+    fi
+    cd /shared_scratch/`whoami`/%(job_name)s
+
+    cp %(startdir)s/%(job_name)s.incar INCAR
+    cp %(startdir)s/%(job_name)s.kpoints KPOINTS
+    cp %(startdir)s/%(job_name)s.poscar POSCAR
+    cp %(startdir)s/%(job_name)s.potcar POTCAR
+    ln -sf %(startdir)s/%(job_name)s.outcar OUTCAR
+    ln -sf %(startdir)s/%(job_name)s.contcar CONTCAR
+    ln -sf %(startdir)s/%(job_name)s.log OSZICAR
+
+
+    # ===============================
+    # JOB EXECUTION
+    # ===============================
+    echo "Main Host:" $HOSTNAME >> VASP.stdout
+    cat $PBS_NODEFILE | awk '{print $1".cluster";}' > machine_file
+    echo "============================================" >> VASP.stdout
+    echo "Contents of MPI machine_file" >> VASP.stdout
+    echo " - This lists the nodes the job was run on" >> VASP.stdout
+    echo "============================================" >> VASP.stdout
+    cat machine_file >> VASP.stdout
+    echo "============================================" >> VASP.stdout
+
+    # vasp 5.2.2 will crash without this
+    ulimit -s unlimited
+
+    %(mpi)s -np %(nodes)i -machinefile machine_file %(exe)s >> VASP.stdout
+
+    touch $PBS_JOBID
+
+    rm machine_file
+
+    """ % jobopts
+
+    # TODO(tdaff): resubmit!
+    #******************************************************************************
+    # QSUB bash script END
+    #******************************************************************************
+
+
+    #-------------------------------------------------------------
+    # Add the PBS directives to the qsub bash script and submit it
+    #-------------------------------------------------------------
+    line = "\n".join(pbs_directives) + "\n" + line
+    submit = Popen("qsub", shell=False, stdin=PIPE)
+    submit.communicate(input=line)

@@ -238,11 +238,11 @@ class PyNiss(object):
         info("Running on %i nodes" % nproc)
 
         filetemp = open("POSCAR", "wb")
-        filetemp.writelines(self.structure.to_vasp(options))
+        filetemp.writelines(self.structure.to_vasp(self.options))
         filetemp.close()
 
         filetemp = open("INCAR", "wb")
-        filetemp.writelines(mk_incar(job_name))
+        filetemp.writelines(mk_incar(self.options))
         filetemp.close()
 
         filetemp = open("KPOINTS", "wb")
@@ -761,35 +761,49 @@ def mk_repeat(cube_name='REPEAT_ESP.cube', symmetry=False):
     filetemp.close()
 
 
-def mk_incar(job_name, pos_opt=True, full_opt=False, spin=False):
+def mk_incar(options):
     """Basic vasp INCAR; use defaults as much as possible."""
+    # We need these options
+    job_name = options.getbool('job_name')
+    spin = options.getbool('spin')
+    optim_h = options.getbool('optim_h')
+    optim_all = options.getbool('optim_all')
+    optim_cell = options.getbool('optim_cell')
+    dispersion = options.getbool('dispersion')
+
     incar = ["SYSTEM  = %s\n" % job_name,
              "ALGO    = Fast\n",
              "EDIFF   = 1E-5\n",
              "EDIFFG  = -0.02\n",
              "POTIM   = 0.4\n",
-             "LVDW    = .TRUE.\n",
-             "NWRITE  = 0\n",
+#             "NWRITE  = 0\n",
              "LREAL   = Auto\n",
              "LVTOT   = .TRUE.\n",
              "LVHAR   = .TRUE.\n",
              "ISMEAR  = 0\n",
              "SIGMA   = 0.05\n"]
-    if full_opt:
+    if optim_cell:
+        # Positions will be fixed by selective dynamics
         incar.extend(["ENCUT = 520\n",
                       "IBRION  = 2\n",
                       "NSW     = 300\n",
                       "ISIF    = 3\n"])
-    elif pos_opt:
+    elif optim_all or optim_h:
+        # Just move positions
         incar.extend(["IBRION  = 2\n",
                       "NSW     = 300\n",
                       "ISIF    = 2\n"])
     else:
+        # Single point energy
         incar.extend(["IBRION  = 0\n",
                       "NSW     = 0\n",
                       "ISIF    = 0\n"])
     if spin:
         incar.append("ISPIN   = 2\n")
+
+    if dispersion:
+        incar.append("LVDW    = .TRUE.\n")
+
 
     return incar
 

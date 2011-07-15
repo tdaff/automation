@@ -764,7 +764,7 @@ def mk_repeat(cube_name='REPEAT_ESP.cube', symmetry=False):
 def mk_incar(options):
     """Basic vasp INCAR; use defaults as much as possible."""
     # We need these options
-    job_name = options.getbool('job_name')
+    job_name = options.get('job_name')
     spin = options.getbool('spin')
     optim_h = options.getbool('optim_h')
     optim_all = options.getbool('optim_all')
@@ -829,11 +829,15 @@ def mk_gcmc_control(options):
         "&end\n",
         "steps    %i\n" % options.getint('mc_prod_steps'),
         "equilibration    %i\n" % options.getint('mc_eq_steps'),
-        "# jobcontrol\n",
         "cutoff          %f angstrom\n" % options.getfloat('mc_cutoff'),
         "delr            1.0 angstrom\n",
         "ewald precision  1d-6\n",
-        "finish\n"]
+        "write" % options.getint('mc_write_freq')]
+    if options.getbool('mc_jobcontrol'):
+        control.append("jobcontrol\n")
+    else:
+        control.append("# jobcontrol\n")
+    control.append("finish\n")
     return control
 
 

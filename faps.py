@@ -825,12 +825,12 @@ def mk_gcmc_control(options):
         "GCMC Run\n"
         "temperature  %f\n" % options.getfloat('mc_temperature'),
         "&guest 1\n",
-        "  pressure  (bar)  1.0\n",
+        "  pressure  (bar)  %f\n" % options.getfloat('mc_pressure'),
         "&end\n",
         "steps    %i\n" % options.getint('mc_prod_steps'),
         "equilibration    %i\n" % options.getint('mc_eq_steps'),
         "# jobcontrol\n",
-        "cutoff          12.5 angstrom\n",
+        "cutoff          %f angstrom\n" % options.getfloat('mc_cutoff'),
         "delr            1.0 angstrom\n",
         "ewald precision  1d-6\n",
         "finish\n"]

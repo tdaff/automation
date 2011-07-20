@@ -832,7 +832,8 @@ def mk_gcmc_control(options):
         "cutoff          %f angstrom\n" % options.getfloat('mc_cutoff'),
         "delr            1.0 angstrom\n",
         "ewald precision  1d-6\n",
-        "write" % options.getint('mc_write_freq')]
+        "nuguests %i" % options.getint('mc_numguests_freq'),
+        "history %i" % options.getint('mc_history_freq')]
     if options.getbool('mc_jobcontrol'):
         control.append("jobcontrol\n")
     else:
@@ -842,7 +843,7 @@ def mk_gcmc_control(options):
 
 
 def unique(in_list):
-    """Set of unique values in list ordered by first occurance"""
+    """Unique values in list ordered by first occurance"""
     uniq = []
     for item in in_list:
         if item not in uniq:

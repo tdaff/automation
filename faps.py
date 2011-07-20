@@ -832,8 +832,8 @@ def mk_gcmc_control(options):
         "cutoff          %f angstrom\n" % options.getfloat('mc_cutoff'),
         "delr            1.0 angstrom\n",
         "ewald precision  1d-6\n",
-        "nuguests %i" % options.getint('mc_numguests_freq'),
-        "history %i" % options.getint('mc_history_freq')]
+        "numguests %i\n" % options.getint('mc_numguests_freq'),
+        "history %i\n" % options.getint('mc_history_freq')]
     if options.getbool('mc_jobcontrol'):
         control.append("jobcontrol\n")
     else:

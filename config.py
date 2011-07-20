@@ -50,24 +50,24 @@ class Options(object):
         # The original
         if item in self.__dict__:
             # Instance attributes, such as cwd
-            print "an attribute: %s" % item
+            debug("an attribute: %s" % item)
             return object.__getattribute__(self, item)
         elif self.options.__dict__.get(item) is not None:
             # Commandline options from optparse
-            print "an option: %s" % item
+            debug("an option: %s" % item)
             return self.options.__dict__[item]
         elif item in self.cmdopts:
             # Commandline -o custom options
-            print "a custom -o option: %s" % item
+            debug("a custom -o option: %s" % item)
             return self.cmdopts[item]
         elif self.job_ini.has_option('job_config', item):
-            print "a job option: %s" % item
+            debug("a job option: %s" % item)
             return self.job_ini.get('job_config', item)
         elif self.site_ini.has_option('site_config', item):
-            print "a site option: %s" % item
+            debug("a site option: %s" % item)
             return self.site_ini.get('site_config', item)
         elif self.defaults.has_option('defaults', item):
-            print "a default: %s" % item
+            debug("a default: %s" % item)
             return self.defaults.get('defaults', item)
         else:
             # Shouldn't get here; everything should have a default!
@@ -184,6 +184,12 @@ class Options(object):
         """Find where the job is running and load defaults"""
         job_ini_path = os.path.join(self.cwd, 'job.ini')
         self.job_ini.read(job_ini_path)
+
+
+def debug(msg):
+    """Print for debugging statements."""
+    print("DEBUG: %s" % msg)
+
 
 
 def options_test():

@@ -11,6 +11,7 @@ __all__ = ['Options']
 import sys
 import os
 import ConfigParser
+import io
 import __main__
 from optparse import OptionParser
 
@@ -27,7 +28,7 @@ class Options(object):
 
     """
     def __init__(self):
-        """Initialize options from all .ini files and commandline."""
+        """Initialize options from all .ini files and the commandline."""
         # use .get*() to read attributes, only access args directly
         self.cwd = ''
         self.script_dir = ''
@@ -40,27 +41,27 @@ class Options(object):
         self.job_ini = ConfigParser.SafeConfigParser()
         # populate options
         self._init_paths()
+        self.commandline()
         self.load_defaults()
         self.load_site_defaults()
         self.load_job_defaults()
-        self.commandline()
 
     def get(self, item):
-        """Map values from different sources, based on priorities."""
-        # The original
+        """Map values from different sources based on priorities."""
         if item in self.__dict__:
-            # Instance attributes, such as cwd
+            # Instance attributes, such as job_name and cwd
             debug("an attribute: %s" % item)
             return object.__getattribute__(self, item)
         elif self.options.__dict__.get(item) is not None:
-            # Commandline options from optparse
+            # Commandline options from optparse where option is set
             debug("an option: %s" % item)
             return self.options.__dict__[item]
         elif item in self.cmdopts:
-            # Commandline -o custom options
+            # Commandline -o custom key=value options
             debug("a custom -o option: %s" % item)
             return self.cmdopts[item]
         elif self.job_ini.has_option('job_config', item):
+            # jobname.fap per-job setings
             debug("a job option: %s" % item)
             return self.job_ini.get('job_config', item)
         elif self.site_ini.has_option('site_config', item):
@@ -71,14 +72,14 @@ class Options(object):
             return self.defaults.get('defaults', item)
         else:
             # Shouldn't get here; everything should have a default!
-            print "unspecified option: %s" % item
+            debug("unspecified option: %s" % item)
             raise AttributeError(item)
 
     def getbool(self, item):
         """
-        Parse option and if item is not already a bool return True for "1",
-        "yes", "true" and "on" and False for "0", "no", "false", and "off".
-        Case-insensitive.
+        Parse option and if the value of item is not already a bool return
+        True for "1", "yes", "true" and "on" and False for "0", "no", "false"
+        and "off". Case-insensitive.
 
         """
         value = self.get(item)
@@ -90,6 +91,7 @@ class Options(object):
             elif value.lower() in ["0", "no", "false", "off"]:
                 return False
             else:
+                # Not a valid bool
                 raise ValueError(value)
         else:
             return bool(item)
@@ -109,12 +111,10 @@ class Options(object):
         value = self.get(item)
         if isinstance(item, basestring):
             # NOTE: be careful, eval can be dangerous
-            # TODO(tdaff): catch invalid values
             value = eval(value, {}, {})
             return tuple(value)
         else:
             return tuple(value)
-
 
     def _init_paths(self):
         """Find the script directory and set up working directory"""
@@ -126,7 +126,6 @@ class Options(object):
         # Where we run the job.
         self.cwd = os.getcwd()
 
-
     def commandline(self):
         """Specified options, highest priority."""
         usage = "usage: %prog [options] [COMMAND] JOB_NAME"
@@ -136,8 +135,8 @@ class Options(object):
         parser.add_option("-v", "--verbose", action="store_true",
                           dest="verbose", default=True,
                           help="write extra information to stdout [default]")
-        parser.add_option("-q", "--quiet", action="store_false", dest="verbose",
-                          help="silence all output")
+        parser.add_option("-q", "--quiet", action="store_false",
+                          dest="verbose", help="silence all output")
         parser.add_option("-o", "--option", action="append", dest="cmdopts",
                           help="set custom options as key=value pairs")
         parser.add_option("-i", "--interactive", action="store_true",
@@ -150,11 +149,8 @@ class Options(object):
 
         if len(local_args) == 0:
             parser.error("No arguments given (try %prog --help)")
-        elif len(local_args) == 1:
-            # continue a full job if just the job name is given
-            self.job_name = local_args.pop()
-            local_args = ['run']
         else:
+            # Take the last argument as the job name
             self.job_name = local_args.pop()
 
         # key value options from the command line
@@ -171,25 +167,57 @@ class Options(object):
         self.args = [arg.lower() for arg in local_args]
 
     def load_defaults(self):
-        """Load program defaults"""
+        """Load program defaults."""
         default_ini_path = os.path.join(self.script_dir, 'defaults.ini')
-        self.defaults.read(default_ini_path)
+        try:
+            filetemp = open(default_ini_path, 'r')
+            default_ini = filetemp.read()
+            filetemp.close()
+            if not '[default]' in default_ini.lower():
+                default_ini = '[defaults]\n' + default_ini
+            default_ini = io.BytesIO(default_ini)
+        except IOError:
+            # file does not exist so we just use a blank string
+            debug('Default options not found! Something is very wrong.')
+            default_ini = io.BytesIO('[defaults]\n')
+        self.defaults.readfp(default_ini)
 
     def load_site_defaults(self):
         """Find where the script is and load defaults"""
         site_ini_path = os.path.join(self.script_dir, 'site.ini')
-        self.site_ini.read(site_ini_path)
+        try:
+            filetemp = open(site_ini_path, 'r')
+            site_ini = filetemp.read()
+            filetemp.close()
+            if not '[site_config]' in site_ini.lower():
+                site_ini = '[site_config]\n' + site_ini
+            site_ini = io.BytesIO(site_ini)
+        except IOError:
+            # file does not exist so we just use a blank string
+            debug("No job options found; using defaults")
+            site_ini = io.BytesIO('[site_config]\n')
+        self.site_ini.readfp(site_ini)
 
     def load_job_defaults(self):
         """Find where the job is running and load defaults"""
-        job_ini_path = os.path.join(self.cwd, 'job.ini')
-        self.job_ini.read(job_ini_path)
+        job_ini_path = os.path.join(self.cwd, self.job_name + '.fap')
+        try:
+            filetemp = open(job_ini_path, 'r')
+            job_ini = filetemp.read()
+            filetemp.close()
+            if not '[job_config]' in job_ini.lower():
+                job_ini = '[job_config]\n' + job_ini
+            job_ini = io.BytesIO(job_ini)
+        except IOError:
+            # file does not exist so we just use a blank string
+            debug("No job options found; using defaults")
+            job_ini = io.BytesIO('[job_config]\n')
+        self.job_ini.readfp(job_ini)
 
 
 def debug(msg):
     """Print for debugging statements."""
     print("DEBUG: %s" % msg)
-
 
 
 def options_test():
@@ -200,9 +228,10 @@ def options_test():
     print(testopts.get('args'))
     print(testopts.get('verbose'))
     print(testopts.get('script_dir'))
-    print(testopts.get('interactive'))
+    print(testopts.getbool('interactive'))
     print(testopts.get('whot'))
     print(testopts.get('repeat_exe'))
+    print(testopts.gettuple('test_tuple'))
 
 
 if __name__ == '__main__':

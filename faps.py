@@ -92,7 +92,7 @@ class PyNiss(object):
         """
 
         if 'status' in self.options.args:
-            print self.status()
+            self.status()
 
         if self.options.getbool('interactive'):
             console = code.InteractiveConsole(locals())
@@ -104,7 +104,7 @@ class PyNiss(object):
             self.import_old()
 
         if self.state['init'][0] == NOT_RUN:
-            print("getting structure")
+            info("Reading in structure")
             # No structure, should get one
             self.structure.from_file(
                 self.options.get('job_name'),
@@ -125,7 +125,7 @@ class PyNiss(object):
                     self.dump_state()
                 else:
                     # Still running
-                    print("Optimization still in progress")
+                    info("Optimization still in progress")
                     raise SystemExit
 
         if self.state['opt'][0] == NOT_RUN or 'opt' in self.options.args:
@@ -145,7 +145,7 @@ class PyNiss(object):
                     self.state['charges'] = (UPDATED, False)
                     self.dump_state()
                 else:
-                    print("Charge calculation still running")
+                    info("Charge calculation still running")
                     raise SystemExit
 
         if self.state['charges'][0] == NOT_RUN or 'charges' in self.options.args:
@@ -164,7 +164,7 @@ class PyNiss(object):
                     self.state['gcmc'] = (UPDATED, False)
                     self.dump_state()
                 else:
-                    print("GCMC still running")
+                    info("GCMC still running")
                     raise SystemExit
 
         if self.state['gcmc'][0] == NOT_RUN or 'gcmc' in self.options.args:
@@ -174,7 +174,7 @@ class PyNiss(object):
             raise SystemExit
         else:
             # Everything finished
-            print("GCMC run has finished")
+            info("GCMC run has finished")
 
     def status(self):
         """Print the current status to the terminal."""
@@ -270,7 +270,7 @@ class PyNiss(object):
         for line in submit.stdout.readlines():
             if "wooki" in line:
                 jobid = line.split(".")[0]
-                print jobid
+                info("Running VASP job. Jobid: %i" % jobid)
                 self.state['opt'] = (RUNNING, jobid)
                 break
         else:
@@ -301,7 +301,7 @@ class PyNiss(object):
         for line in submit.stdout.readlines():
             if "wooki" in line:
                 jobid = line.split(".")[0]
-                print jobid
+                info(Running REPEAT calculation: Jobid %i" % jobid)
                 self.state['charges'] = (RUNNING, jobid)
                 break
         else:
@@ -335,7 +335,7 @@ class PyNiss(object):
         for line in submit.stdout.readlines():
             if "wooki" in line:
                 jobid = line.split(".")[0]
-                print jobid
+                info("Running FastMC: Jobid %i" % jobid)
                 self.state['gcmc'] = (RUNNING, jobid)
                 break
         else:
@@ -868,7 +868,7 @@ def jobcheck(jobid):
     qstat = subprocess.Popen(['qstat', '%s' % jobid], stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT)
     for line in qstat.stdout.readlines():
-        print line
+        debug(line)
         if "Unknown Job Id" in line:
             return False
         elif line.startswith(jobid):
@@ -891,6 +891,11 @@ def warn(msg):
 def err(msg):
     """Print error where it needs to go."""
     print("ERROR: %s" % msg)
+
+
+def debug(msg):
+    """Print debugging info."""
+    print("DEBUG: %s" % msg)
 
 
 def main():

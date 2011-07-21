@@ -1,8 +1,6 @@
 # define the system-wide options options that do
 # not change
 
-[site_config]
-
 queue = wooki
 repeat_exe = ./repeat.x
 potcar_dir = /home/program/CHEMISTRY/VASP/potpaw_PBE_2011/

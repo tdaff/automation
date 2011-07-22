@@ -11,12 +11,14 @@ directory.
 
 """
 
-import pickle
-import shutil
-import os
-import subprocess
-import shlex
 import code
+import logging
+import os
+import pickle
+import shlex
+import shutil
+import subprocess
+import textwrap
 from copy import copy
 
 import numpy as np
@@ -97,7 +99,7 @@ class PyNiss(object):
         if self.options.getbool('interactive'):
             console = code.InteractiveConsole(locals())
             console.interact(
-                banner="""See manual for instructions for interactive use.""")
+                banner="""See manual for instructions on interactive use.""")
 
         if self.options.getbool('import'):
             info("importing results from a previous simulation")
@@ -301,7 +303,7 @@ class PyNiss(object):
         for line in submit.stdout.readlines():
             if "wooki" in line:
                 jobid = line.split(".")[0]
-                info(Running REPEAT calculation: Jobid %i" % jobid)
+                info("Running REPEAT calculation: Jobid %i" % jobid)
                 self.state['charges'] = (RUNNING, jobid)
                 break
         else:
@@ -878,29 +880,52 @@ def jobcheck(jobid):
         print("Failed to get job information.")
 
 
+def debug(msg):
+    """Print debugging info."""
+    logging.debug(msg)
+    msg = textwrap.fill(msg, initial_indent="DEBUG: ",
+                        subsequent_indent="       ")
+    print(msg)
+
+
 def info(msg):
     """Print info where it needs to go."""
-    print("INFO: %s" % msg)
+    root = logging.getLogger()
+    print [x.level for x in root.handlers]
+    root.info(msg)
+    msg = textwrap.fill(msg, initial_indent="INFO: ",
+                        subsequent_indent="      ")
+    print(msg)
 
 
 def warn(msg):
     """Print warning where it needs to go."""
-    print("WARN: %s" % msg)
+    logging.warning(msg)
+    msg = textwrap.fill(msg, initial_indent="WARNING: ",
+                        subsequent_indent="         ")
+    print(msg)
 
 
 def err(msg):
     """Print error where it needs to go."""
-    print("ERROR: %s" % msg)
-
-
-def debug(msg):
-    """Print debugging info."""
-    print("DEBUG: %s" % msg)
+    logging.error(msg)
+    msg = textwrap.fill(msg, initial_indent="ERROR: ",
+                        subsequent_indent="       ")
+    print(msg)
 
 
 def main():
     """Do a standalone calculation when run as a script."""
     main_options = Options()
+    root = logging.getLogger()
+    print [x.level for x in root.handlers]
+    root.error("myerr")
+    logging.error("other")
+    logging.debug("nvrs")
+#    logging.basicConfig(filename=main_options.get('job_name')+'.flog',
+#                        format='%(asctime)s %(levelname)s: %(message)s',
+#                        datefmt='%Y/%m/%d %I:%M:%S %p',
+#                        level=logging.DEBUG)
     # try to unpickle the job or
     # fall back to starting a new simulation
     if os.path.exists(main_options.get('job_name') + ".niss"):

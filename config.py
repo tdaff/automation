@@ -8,12 +8,15 @@ and job options.
 
 __all__ = ['Options']
 
-import sys
-import os
 import ConfigParser
 import io
-import __main__
+import logging
+import os
+import sys
+import textwrap
 from optparse import OptionParser
+
+import __main__
 
 
 class Options(object):
@@ -42,6 +45,7 @@ class Options(object):
         # populate options
         self._init_paths()
         self.commandline()
+        self._init_logging()
         self.load_defaults()
         self.load_site_defaults()
         self.load_job_defaults()
@@ -126,6 +130,45 @@ class Options(object):
         # Where we run the job.
         self.cwd = os.getcwd()
 
+    def _init_logging(self):
+        """
+        Setup the logging to terminal and .flog file, with level as required.
+        Must run before any logging calls so we need to access attributes
+        rather than using self.get()!
+
+        """
+        logger = logging.getLogger('')
+
+        stdout = logging.StreamHandler()
+        fileout = logging.FileHandler(self.job_name + '.flog')
+        print("vnwoiunvoiuewnov")
+#        if self.options.quiet:
+#            stdout.setLevel(logging.ERROR)
+#            fileout.setLevel(logging.INFO)
+#        elif self.options.verbose:
+#            stdout.setLevel(logging.DEBUG)
+#            fileout.setLevel(logging.DEBUG)
+#        else:
+        stdout.setLevel(logging.DEBUG)
+        fileout.setLevel(logging.DEBUG)
+
+        formatter = logging.Formatter('LOGG%(levelname)s: %(message)s')
+        stdout.setFormatter(formatter)
+        print stdout.level
+
+        formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
+        fileout.setFormatter(formatter)
+
+        logger.addHandler(stdout)
+        logger.addHandler(fileout)
+        print logger.warn("vnuewu")
+
+#        logging.basicConfig(filename=self.job_name+'.flog',
+#                            format='%(asctime)s %(levelname)s: %(message)s',
+#                            datefmt='%Y/%m/%d %I:%M:%S %p',
+#                            level=logging.DEBUG)
+
+
     def commandline(self):
         """Specified options, highest priority."""
         usage = "usage: %prog [options] [COMMAND] JOB_NAME"
@@ -133,10 +176,10 @@ class Options(object):
         parser = OptionParser(usage=usage, version="%prog 0.1",
                               description=__main__.__doc__)
         parser.add_option("-v", "--verbose", action="store_true",
-                          dest="verbose", default=True,
-                          help="write extra information to stdout [default]")
-        parser.add_option("-q", "--quiet", action="store_false",
-                          dest="verbose", help="silence all output")
+                          dest="verbose",
+                          help="output extra debugging information")
+        parser.add_option("-q", "--quiet", action="store_true",
+                          dest="quiet", help="silence all terminal output")
         parser.add_option("-o", "--option", action="append", dest="cmdopts",
                           help="set custom options as key=value pairs")
         parser.add_option("-i", "--interactive", action="store_true",

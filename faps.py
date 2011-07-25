@@ -11,6 +11,9 @@ directory.
 
 """
 
+__version__ = open('version.txt').read().strip()
+
+
 import code
 import logging
 import os
@@ -932,8 +935,25 @@ def err(msg):
     # TODO(tdaff): should we quit here?
 
 
+def mkdirs(directory):
+    """Create a directory if it does not exist."""
+    if not os.path.exists(directory):
+        os.mkdirs(directory)
+
+
+def welcome():
+    """Print any important messages."""
+    print("FAPS version 0.0r%s" % __version__)
+    print("Faps is under development and may break without notice.")
+    print("Please note these important changes to the code:")
+    print(" * Input config is now called jobname.fap"
+          " (job.ini is no longer read).")
+    print(" * Header sections are not required in config files.")
+
+
 def main():
     """Do a standalone calculation when run as a script."""
+    welcome()
     main_options = Options()
     # try to unpickle the job or
     # fall back to starting a new simulation

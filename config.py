@@ -253,10 +253,10 @@ class Options(object):
 
 
 def debug(msg):
-    """Print debugging info."""
-    logging.debug(msg)
-#    msg = textwrap.fill(msg, initial_indent="DEBUG: ",
-#                        subsequent_indent="       ")
+    """Send DEBUGging to the logging handlers."""
+    msg = textwrap.wrap(msg)
+    for line in msg:
+        logging.debug(line)
 
 def options_test():
     """Try and read a few options from different sources."""

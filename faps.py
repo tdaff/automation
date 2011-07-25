@@ -11,8 +11,6 @@ directory.
 
 """
 
-__version__ = open('version.txt').read().strip()
-
 
 import code
 import logging
@@ -28,6 +26,7 @@ import numpy as np
 from numpy import pi, cos, sin, sqrt, arccos, prod
 from numpy import array, identity, dot
 
+from version import __version__
 from config import Options
 from elements import WEIGHT, UFF, VASP_PSEUDO_PREF
 
@@ -949,12 +948,14 @@ def welcome():
     print(" * Input config is now called jobname.fap"
           " (job.ini is no longer read).")
     print(" * Header sections are not required in config files.")
+    print("\n\n\n")
 
 
 def main():
     """Do a standalone calculation when run as a script."""
     welcome()
     main_options = Options()
+    info("Starting FAPS version 0.0r%s" % __version__)
     # try to unpickle the job or
     # fall back to starting a new simulation
     niss_name = main_options.get('job_name') + ".niss"

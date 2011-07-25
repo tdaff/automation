@@ -132,41 +132,35 @@ class Options(object):
 
     def _init_logging(self):
         """
-        Setup the logging to terminal and .flog file, with level as required.
+        Setup the logging to terminal and .flog file, with levels as required.
         Must run before any logging calls so we need to access attributes
         rather than using self.get()!
 
         """
-        logger = logging.getLogger('')
 
-        stdout = logging.StreamHandler()
-        fileout = logging.FileHandler(self.job_name + '.flog')
-        print("vnwoiunvoiuewnov")
-#        if self.options.quiet:
-#            stdout.setLevel(logging.ERROR)
-#            fileout.setLevel(logging.INFO)
-#        elif self.options.verbose:
-#            stdout.setLevel(logging.DEBUG)
-#            fileout.setLevel(logging.DEBUG)
-#        else:
-        stdout.setLevel(logging.DEBUG)
-        fileout.setLevel(logging.DEBUG)
+        # Quiet always overrides verbose; always at least INFO in .flog
+        if self.options.quiet:
+            stdout_level = logging.ERROR
+            file_level = logging.INFO
+        elif self.options.verbose:
+            stdout_level = logging.DEBUG
+            file_level = logging.DEBUG
+        else:
+            stdout_level = logging.INFO
+            file_level = logging.INFO
 
-        formatter = logging.Formatter('LOGG%(levelname)s: %(message)s')
-        stdout.setFormatter(formatter)
-        print stdout.level
+        logging.basicConfig(level=file_level,
+                            format='%(asctime)s - %(levelname)s: %(message)s',
+                            datefmt='%c',
+                            filename=self.job_name + '.flog',
+                            filemode='a')
 
-        formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
-        fileout.setFormatter(formatter)
-
-        logger.addHandler(stdout)
-        logger.addHandler(fileout)
-        print logger.warn("vnuewu")
-
-#        logging.basicConfig(filename=self.job_name+'.flog',
-#                            format='%(asctime)s %(levelname)s: %(message)s',
-#                            datefmt='%Y/%m/%d %I:%M:%S %p',
-#                            level=logging.DEBUG)
+        console = logging.StreamHandler(sys.stdout)
+        console.setLevel(stdout_level)
+        formatter = logging.Formatter('%(levelname)s: %(message)s')
+        console.setFormatter(formatter)
+        # add the handler to the root logger
+        logging.getLogger('').addHandler(console)
 
 
     def commandline(self):
@@ -259,9 +253,10 @@ class Options(object):
 
 
 def debug(msg):
-    """Print for debugging statements."""
-    print("DEBUG: %s" % msg)
-
+    """Print debugging info."""
+    logging.debug(msg)
+#    msg = textwrap.fill(msg, initial_indent="DEBUG: ",
+#                        subsequent_indent="       ")
 
 def options_test():
     """Try and read a few options from different sources."""

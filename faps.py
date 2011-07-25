@@ -82,9 +82,11 @@ class PyNiss(object):
             self.options = new_options
         else:
             # Just update command line stuff
+            info("Using old options with new command line arguments.")
             self.options.args = new_options.args
             self.options.options = new_options.options
             self.options.cmdopts = new_options.cmdopts
+        self.status()
 
     def job_dispatcher(self):
         """
@@ -183,14 +185,15 @@ class PyNiss(object):
         valid_states = {NOT_RUN: 'Not run',
                         RUNNING: 'Running',
                         FINISHED: 'Finished',
-                        UPDATED: 'Updated',
+                        UPDATED: 'Processed',
                         SKIPPED: 'Skipped'}
 
+        info("Current system status:")
         for step, state in self.state.iteritems():
             if state[0] is RUNNING:
-                info("State of %s: Running, jobid: %s" % (step, state[1]))
+                info(" * State of %s: Running, jobid: %s" % (step, state[1]))
             else:
-                info("State of %s: %s" % (step, valid_states[state[0]]))
+                info(" * State of %s: %s" % (step, valid_states[state[0]]))
 
     def import_old(self):
         """Try and import any data from previous stopped simulation."""
@@ -200,17 +203,17 @@ class PyNiss(object):
                 self.options.get('initial_structure_format'))
             self.state['init'] = (UPDATED, False)
         except IOError:
-            info("No initial structure to import")
+            info("No initial structure found to import")
         try:
             self.structure.update_pos(self.options.get('optim_code'))
             self.state['opt'] = (UPDATED, False)
         except IOError:
-            info("No optimized structure to import")
+            info("No optimized structure found to import")
         try:
             self.structure.update_charges(self.options.get('charge_method'))
             self.state['charges'] = (UPDATED, False)
         except IOError:
-            info("No charges to import")
+            info("No charges found to import")
 
     def run_optimization(self):
         """Select correct method for running the dft/optim."""
@@ -248,7 +251,7 @@ class PyNiss(object):
         filetemp.close()
 
         filetemp = open("KPOINTS", "wb")
-        filetemp.writelines(mk_kpoints())
+        filetemp.writelines(mk_kpoints(self.options.gettuple('kpoints')))
         filetemp.close()
 
         potcar_types = unique([atom.type for atom in self.structure.atoms])
@@ -256,6 +259,8 @@ class PyNiss(object):
         for at_type in potcar_types:
             # Try and get the preferred POTCARS
             # TODO(tdaff): update these with custom pseudos
+            debug("Using %s pseudopotential for %s" %
+                 (VASP_PSEUDO_PREF.get(at_type, at_type), at_type))
             potcar_src = os.path.join(self.options.get('potcar_dir'),
                                       VASP_PSEUDO_PREF.get(at_type, at_type),
                                       "POTCAR")
@@ -381,6 +386,7 @@ class Structure(object):
     def update_pos(self, dft_program):
         """Select the method for updating atomic positions."""
         if dft_program == 'vasp':
+            info("Updating positions from vasp")
             self.from_vasp(self.name + '.contcar', update=True)
         elif dft_program == 'cpmd':
             self.from_cpmd(update=True)
@@ -388,10 +394,12 @@ class Structure(object):
     def update_charges(self, charge_method):
         """Select the method for updating charges."""
         if charge_method == 'repeat':
+            info("Updating charges from repeat")
             self.charges_from_repeat(self.name + '.esp_fit.out')
 
     def from_pdb(self, filename):
         """Read an initial structure from a pdb file."""
+        info("Reading positions from pdb file: %s" % filename)
         filetemp = open(filename)
         pdbfile = filetemp.readlines()
         filetemp.close()
@@ -413,6 +421,7 @@ class Structure(object):
     def from_vasp(self, filename='CONTCAR', update=True):
         """Read a structure from a vasp [POS,CONT]CAR file."""
         #TODO(tdaff): difference between initial and update?
+        info("Reading positions from vasp file: %s" % filename)
         filetemp = open(filename)
         contcar = filetemp.readlines()
         filetemp.close()
@@ -448,6 +457,7 @@ class Structure(object):
 
     def charges_from_repeat(self, filename):
         """Parse charges and update structure."""
+        info("Getting charges from file: %s" % filename)
         charges = []
         filetemp = open(filename)
         for line in filetemp:
@@ -471,21 +481,24 @@ class Structure(object):
         ordered_types = unique(types)
         poscar = ["%s\n" % self.name[:80],
                   " 1.0\n"]
-        # Vasp does 16 dp but we get rounding errors eg cubic -> 14
+        # Vasp does 16 dp but we get rounding errors (eg cubic) use 14
         poscar.extend(self.cell.to_vector_strings(fmt="%23.14f"))
         poscar.append("".join("%5s" % x for x in ordered_types) + "\n")
         poscar.append("".join("%6i" % types.count(x)
                               for x in ordered_types) + "\n")
+        # We always have the T or F so turn on selective dynamics for
+        # fixed pos variable cell
+        poscar.extend(["Selective dynamics\n", "Cartesian\n"])
         if optim_all:
-            poscar.extend(["Selective dynamics\n", "Cartesian\n"])
+            info("Optimizing all atom positions")
             fix_h = 'T'
             fix_all = 'T'
         elif optim_h:
-            poscar.extend(["Selective dynamics\n", "Cartesian\n"])
+            info("Optimizing hydrogen positions")
             fix_h = 'T'
             fix_all = 'F'
         else:
-            poscar.append("Cartesian\n")
+            info("All atom positions fixed")
             fix_h = 'F'
             fix_all = 'F'
 
@@ -506,6 +519,7 @@ class Structure(object):
     def to_fastmc(self, supercell=(1, 1, 1)):
         """Return the FIELD and CONFIG needed for a fastmc run"""
         # CONFIG
+        info("Constructing %r supercell for gcmc" % supercell)
         levcfg = 0  # always
         imcon = self.cell.imcon()
         natoms = len(self.atoms) * prod(supercell)
@@ -786,6 +800,7 @@ def mk_incar(options):
              "SIGMA   = 0.05\n"]
     if optim_cell:
         # Positions will be fixed by selective dynamics
+        info("Cell vectors will be optimized")
         incar.extend(["ENCUT = 520\n",
                       "IBRION  = 2\n",
                       "NSW     = 300\n",
@@ -797,26 +812,31 @@ def mk_incar(options):
                       "ISIF    = 2\n"])
     else:
         # Single point energy
+        info("Single point calculation")
         incar.extend(["IBRION  = 0\n",
                       "NSW     = 0\n",
                       "ISIF    = 0\n"])
     if spin:
+        info("Spin polarised calculation")
         incar.append("ISPIN   = 2\n")
 
     if dispersion:
+        info("Dispersion correction will be used")
         incar.append("LVDW    = .TRUE.\n")
 
 
     return incar
 
 
-def mk_kpoints(num_kpt=1):
+def mk_kpoints(kpoints):
     """Defaults to gamma point only, or specified number."""
+    if len(kpoints) != 3:
+        err("kpoints specified incorectly; should be (i, i, i)")
     kpoints = [
         "Auto\n",
         "0\n",
         "Gamma\n",
-        "%i %i %i\n" % (num_kpt, num_kpt, num_kpt),
+        "%i %i %i\n" % tuple(kpoints),
         "0 0 0\n"]
     return kpoints
 
@@ -828,6 +848,9 @@ def mk_gcmc_control(options):
         "temperature  %f\n" % options.getfloat('mc_temperature'),
         "&guest 1\n",
         "  pressure  (bar)  %f\n" % options.getfloat('mc_pressure'),
+        "  probability 2\n",
+        "  1 0\n",
+        "  2 2 3\n",
         "&end\n",
         "steps    %i\n" % options.getint('mc_prod_steps'),
         "equilibration    %i\n" % options.getint('mc_eq_steps'),
@@ -881,56 +904,43 @@ def jobcheck(jobid):
 
 
 def debug(msg):
-    """Print debugging info."""
-    logging.debug(msg)
-    msg = textwrap.fill(msg, initial_indent="DEBUG: ",
-                        subsequent_indent="       ")
-    print(msg)
+    """Send DEBUGging to the logging handlers."""
+    msg = textwrap.wrap(msg)
+    for line in msg:
+        logging.debug(line)
 
 
 def info(msg):
-    """Print info where it needs to go."""
-    root = logging.getLogger()
-    print [x.level for x in root.handlers]
-    root.info(msg)
-    msg = textwrap.fill(msg, initial_indent="INFO: ",
-                        subsequent_indent="      ")
-    print(msg)
+    """Send INFO to the logging handlers."""
+    msg = textwrap.wrap(msg)
+    for line in msg:
+        logging.info(line)
 
 
 def warn(msg):
-    """Print warning where it needs to go."""
-    logging.warning(msg)
-    msg = textwrap.fill(msg, initial_indent="WARNING: ",
-                        subsequent_indent="         ")
-    print(msg)
+    """Send WARNings to the logging handlers."""
+    msg = textwrap.wrap(msg)
+    for line in msg:
+        logging.warning(line)
 
 
 def err(msg):
-    """Print error where it needs to go."""
-    logging.error(msg)
-    msg = textwrap.fill(msg, initial_indent="ERROR: ",
-                        subsequent_indent="       ")
-    print(msg)
+    """Send ERRORs to the logging handlers."""
+    msg = textwrap.wrap(msg)
+    for line in msg:
+        logging.error(line)
+    # TODO(tdaff): should we quit here?
 
 
 def main():
     """Do a standalone calculation when run as a script."""
     main_options = Options()
-    root = logging.getLogger()
-    print [x.level for x in root.handlers]
-    root.error("myerr")
-    logging.error("other")
-    logging.debug("nvrs")
-#    logging.basicConfig(filename=main_options.get('job_name')+'.flog',
-#                        format='%(asctime)s %(levelname)s: %(message)s',
-#                        datefmt='%Y/%m/%d %I:%M:%S %p',
-#                        level=logging.DEBUG)
     # try to unpickle the job or
     # fall back to starting a new simulation
-    if os.path.exists(main_options.get('job_name') + ".niss"):
-        info("Existing simulation found; loading...")
-        load_niss = open(main_options.get('job_name') + ".niss")
+    niss_name = main_options.get('job_name') + ".niss"
+    if os.path.exists(niss_name):
+        info("Existing simulation found: %s; loading..." % niss_name)
+        load_niss = open(niss_name)
         my_simulation = pickle.load(load_niss)
         load_niss.close()
         my_simulation.re_init(main_options)
@@ -941,6 +951,7 @@ def main():
     # run requested jobs
     my_simulation.job_dispatcher()
     my_simulation.dump_state()
+    info("Faps terminated normally")
 
 
 if __name__ == '__main__':

@@ -279,7 +279,7 @@ class PyNiss(object):
         for line in submit.stdout.readlines():
             if "wooki" in line:
                 jobid = line.split(".")[0]
-                info("Running VASP job. Jobid: %i" % jobid)
+                info("Running VASP job. Jobid: %s" % jobid)
                 self.state['opt'] = (RUNNING, jobid)
                 break
         else:
@@ -310,7 +310,7 @@ class PyNiss(object):
         for line in submit.stdout.readlines():
             if "wooki" in line:
                 jobid = line.split(".")[0]
-                info("Running REPEAT calculation: Jobid %i" % jobid)
+                info("Running REPEAT calculation: Jobid %s" % jobid)
                 self.state['charges'] = (RUNNING, jobid)
                 break
         else:
@@ -344,7 +344,7 @@ class PyNiss(object):
         for line in submit.stdout.readlines():
             if "wooki" in line:
                 jobid = line.split(".")[0]
-                info("Running FastMC: Jobid %i" % jobid)
+                info("Running FastMC: Jobid %s" % jobid)
                 self.state['gcmc'] = (RUNNING, jobid)
                 break
         else:

@@ -136,7 +136,7 @@ class PyNiss(object):
 
         if self.state['opt'][0] == NOT_RUN or 'opt' in self.options.args:
             self.run_optimization()
-            info("Running optimizaton/dft step")
+            #info("Running optimizaton/dft step")
             self.dump_state()
             raise SystemExit
 
@@ -273,17 +273,21 @@ class PyNiss(object):
         for vasp_file in ['POSCAR', 'INCAR', 'KPOINTS', 'POTCAR']:
             shutil.copy(vasp_file, job_name + '.' + vasp_file.lower())
 
-        # FIXME(tdaff): wooki specific at the moment
-        vasp_args = ["vaspsubmit-beta", job_name, "%i" % nproc]
-        submit = subprocess.Popen(vasp_args, stdout=subprocess.PIPE)
-        for line in submit.stdout.readlines():
-            if "wooki" in line:
-                jobid = line.split(".")[0]
-                info("Running VASP job. Jobid: %s" % jobid)
-                self.state['opt'] = (RUNNING, jobid)
-                break
+        if self.options.getbool('no_submit'):
+            info("Vasp input files generated; skipping job submission")
+            self.state['opt'] = (SKIPPED, False)
         else:
-            print("Job failed?")
+            # FIXME(tdaff): wooki specific at the moment
+            vasp_args = ["vaspsubmit-beta", job_name, "%i" % nproc]
+            submit = subprocess.Popen(vasp_args, stdout=subprocess.PIPE)
+            for line in submit.stdout.readlines():
+                if "wooki" in line:
+                    jobid = line.split(".")[0]
+                    info("Running VASP job. Jobid: %s" % jobid)
+                    self.state['opt'] = (RUNNING, jobid)
+                    break
+            else:
+                warn("Job failed?")
 
     def esp2cube(self):
         """Make the cube for repeat input."""
@@ -304,17 +308,21 @@ class PyNiss(object):
         """Submit the repeat calc to the queue."""
         job_name = self.options.get('job_name')
         mk_repeat(cube_name=job_name + '.cube')
-        repeat_args = ['repeatsubmit', job_name + '.cube']
-        submit = subprocess.Popen(repeat_args, stdout=subprocess.PIPE)
-        jobid = None
-        for line in submit.stdout.readlines():
-            if "wooki" in line:
-                jobid = line.split(".")[0]
-                info("Running REPEAT calculation: Jobid %s" % jobid)
-                self.state['charges'] = (RUNNING, jobid)
-                break
+        if self.options.getbool('no_submit'):
+            info("REPEAT input files generated; skipping job submission")
+            self.state['charges'] = (SKIPPED, False)
         else:
-            print("Job failed?")
+            repeat_args = ['repeatsubmit', job_name + '.cube']
+            submit = subprocess.Popen(repeat_args, stdout=subprocess.PIPE)
+            jobid = None
+            for line in submit.stdout.readlines():
+                if "wooki" in line:
+                    jobid = line.split(".")[0]
+                    info("Running REPEAT calculation: Jobid %s" % jobid)
+                    self.state['charges'] = (RUNNING, jobid)
+                    break
+            else:
+                warn("Job failed?")
 
     def run_cpmd(self):
         pass
@@ -338,17 +346,21 @@ class PyNiss(object):
         filetemp.writelines(mk_gcmc_control(self.options))
         filetemp.close()
 
-        fastmc_args = ['fastmcsubmit', job_name]
-        submit = subprocess.Popen(fastmc_args, stdout=subprocess.PIPE)
-        jobid = None
-        for line in submit.stdout.readlines():
-            if "wooki" in line:
-                jobid = line.split(".")[0]
-                info("Running FastMC: Jobid %s" % jobid)
-                self.state['gcmc'] = (RUNNING, jobid)
-                break
+        if self.options.getbool('no_submit'):
+            info("FastMC input files generated; skipping job submission")
+            self.state['gcmc'] = (SKIPPED, False)
         else:
-            print("Job submission failed?")
+            fastmc_args = ['fastmcsubmit', job_name]
+            submit = subprocess.Popen(fastmc_args, stdout=subprocess.PIPE)
+            jobid = None
+            for line in submit.stdout.readlines():
+                if "wooki" in line:
+                    jobid = line.split(".")[0]
+                    info("Running FastMC: Jobid %s" % jobid)
+                    self.state['gcmc'] = (RUNNING, jobid)
+                    break
+            else:
+                warn("Job submission failed?")
 
 
 class Structure(object):

@@ -180,7 +180,8 @@ class Options(object):
                           dest="interactive", help="enter interactive mode")
         parser.add_option("-m", "--import", action="store_true",
                           dest="import", help="try and import old data")
-        parser.add_option("-n", "--nosub", action="store_true", dest="nosub",
+        parser.add_option("-n", "--no-submit", action="store_true",
+                          dest="no_submit",
                           help="create input files only, do not run any jobs")
         (local_options, local_args) = parser.parse_args()
 
@@ -205,12 +206,15 @@ class Options(object):
 
     def load_defaults(self):
         """Load program defaults."""
+        # ConfigParser requires header sections so we add them to a StringIO
+        # of the file if they are missing. 2to3 should deal with the
+        # renamed modules.
         default_ini_path = os.path.join(self.script_dir, 'defaults.ini')
         try:
             filetemp = open(default_ini_path, 'r')
             default_ini = filetemp.read()
             filetemp.close()
-            if not '[default]' in default_ini.lower():
+            if not '[defaults]' in default_ini.lower():
                 default_ini = '[defaults]\n' + default_ini
             default_ini = StringIO(default_ini)
         except IOError:
@@ -231,7 +235,7 @@ class Options(object):
             site_ini = StringIO(site_ini)
         except IOError:
             # file does not exist so we just use a blank string
-            debug("No job options found; using defaults")
+            debug("No site options found; using defaults")
             site_ini = StringIO('[site_config]\n')
         self.site_ini.readfp(site_ini)
 

@@ -9,11 +9,11 @@ and job options.
 __all__ = ['Options']
 
 import ConfigParser
-import io
 import logging
 import os
 import sys
 import textwrap
+from StringIO import StringIO
 from optparse import OptionParser
 
 import __main__
@@ -212,11 +212,11 @@ class Options(object):
             filetemp.close()
             if not '[default]' in default_ini.lower():
                 default_ini = '[defaults]\n' + default_ini
-            default_ini = io.BytesIO(default_ini)
+            default_ini = StringIO(default_ini)
         except IOError:
             # file does not exist so we just use a blank string
             debug('Default options not found! Something is very wrong.')
-            default_ini = io.BytesIO('[defaults]\n')
+            default_ini = StringIO('[defaults]\n')
         self.defaults.readfp(default_ini)
 
     def load_site_defaults(self):
@@ -228,11 +228,11 @@ class Options(object):
             filetemp.close()
             if not '[site_config]' in site_ini.lower():
                 site_ini = '[site_config]\n' + site_ini
-            site_ini = io.BytesIO(site_ini)
+            site_ini = StringIO(site_ini)
         except IOError:
             # file does not exist so we just use a blank string
             debug("No job options found; using defaults")
-            site_ini = io.BytesIO('[site_config]\n')
+            site_ini = StringIO('[site_config]\n')
         self.site_ini.readfp(site_ini)
 
     def load_job_defaults(self):
@@ -244,11 +244,11 @@ class Options(object):
             filetemp.close()
             if not '[job_config]' in job_ini.lower():
                 job_ini = '[job_config]\n' + job_ini
-            job_ini = io.BytesIO(job_ini)
+            job_ini = StringIO(job_ini)
         except IOError:
             # file does not exist so we just use a blank string
             debug("No job options found; using defaults")
-            job_ini = io.BytesIO('[job_config]\n')
+            job_ini = StringIO('[job_config]\n')
         self.job_ini.readfp(job_ini)
 
 

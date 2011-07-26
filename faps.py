@@ -521,7 +521,7 @@ class Structure(object):
     def to_fastmc(self, supercell=(1, 1, 1)):
         """Return the FIELD and CONFIG needed for a fastmc run"""
         # CONFIG
-        info("Constructing %r supercell for gcmc" % supercell)
+        info("Constructing %s supercell for gcmc" % str(supercell))
         levcfg = 0  # always
         imcon = self.cell.imcon()
         natoms = len(self.atoms) * prod(supercell)
@@ -683,6 +683,10 @@ class Cell(object):
         else:
             # parallelepiped
             return 3
+
+    def minimum_supercell(cutoff):
+        """Calculate the smallest supercell with a half-cell width cutoff."""
+        pass
 
 
 class Atom(object):

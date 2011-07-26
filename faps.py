@@ -21,10 +21,12 @@ import shutil
 import subprocess
 import textwrap
 from copy import copy
+from math import ceil
 
 import numpy as np
 from numpy import pi, cos, sin, sqrt, arccos, prod
-from numpy import array, identity, dot
+from numpy import array, identity, dot, cross
+from numpy.linalg import norm
 
 from version import __version__
 from config import Options
@@ -330,9 +332,7 @@ class PyNiss(object):
     def run_fastmc(self):
         """Submit a fastmc job to the queue."""
         job_name = self.options.get('job_name')
-        # TODO(tdaff): supercell size guessing
-        mc_supercell = self.options.gettuple('mc_supercell')
-        config, field = self.structure.to_fastmc(supercell=mc_supercell)
+        config, field = self.structure.to_fastmc(self.options)
 
         filetemp = open("CONFIG", "wb")
         filetemp.writelines(config)
@@ -530,10 +530,21 @@ class Structure(object):
         """Return a cpmd input file as a list of lines."""
         raise NotImplementedError
 
-    def to_fastmc(self, supercell=(1, 1, 1)):
+    def to_fastmc(self, options):
         """Return the FIELD and CONFIG needed for a fastmc run"""
         # CONFIG
-        info("Constructing %s supercell for gcmc" % str(supercell))
+        config_supercell = options.gettuple('mc_supercell')
+        config_cutoff = options.getfloat('mc_cutoff')
+        if config_cutoff < 12:
+            warn("Simulation is using a very small cutoff! I hope you "
+                 "know, what you are doing!")
+        minimum_supercell = self.cell.minimum_supercell(config_cutoff)
+        supercell = tuple(max(i, j)
+                          for i, j in zip(config_supercell, minimum_supercell))
+        info("%s supercell requested in config" % str(config_supercell))
+        info("%s minimum supercell for a %.1f cutoff" %
+             (str(minimum_supercell), config_cutoff))
+        info("Constructing %s supercell for gcmc." % str(supercell))
         levcfg = 0  # always
         imcon = self.cell.imcon()
         natoms = len(self.atoms) * prod(supercell)
@@ -636,6 +647,7 @@ class Cell(object):
         # TODO: space groups?
         self.params = tuple(float(x) for x in line.split()[1:7])
         self._mkcell()
+        self.minimum_supercell(12.5)
 
     def from_vasp(self, lines, scale=1.0):
         """Extract cell from a POSCAR cell representation."""
@@ -696,9 +708,20 @@ class Cell(object):
             # parallelepiped
             return 3
 
-    def minimum_supercell(cutoff):
+    def minimum_supercell(self, cutoff):
         """Calculate the smallest supercell with a half-cell width cutoff."""
-        pass
+
+        a_cross_b = cross(self.cell[0], self.cell[1])
+        b_cross_c = cross(self.cell[1], self.cell[2])
+        c_cross_a = cross(self.cell[2], self.cell[0])
+
+        volume = dot(self.cell[0], b_cross_c)
+
+        widths = [volume/norm(b_cross_c),
+                  volume/norm(c_cross_a),
+                  volume/norm(a_cross_b)]
+
+        return tuple(int(ceil(2*cutoff/x)) for x in widths)
 
 
 class Atom(object):
@@ -953,7 +976,7 @@ def err(msg):
 def mkdirs(directory):
     """Create a directory if it does not exist."""
     if not os.path.exists(directory):
-        os.mkdirs(directory)
+        os.makedirs(directory)
 
 
 def welcome():

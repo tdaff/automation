@@ -75,6 +75,7 @@ class PyNiss(object):
         """Write the .niss file holding the current system state."""
         job_name = self.options.get('job_name')
         info("Writing state file, %s.niss." % job_name)
+        os.chdir(self.options.get('job_dir'))
         my_niss = open(job_name + ".niss", "wb")
         pickle.dump(self, my_niss)
         my_niss.close()
@@ -108,8 +109,9 @@ class PyNiss(object):
                 banner="""See manual for instructions on interactive use.""")
 
         if self.options.getbool('import'):
-            info("importing results from a previous simulation")
+            info("Importing results from a previous simulation")
             self.import_old()
+            self.dump_state()
 
         if self.state['init'][0] == NOT_RUN:
             info("Reading in structure")
@@ -303,8 +305,8 @@ class PyNiss(object):
             submit.wait()
             # TODO(tdaff): leave the cube name as job-name..
             # FIXME(tdaff): will not overwrite
-            shutil.move(job_name + '.cube', self.options.get('cwd'))
-            os.chdir(self.options.get('cwd'))
+            shutil.move(job_name + '.cube', self.options.get('job_dir'))
+            os.chdir(self.options.get('job_dir'))
 
     def run_repeat(self):
         """Submit the repeat calc to the queue."""
@@ -982,12 +984,12 @@ def mkdirs(directory):
 def welcome():
     """Print any important messages."""
     print("FAPS version 0.0r%s" % __version__)
-    print("Faps is under development and may break without notice.")
+    print("Faps is under heavy development and may break without notice.")
     print("Please note these important changes to the code:")
     print(" * Input config is now called jobname.fap"
           " (job.ini is no longer read).")
     print(" * Header sections are not required in config files.")
-    print("\n\n\n")
+    print("\n")
 
 
 def main():

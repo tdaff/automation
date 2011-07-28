@@ -32,8 +32,8 @@ class Options(object):
     """
     def __init__(self):
         """Initialize options from all .ini files and the commandline."""
-        # use .get*() to read attributes, only access args directly
-        self.cwd = ''
+        # use .get{type}() to read attributes, only access args directly
+        self.job_dir = ''
         self.script_dir = ''
         self.job_name = ''
         self.args = []
@@ -53,7 +53,7 @@ class Options(object):
     def get(self, item):
         """Map values from different sources based on priorities."""
         if item in self.__dict__:
-            # Instance attributes, such as job_name and cwd
+            # Instance attributes, such as job_name and job_dir
             debug("an attribute: %s" % item)
             return object.__getattribute__(self, item)
         elif self.options.__dict__.get(item) is not None:
@@ -128,7 +128,7 @@ class Options(object):
         else:
             self.script_dir = os.path.abspath(sys.path[0])
         # Where we run the job.
-        self.cwd = os.getcwd()
+        self.job_dir = os.getcwd()
 
     def _init_logging(self):
         """
@@ -150,8 +150,8 @@ class Options(object):
             file_level = logging.INFO
 
         logging.basicConfig(level=file_level,
-                            format='%(asctime)s - %(levelname)s: %(message)s',
-                            datefmt='%c',
+                            format='%(asctime)s %(levelname)s: %(message)s',
+                            datefmt='%Y%m%d %H:%M:%S',
                             filename=self.job_name + '.flog',
                             filemode='a')
 
@@ -241,7 +241,7 @@ class Options(object):
 
     def load_job_defaults(self):
         """Find where the job is running and load defaults"""
-        job_ini_path = os.path.join(self.cwd, self.job_name + '.fap')
+        job_ini_path = os.path.join(self.job_dir, self.job_name + '.fap')
         try:
             filetemp = open(job_ini_path, 'r')
             job_ini = filetemp.read()

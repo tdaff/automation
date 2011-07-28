@@ -91,7 +91,7 @@ class PyNiss(object):
             self.options.args = new_options.args
             self.options.options = new_options.options
             self.options.cmdopts = new_options.cmdopts
-        self.status()
+        self.status(initial=True)
 
     def job_dispatcher(self):
         """
@@ -101,7 +101,7 @@ class PyNiss(object):
         """
 
         if 'status' in self.options.args:
-            self.status()
+            self.status(initial=True)
 
         if self.options.getbool('interactive'):
             console = code.InteractiveConsole(locals())
@@ -136,13 +136,13 @@ class PyNiss(object):
                 else:
                     # Still running
                     info("Optimization still in progress")
-                    raise SystemExit
+                    terminate(0)
 
         if self.state['opt'][0] == NOT_RUN or 'opt' in self.options.args:
             self.run_optimization()
             #info("Running optimizaton/dft step")
             self.dump_state()
-            raise SystemExit
+            terminate(0)
 
         if self.state['charges'][0] not in [UPDATED, SKIPPED]:
             if self.options.getbool('no_charges'):
@@ -156,13 +156,13 @@ class PyNiss(object):
                     self.dump_state()
                 else:
                     info("Charge calculation still running")
-                    raise SystemExit
+                    terminate(0)
 
         if self.state['charges'][0] == NOT_RUN or 'charges' in self.options.args:
             self.run_charges()
             info("Running charge calculation")
             self.dump_state()
-            raise SystemExit
+            terminate(0)
 
         if self.state['gcmc'][0] not in [UPDATED, SKIPPED]:
             if self.options.getbool('no_gcmc'):
@@ -175,18 +175,18 @@ class PyNiss(object):
                     self.dump_state()
                 else:
                     info("GCMC still running")
-                    raise SystemExit
+                    terminate(0)
 
         if self.state['gcmc'][0] == NOT_RUN or 'gcmc' in self.options.args:
             self.run_fastmc()
             info("Running gcmc step")
             self.dump_state()
-            raise SystemExit
+            terminate(0)
         else:
             # Everything finished
             info("GCMC run has finished")
 
-    def status(self):
+    def status(self, initial=False):
         """Print the current status to the terminal."""
         valid_states = {NOT_RUN: 'Not run',
                         RUNNING: 'Running',
@@ -194,7 +194,11 @@ class PyNiss(object):
                         UPDATED: 'Processed',
                         SKIPPED: 'Skipped'}
 
-        info("Current system status:")
+        if initial:
+            info("Previous system state reported from .niss file "
+                 "(running jobs may have already finished):")
+        else:
+            info("Current system status:")
         for step, state in self.state.iteritems():
             if state[0] is RUNNING:
                 info(" * State of %s: Running, jobid: %s" % (step, state[1]))
@@ -287,7 +291,7 @@ class PyNiss(object):
             for line in submit.stdout.readlines():
                 if "wooki" in line:
                     jobid = line.split(".")[0]
-                    info("Running VASP job. Jobid: %s" % jobid)
+                    info("Running VASP job in queue. Jobid: %s" % jobid)
                     self.state['opt'] = (RUNNING, jobid)
                     break
             else:
@@ -322,7 +326,8 @@ class PyNiss(object):
             for line in submit.stdout.readlines():
                 if "wooki" in line:
                     jobid = line.split(".")[0]
-                    info("Running REPEAT calculation: Jobid %s" % jobid)
+                    info("Running REPEAT calculation in queue: Jobid %s"
+                         % jobid)
                     self.state['charges'] = (RUNNING, jobid)
                     break
             else:
@@ -358,7 +363,7 @@ class PyNiss(object):
             for line in submit.stdout.readlines():
                 if "wooki" in line:
                     jobid = line.split(".")[0]
-                    info("Running FastMC: Jobid %s" % jobid)
+                    info("Running FastMC in queue: Jobid %s" % jobid)
                     self.state['gcmc'] = (RUNNING, jobid)
                     break
             else:
@@ -981,6 +986,16 @@ def mkdirs(directory):
         os.makedirs(directory)
 
 
+def terminate(exit_code=0):
+    """Exit and announce if faps is terminating normally (default)."""
+    if exit_code == 0:
+        info("Faps terminated normally")
+        raise SystemExit
+    else:
+        warn("Abnormal termination of faps; exit code %i" % exit_code)
+        raise SystemExit(exit_code)
+
+
 def welcome():
     """Print any important messages."""
     print("FAPS version 0.0r%s" % __version__)
@@ -1013,7 +1028,7 @@ def main():
     # run requested jobs
     my_simulation.job_dispatcher()
     my_simulation.dump_state()
-    info("Faps terminated normally")
+    terminate(0)
 
 
 if __name__ == '__main__':

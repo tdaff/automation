@@ -66,7 +66,7 @@ class PyNiss(object):
         self.options = options
         self.structure = Structure(options.get('job_name'))
         self.state = {'init': (NOT_RUN, False),
-                      'opt': (NOT_RUN, False),
+                      'dft': (NOT_RUN, False),
                       'esp': (NOT_RUN, False),
                       'charges': (NOT_RUN, False),
                       'gcmc': (NOT_RUN, False)}
@@ -123,22 +123,25 @@ class PyNiss(object):
             self.dump_state()
 
         # TODO(tdaff): does dft/optim always generate ESP?
-        if self.state['opt'][0] not in [UPDATED, SKIPPED]:
-            if self.options.getbool('no_optimize'):
-                self.state['opt'] = (SKIPPED, False)
-            elif self.state['opt'][0] == RUNNING:
-                new_state = jobcheck(self.state['opt'][1])
+        if self.state['dft'][0] not in [UPDATED, SKIPPED]:
+            if self.options.getbool('no_dft'):
+                info("Skipping DFT step completely")
+                warn("Job might fail if you need the ESP")
+                self.state['dft'] = (SKIPPED, False)
+            elif self.state['dft'][0] == RUNNING:
+                new_state = jobcheck(self.state['dft'][1])
                 if not new_state or new_state == 'C':
+                    info("Queue reports DFT step has finished")
                     # Finished running update positions
                     self.structure.update_pos(self.options.get('optim_code'))
-                    self.state['opt'] = (UPDATED, False)
+                    self.state['dft'] = (UPDATED, False)
                     self.dump_state()
                 else:
                     # Still running
                     info("Optimization still in progress")
                     terminate(0)
 
-        if self.state['opt'][0] == NOT_RUN or 'opt' in self.options.args:
+        if self.state['dft'][0] == NOT_RUN or 'dft' in self.options.args:
             self.run_optimization()
             #info("Running optimizaton/dft step")
             self.dump_state()
@@ -146,10 +149,12 @@ class PyNiss(object):
 
         if self.state['charges'][0] not in [UPDATED, SKIPPED]:
             if self.options.getbool('no_charges'):
+                info("Skipping charge calculation")
                 self.state['charges'] = (SKIPPED, False)
             elif self.state['charges'][0] == RUNNING:
                 new_state = jobcheck(self.state['charges'][1])
                 if not new_state or new_state == 'C':
+                    info("Queue reports charge calculation has finished")
                     self.structure.update_charges(
                         self.options.get('charge_method'))
                     self.state['charges'] = (UPDATED, False)
@@ -166,10 +171,12 @@ class PyNiss(object):
 
         if self.state['gcmc'][0] not in [UPDATED, SKIPPED]:
             if self.options.getbool('no_gcmc'):
+                info("Skipping GCMC simulation")
                 self.state['gcmc'] = (UPDATED, False)
             elif self.state['gcmc'][0] == RUNNING:
                 new_state = jobcheck(self.state['gcmc'][1])
                 if not new_state or new_state == 'C':
+                    info("Queue reports GCMC simulation has finished")
                     # Read in GCMC data
                     self.state['gcmc'] = (UPDATED, False)
                     self.dump_state()
@@ -216,7 +223,7 @@ class PyNiss(object):
             info("No initial structure found to import")
         try:
             self.structure.update_pos(self.options.get('optim_code'))
-            self.state['opt'] = (UPDATED, False)
+            self.state['dft'] = (UPDATED, False)
         except IOError:
             info("No optimized structure found to import")
         try:
@@ -283,7 +290,7 @@ class PyNiss(object):
 
         if self.options.getbool('no_submit'):
             info("Vasp input files generated; skipping job submission")
-            self.state['opt'] = (SKIPPED, False)
+            self.state['dft'] = (SKIPPED, False)
         else:
             # FIXME(tdaff): wooki specific at the moment
             vasp_args = ["vaspsubmit-beta", job_name, "%i" % nproc]
@@ -292,7 +299,7 @@ class PyNiss(object):
                 if "wooki" in line:
                     jobid = line.split(".")[0]
                     info("Running VASP job in queue. Jobid: %s" % jobid)
-                    self.state['opt'] = (RUNNING, jobid)
+                    self.state['dft'] = (RUNNING, jobid)
                     break
             else:
                 warn("Job failed?")
@@ -1004,6 +1011,8 @@ def welcome():
     print(" * Input config is now called jobname.fap"
           " (job.ini is no longer read).")
     print(" * Header sections are not required in config files.")
+    print(" * .niss file structure has changed; if your job crashes then ")
+    print("   delete the .niss and try 'faps --import jobname' to continue")
     print("\n")
 
 

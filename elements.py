@@ -234,6 +234,7 @@ UFF = {
 }
 
 VASP_PSEUDO_PREF= {
+    "Cu": "Cu_new",
     "Li": "Li_sv",
     "Na": "Na_pv",
     "K": "K_sv",

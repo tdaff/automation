@@ -31,6 +31,7 @@ from numpy.linalg import norm
 from version import __version__
 from config import Options
 from elements import WEIGHT, UFF, VASP_PSEUDO_PREF
+from logo import LOGO
 
 
 # Global constants
@@ -1030,10 +1031,7 @@ def move_and_overwrite(src, dest):
 def welcome():
     """Print any important messages."""
     print("FAPS version 0.0r%s" % __version__)
-    logo = open(os.path.join(os.path.dirname(__file__), 'logo.txt'))
-    for line in logo:
-        print(line.rstrip())
-    logo.close()
+    print(LOGO)
     print("Faps is under heavy development and may break without notice.")
     print("Please note these important changes to the code:")
     print(" * Input config is now called jobname.fap"

@@ -316,7 +316,7 @@ class PyNiss(object):
             submit.wait()
             # TODO(tdaff): leave the cube name as job-name..
             # FIXME(tdaff): will not overwrite
-            shutil.move(job_name + '.cube', self.options.get('job_dir'))
+            move_and_overwrite(job_name + '.cube', self.options.get('job_dir'))
             os.chdir(self.options.get('job_dir'))
 
     def run_repeat(self):
@@ -1001,6 +1001,30 @@ def terminate(exit_code=0):
     else:
         warn("Abnormal termination of faps; exit code %i" % exit_code)
         raise SystemExit(exit_code)
+
+
+def move_and_overwrite(src, dest):
+    """Move src to dest file and overwrite if it exists."""
+    if os.path.exists(dest):
+        if os.path.isdir(dest):
+            dest_full = os.path.join(os.path.basename(src), dest)
+            if os.path.exists(dest_full):
+                if os.path.isfile(dest_full):
+                    os.remove(dest_full)
+                    shutil.move(src, dest)
+                else:
+                    raise OSError("Directory %s already exists" % dest_full)
+            else:
+                shutil.move(src, dest)
+        elif os.path.isfile(dest):
+            os.remove(dest)
+            shutil.move(src, dest)
+        else:
+            raise OSError("%s is not a folder or file" % dest)
+    else:
+        shutil.move(src, dest)
+
+
 
 
 def welcome():

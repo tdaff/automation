@@ -134,16 +134,16 @@ class PyNiss(object):
                 if not new_state or new_state == 'C':
                     info("Queue reports DFT step has finished")
                     # Finished running update positions
-                    self.structure.update_pos(self.options.get('optim_code'))
+                    self.structure.update_pos(self.options.get('dft_code'))
                     self.state['dft'] = (UPDATED, False)
                     self.dump_state()
                 else:
                     # Still running
-                    info("Optimization still in progress")
+                    info("DFT still in progress")
                     terminate(0)
 
         if self.state['dft'][0] == NOT_RUN or 'dft' in self.options.args:
-            self.run_optimization()
+            self.run_dft()
             #info("Running optimizaton/dft step")
             self.dump_state()
             terminate(0)
@@ -215,34 +215,46 @@ class PyNiss(object):
 
     def import_old(self):
         """Try and import any data from previous stopped simulation."""
+        job_name = self.options.get('job_name')
+        job_dir = self.options.get('job_dir')
         try:
             self.structure.from_file(
-                self.options.get('job_name'),
+                job_name,
                 self.options.get('initial_structure_format'))
             self.state['init'] = (UPDATED, False)
         except IOError:
             info("No initial structure found to import")
         try:
-            self.structure.update_pos(self.options.get('optim_code'))
+            dft_code = self.options.get('dft_code')
+            dft_dir = os.path.join(job_dir,
+                                   'faps_%s_%s' % (job_name, dft_code))
+            os.chdir(dft_dir)
+            self.structure.update_pos(dft_code)
             self.state['dft'] = (UPDATED, False)
-        except IOError:
+        except IOError, OSError:
             info("No optimized structure found to import")
         try:
-            self.structure.update_charges(self.options.get('charge_method'))
+            charge_code = self.options.get('charge_method')
+            charge_dir = os.path.join(job_dir,
+                                      'faps_%s_%s' % (job_name, charge_code))
+            os.chdir(charge_dir)
+            self.structure.update_charges(charge_code)
             self.state['charges'] = (UPDATED, False)
-        except IOError:
+        except IOError, OSError:
             info("No charges found to import")
+        # Reset directory at end
+        os.chdir(job_dir)
 
-    def run_optimization(self):
+    def run_dft(self):
         """Select correct method for running the dft/optim."""
-        optim_code = self.options.get('optim_code')
-        info("Running a %s optimization" % optim_code)
-        if optim_code == 'vasp':
-            self.run_vasp(self.options.getint('vasp_ncpu'))
-        elif optim_code == 'cpmd':
+        dft_code = self.options.get('dft_code')
+        info("Running a %s calculation" % dft_code)
+        if dft_code == 'vasp':
+            self.run_vasp()
+        elif dft_code == 'cpmd':
             err("CPMD calculation not yet implemented")
         else:
-            err("Unknown optimization method")
+            err("Unknown dft method")
 
     def run_charges(self):
         """Select correct charge processing methods."""
@@ -255,9 +267,17 @@ class PyNiss(object):
         else:
             err("Unknown charge calculation method: %s" % chg_method)
 
-    def run_vasp(self, nproc=16):
+    def run_vasp(self):
         """Make inputs and run vasp job."""
         job_name = self.options.get('job_name')
+        nproc = self.options.getint('vasp_ncpu')
+        # Keep things tidy in a subdirectory
+        dft_code = self.options.get('dft_code')
+        vasp_dir = os.path.join(self.options.get('job_dir'),
+                                'faps_%s_%s' % (job_name, dft_code))
+        mkdirs(vasp_dir)
+        os.chdir(vasp_dir)
+        debug("Running in %s" % vasp_dir)
         info("Running on %i nodes" % nproc)
 
         filetemp = open("POSCAR", "wb")
@@ -304,25 +324,39 @@ class PyNiss(object):
                     break
             else:
                 warn("Job failed?")
+        # Tidy up at the end
+        os.chdir(self.options.get('job_dir'))
 
     def esp2cube(self):
         """Make the cube for repeat input."""
         job_name = self.options.get('job_name')
-        esp_calc = self.options.get('esp_calc')
-        if esp_calc == 'vasp':
+        esp_src = self.options.get('esp_src')
+        src_dir = os.path.join(self.options.get('job_dir'),
+                               'faps_%s_%s' % (job_name, esp_src))
+        os.chdir(src_dir)
+        if esp_src == 'vasp':
             os.chdir(job_name + ".restart_DIR")
             esp2cube_args = shlex.split(self.options.get('vasp2cube'))
             info("Converting esp to cube, this might take a minute...")
             submit = subprocess.Popen(esp2cube_args)
             submit.wait()
             # TODO(tdaff): leave the cube name as job-name..
-            # FIXME(tdaff): will not overwrite
-            move_and_overwrite(job_name + '.cube', self.options.get('job_dir'))
+            # Move it to the repeat directory
+            repeat_dir = os.path.join(self.options.get('job_dir'),
+                                      'faps_%s_repeat' % job_name)
+            mkdirs(repeat_dir)
+            move_and_overwrite(job_name + '.cube', repeat_dir)
             os.chdir(self.options.get('job_dir'))
 
     def run_repeat(self):
         """Submit the repeat calc to the queue."""
         job_name = self.options.get('job_name')
+        charge_code = self.options.get('charge_method')
+        repeat_dir = os.path.join(self.options.get('job_dir'),
+                                  'faps_%s_%s' % (job_name, charge_code))
+        mkdirs(repeat_dir)
+        os.chdir(repeat_dir)
+
         mk_repeat(cube_name=job_name + '.cube')
         if self.options.getbool('no_submit'):
             info("REPEAT input files generated; skipping job submission")
@@ -340,6 +374,7 @@ class PyNiss(object):
                     break
             else:
                 warn("Job failed?")
+        os.chdir(self.options.get('job_dir'))
 
     def run_cpmd(self):
         pass
@@ -347,6 +382,13 @@ class PyNiss(object):
     def run_fastmc(self):
         """Submit a fastmc job to the queue."""
         job_name = self.options.get('job_name')
+        mc_code = self.options.get('mc_code')
+
+        gcmc_dir = os.path.join(self.options.get('job_dir'),
+                                'faps_%s_%s' % (job_name, mc_code))
+        mkdirs(gcmc_dir)
+        os.chdir(gcmc_dir)
+
         config, field = self.structure.to_fastmc(self.options)
 
         filetemp = open("CONFIG", "wb")
@@ -376,6 +418,7 @@ class PyNiss(object):
                     break
             else:
                 warn("Job submission failed?")
+        os.chdir(self.options.get('job_dir'))
 
 
 class Structure(object):

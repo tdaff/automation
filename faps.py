@@ -225,20 +225,12 @@ class PyNiss(object):
         except IOError:
             info("No initial structure found to import")
         try:
-            dft_code = self.options.get('dft_code')
-            dft_dir = os.path.join(job_dir,
-                                   'faps_%s_%s' % (job_name, dft_code))
-            os.chdir(dft_dir)
-            self.structure.update_pos(dft_code)
+            self.structure.update_pos(self.options.get('dft_code'))
             self.state['dft'] = (UPDATED, False)
         except IOError, OSError:
             info("No optimized structure found to import")
         try:
-            charge_code = self.options.get('charge_method')
-            charge_dir = os.path.join(job_dir,
-                                      'faps_%s_%s' % (job_name, charge_code))
-            os.chdir(charge_dir)
-            self.structure.update_charges(charge_code)
+            self.structure.update_charges(self.options.get('charge_method'))
             self.state['charges'] = (UPDATED, False)
         except IOError, OSError:
             info("No charges found to import")
@@ -455,19 +447,23 @@ class Structure(object):
         elif filetype.lower() in ['vasp', 'poscar', 'contcar']:
             self.from_vasp()
 
-    def update_pos(self, dft_program):
+    def update_pos(self, dft_code):
         """Select the method for updating atomic positions."""
-        if dft_program == 'vasp':
+        dft_path = os.path.join('faps_%s_%s' % (self.name, dft_code))
+        if dft_code == 'vasp':
             info("Updating positions from vasp")
-            self.from_vasp(self.name + '.contcar', update=True)
+            self.from_vasp(os.path.join(dft_path, self.name + '.contcar'),
+                           update=True)
         elif dft_program == 'cpmd':
             self.from_cpmd(update=True)
 
     def update_charges(self, charge_method):
         """Select the method for updating charges."""
+        charge_path = os.path.join('faps_%s_%s' % (self.name, charge_method))
         if charge_method == 'repeat':
             info("Updating charges from repeat")
-            self.charges_from_repeat(self.name + '.esp_fit.out')
+            self.charges_from_repeat(
+                os.path.join(charge_path, self.name + '.esp_fit.out'))
 
     def from_pdb(self, filename):
         """Read an initial structure from a pdb file."""

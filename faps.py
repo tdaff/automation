@@ -227,12 +227,12 @@ class PyNiss(object):
         try:
             self.structure.update_pos(self.options.get('dft_code'))
             self.state['dft'] = (UPDATED, False)
-        except IOError, OSError:
+        except IOError:
             info("No optimized structure found to import")
         try:
             self.structure.update_charges(self.options.get('charge_method'))
             self.state['charges'] = (UPDATED, False)
-        except IOError, OSError:
+        except IOError:
             info("No charges found to import")
         # Reset directory at end
         os.chdir(job_dir)
@@ -454,7 +454,7 @@ class Structure(object):
             info("Updating positions from vasp")
             self.from_vasp(os.path.join(dft_path, self.name + '.contcar'),
                            update=True)
-        elif dft_program == 'cpmd':
+        elif dft_code == 'cpmd':
             self.from_cpmd(update=True)
 
     def update_charges(self, charge_method):
@@ -919,7 +919,6 @@ def mk_incar(options):
         info("Dispersion correction will be used")
         incar.append("LVDW    = .TRUE.\n")
 
-
     return incar
 
 
@@ -1063,8 +1062,6 @@ def move_and_overwrite(src, dest):
             raise OSError("%s is not a folder or file" % dest)
     else:
         shutil.move(src, dest)
-
-
 
 
 def welcome():

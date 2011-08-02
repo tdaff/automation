@@ -1005,10 +1005,10 @@ def terminate(exit_code=0):
 
 
 def move_and_overwrite(src, dest):
-    """Move src to dest file and overwrite if it exists."""
+    """Move src to dest and overwrite if it is an existing file."""
     if os.path.exists(dest):
         if os.path.isdir(dest):
-            dest_full = os.path.join(os.path.basename(src), dest)
+            dest_full = os.path.join(dest, os.path.basename(src))
             if os.path.exists(dest_full):
                 if os.path.isfile(dest_full):
                     os.remove(dest_full)

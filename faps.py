@@ -28,11 +28,11 @@ from numpy import pi, cos, sin, sqrt, arccos, prod
 from numpy import array, identity, dot, cross
 from numpy.linalg import norm
 
-from version import __version__
 from config import Options
 from elements import WEIGHT, UFF, VASP_PSEUDO_PREF
 from logo import LOGO
 
+__version__ = "$Revision$"
 
 # Global constants
 DEG2RAD = pi / 180.0
@@ -447,14 +447,14 @@ class Structure(object):
         elif filetype.lower() in ['vasp', 'poscar', 'contcar']:
             self.from_vasp()
 
-    def update_pos(self, dft_code):
+    def update_pos(self, opt_code):
         """Select the method for updating atomic positions."""
-        dft_path = os.path.join('faps_%s_%s' % (self.name, dft_code))
-        if dft_code == 'vasp':
-            info("Updating positions from vasp")
-            self.from_vasp(os.path.join(dft_path, self.name + '.contcar'),
+        opt_path = os.path.join('faps_%s_%s' % (self.name, opt_code))
+        info("Updating positions from %s" % opt_code)
+        if opt_code == 'vasp':
+            self.from_vasp(os.path.join(opt_path, self.name + '.contcar'),
                            update=True)
-        elif dft_code == 'cpmd':
+        elif opt_code == 'cpmd':
             self.from_cpmd(update=True)
 
     def update_charges(self, charge_method):
@@ -469,9 +469,9 @@ class Structure(object):
         """Read an initial structure from a pdb file."""
         info("Reading positions from pdb file: %s" % filename)
         filetemp = open(filename)
-        pdbfile = filetemp.readlines()
+        pdb_file = filetemp.readlines()
         filetemp.close()
-        for line in pdbfile:
+        for line in pdb_file:
             if 'cryst1' in line.lower():
                 # the cell the input
                 self.cell.from_pdb(line)
@@ -482,9 +482,30 @@ class Structure(object):
 
         self.order_by_types()
 
-    def from_cif(self, filename="structure.cif"):
+    def from_cif(self, filename):
         """Genereate structure from a .cif file."""
-        raise NotImplementedError
+        info("Reading positions from cif file: %s" % filename)
+        filetemp = open(filename)
+        cif_file = filetemp.readlines()
+        filetemp.close()
+        params = [0.0]*6
+        for line in cif_file:
+            if '_cell_length_a' in line:
+                params[0] = float(line.split()[1])
+            elif '_cell_length_b' in line:
+                params[1] = float(line.split()[1])
+            elif '_cell_length_c' in line:
+                params[2] = float(line.split()[1])
+            elif '_cell_angle_alpha' in line:
+                params[3] = float(line.split()[1])
+            elif '_cell_angle_beta' in line:
+                params[4] = float(line.split()[1])
+            elif '_cell_angle_gamma' in line:
+                params[5] = float(line.split()[1])
+            elif line.startswith("loop_"):
+                pass
+        self.cell.from_params(params)
+        self.order_by_types()
 
     def from_vasp(self, filename='CONTCAR', update=True):
         """Read a structure from a vasp [POS,CONT]CAR file."""
@@ -699,7 +720,7 @@ class Cell(object):
     def from_pdb(self, line):
         """Extract cell from CRYST1 line in a pdb."""
         # TODO: space groups?
-#        self.params = tuple(float(x) for x in line.split()[1:7])
+        # Must use fixed widths as -ve numbers do not leave gaps to .split()
         self.params = (float(line[6:15]),
                        float(line[15:24]),
                        float(line[24:33]),
@@ -707,7 +728,6 @@ class Cell(object):
                        float(line[40:47]),
                        float(line[47:54]))
         self._mkcell()
-        self.minimum_supercell(12.5)
 
     def from_vasp(self, lines, scale=1.0):
         """Extract cell from a POSCAR cell representation."""
@@ -1072,7 +1092,7 @@ def move_and_overwrite(src, dest):
 
 def welcome():
     """Print any important messages."""
-    print("FAPS version 0.0r%s" % __version__)
+    print("FAPS version 0.0 %s" % __version__)
     print(LOGO)
     print("\nFaps is under heavy development and will break without notice.")
     print("\nThis version breaks backwards and forwards compatibility!")
@@ -1088,7 +1108,7 @@ def main():
     """Do a standalone calculation when run as a script."""
     welcome()
     main_options = Options()
-    info("Starting FAPS version 0.0r%s" % __version__)
+    info("Starting FAPS version 0.0 %s" % __version__)
     # try to unpickle the job or
     # fall back to starting a new simulation
     niss_name = main_options.get('job_name') + ".niss"

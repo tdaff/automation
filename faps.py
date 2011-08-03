@@ -1068,13 +1068,13 @@ def welcome():
     """Print any important messages."""
     print("FAPS version 0.0r%s" % __version__)
     print(LOGO)
-    print("Faps is under heavy development and may break without notice.")
-    print("Please note these important changes to the code:")
-    print(" * Input config is now called jobname.fap"
-          " (job.ini is no longer read).")
-    print(" * Header sections are not required in config files.")
-    print(" * .niss file structure has changed; if your job crashes then ")
-    print("   delete the .niss and try 'faps --import jobname' to continue")
+    print("\nFaps is under heavy development and will break without notice.")
+    print("\nThis version breaks backwards and forwards compatibility!")
+    print("EXISTING JOBS WILL NOT WORK [automatically], sorry :(")
+    print("\n * Jobs now run in subdirectories;")
+    print("   You need to manually move some files to --import existing jobs!")
+    print("\n * Internal structure of the .niss file has changed,")
+    print("   this should be deleted before '--import'ing.")
     print("\n")
 
 

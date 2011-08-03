@@ -1092,7 +1092,7 @@ def move_and_overwrite(src, dest):
 
 def welcome():
     """Print any important messages."""
-    print("FAPS version 0.0 %s" % __version__)
+    print("FAPS version 0.0 %s" % __version__.strip('$Revision: '))
     print(LOGO)
     print("\nFaps is under heavy development and will break without notice.")
     print("\nThis version breaks backwards and forwards compatibility!")
@@ -1108,7 +1108,7 @@ def main():
     """Do a standalone calculation when run as a script."""
     welcome()
     main_options = Options()
-    info("Starting FAPS version 0.0 %s" % __version__)
+    info("Starting FAPS version 0.0 %s" % __version__.strip('$Revision: '))
     # try to unpickle the job or
     # fall back to starting a new simulation
     niss_name = main_options.get('job_name') + ".niss"

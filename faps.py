@@ -699,7 +699,13 @@ class Cell(object):
     def from_pdb(self, line):
         """Extract cell from CRYST1 line in a pdb."""
         # TODO: space groups?
-        self.params = tuple(float(x) for x in line.split()[1:7])
+#        self.params = tuple(float(x) for x in line.split()[1:7])
+        self.params = (float(line[6:15]),
+                       float(line[15:24]),
+                       float(line[24:33]),
+                       float(line[33:40]),
+                       float(line[40:47]),
+                       float(line[47:54]))
         self._mkcell()
         self.minimum_supercell(12.5)
 
@@ -726,11 +732,11 @@ class Cell(object):
         cell_a = sqrt(sum(x**2 for x in self.cell[0]))
         cell_b = sqrt(sum(x**2 for x in self.cell[1]))
         cell_c = sqrt(sum(x**2 for x in self.cell[2]))
-        alpha = arccos(sum(self.cell[:, 1] * self.cell[:, 2]) /
+        alpha = arccos(sum(self.cell[1, :] * self.cell[2, :]) /
                        (cell_b * cell_c)) * 180 / pi
-        beta = arccos(sum(self.cell[:, 0] * self.cell[:, 2]) /
+        beta = arccos(sum(self.cell[0, :] * self.cell[2, :]) /
                       (cell_a * cell_c)) * 180 / pi
-        gamma = arccos(sum(self.cell[:, 0] * self.cell[:, 1]) /
+        gamma = arccos(sum(self.cell[0, :] * self.cell[1, :]) /
                        (cell_a * cell_b)) * 180 / pi
         self.params = (cell_a, cell_b, cell_c, alpha, beta, gamma)
 

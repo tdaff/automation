@@ -11,14 +11,18 @@ directory.
 
 """
 
+__version__ = "$Revision$"
 
 import code
+import ConfigParser
 import logging
 import os
 import pickle
+import re
 import shlex
 import shutil
 import subprocess
+import sys
 import textwrap
 from copy import copy
 from math import ceil
@@ -31,8 +35,6 @@ from numpy.linalg import norm
 from config import Options
 from elements import WEIGHT, UFF, VASP_PSEUDO_PREF
 from logo import LOGO
-
-__version__ = "$Revision$"
 
 # Global constants
 DEG2RAD = pi / 180.0
@@ -437,7 +439,7 @@ class Structure(object):
         self.atoms = []
         self.esp = None
         self.dft_energy = 0.0
-        self.guests = [Guest()]
+        self.guests = [Guest('CO2')]
 
     def from_file(self, basename, filetype):
         """Select the correct file parser."""
@@ -488,23 +490,32 @@ class Structure(object):
         filetemp = open(filename)
         cif_file = filetemp.readlines()
         filetemp.close()
-        params = [0.0]*6
-        for line in cif_file:
+        params = [None]*6
+        loop = False
+        idx = 0
+        while idx < len(cif_file):
+            line = cif_file[idx].lower()
             if '_cell_length_a' in line:
-                params[0] = float(line.split()[1])
+                params[0] = ufloat(line.split()[1])
             elif '_cell_length_b' in line:
-                params[1] = float(line.split()[1])
+                params[1] = ufloat(line.split()[1])
             elif '_cell_length_c' in line:
-                params[2] = float(line.split()[1])
+                params[2] = ufloat(line.split()[1])
             elif '_cell_angle_alpha' in line:
-                params[3] = float(line.split()[1])
+                params[3] = ufloat(line.split()[1])
             elif '_cell_angle_beta' in line:
-                params[4] = float(line.split()[1])
+                params[4] = ufloat(line.split()[1])
             elif '_cell_angle_gamma' in line:
-                params[5] = float(line.split()[1])
+                params[5] = ufloat(line.split()[1])
             elif line.startswith("loop_"):
-                pass
-        self.cell.from_params(params)
+                loop = True
+            idx += 1
+
+        if np.all(params):
+            self.cell.from_params(params)
+        else:
+            err("No cell or incomplete cell found in cif file")
+
         self.order_by_types()
 
     def from_vasp(self, filename='CONTCAR', update=True):
@@ -607,6 +618,7 @@ class Structure(object):
 
     def to_fastmc(self, options):
         """Return the FIELD and CONFIG needed for a fastmc run"""
+        # TODO(tdaff): initialize guests
         # CONFIG
         config_supercell = options.gettuple('mc_supercell')
         config_cutoff = options.getfloat('mc_cutoff')
@@ -632,13 +644,13 @@ class Structure(object):
 
         # FIELD
         # TODO(tdaff): ntypes = nguests + nummols
-        ntypes = 1 + len(self.guests)
+        ntypes = len(self.guests) + 1
         field = ["%s\n" % self.name[:80],
                  "UNITS   kcal\n",
                  "molecular types %i\n" % ntypes]
         # Guests
         for guest in self.guests:
-            field.extend(["&guest %s\n" % guest.name,
+            field.extend(["&guest %s: %s\n" % (guest.name, guest.source),
                           "NUMMOLS %i\n" % 0,
                           "ATOMS %i\n" % len(guest.atoms)])
             for atom in guest.atoms:
@@ -851,16 +863,62 @@ class Atom(object):
 
 class Guest(object):
     """Guest molecule and properties."""
-    def __init__(self):
-        self.name = "Carbon Dioxide"
-        self.atoms = [
-            Atom("Cx", pos=(0.0000000, 0.000000, 0.000000), charge=0.65120,
-                 mass=12.0107),
-            Atom("Ox", pos=(1.1605000, 0.000000, 0.000000), charge=-0.32560,
-                 mass=15.9994),
-            Atom("Ox", pos=(-1.1605000, 0.000000, 0.000000), charge=-0.32560,
-                 mass=15.9994)]
-        self.types = [atom.type for atom in self.atoms]
+    def __init__(self, ident):
+        self.ident = ident
+        self.name = "Unknown guest"
+        self.potentials = {}
+        self.probability = []
+        self.raw_guest = {}
+        self.atoms = []
+        self.source = "Unknown source"
+        self._find_guest()
+        self._parse_guest()
+
+    def _find_guest(self):
+        """Look in guests.lib in submit directory and default."""
+        # Need the different directories
+        job_dir = os.getcwd()
+        if __name__ != '__main__':
+            script_dir = os.path.dirname(__file__)
+        else:
+            script_dir = os.path.abspath(sys.path[0])
+        job_guests = ConfigParser.SafeConfigParser()
+        lib_guests = ConfigParser.SafeConfigParser()
+        # Try and find guest in guests.lib
+        job_guests.read(os.path.join(job_dir, 'guests.lib'))
+        lib_guests.read(os.path.join(script_dir, 'guests.lib'))
+        if job_guests.has_section(self.ident):
+            debug("%s found in job dir" % self.ident)
+            self.raw_guest = job_guests.items(self.ident)
+        elif lib_guests.has_section(self.ident):
+            debug("%s found in library" % self.ident)
+            self.raw_guest = lib_guests.items(self.ident)
+        else:
+            err("Guest not found: %s" % self.ident)
+
+    def _parse_guest(self):
+        """Set attributes according to the raw input."""
+        for key, val in self.raw_guest:
+            if key == 'atoms':
+                # Only use non blank lines
+                atoms = [x.strip() for x in val.splitlines() if x.strip()]
+                for atom in atoms:
+                    atom = atom.split()
+                    self.atoms.append(Atom(
+                        type=atom[0],
+                        mass=float(atom[1]),
+                        charge=float(atom[2]),
+                        pos=tuple(float(x) for x in atom[3:6])))
+            elif key == 'potentials':
+                potens = [x.strip() for x in val.splitlines() if x.strip()]
+                for poten in potens:
+                    poten = poten.split()
+                    self.potentials[poten[0]] = tuple(float(x) for x in poten[1:])
+            elif key == 'probability':
+                self.probability = [x.strip()
+                                    for x in val.splitlines() if x.strip()]
+            else:
+                setattr(self, key, val)
 
 
 def mk_repeat(cube_name='REPEAT_ESP.cube', symmetry=False):
@@ -1089,10 +1147,14 @@ def move_and_overwrite(src, dest):
     else:
         shutil.move(src, dest)
 
+def ufloat(text):
+    """Convert string to float, ignoring the uncertainty part."""
+    return float(re.sub('\(.*\)', '', text))
+
 
 def welcome():
     """Print any important messages."""
-    print("FAPS version 0.0 %s" % __version__.strip('$Revision: '))
+    print("FAPS version 0.0r%s" % __version__.strip('$Revision: '))
     print(LOGO)
     print("\nFaps is under heavy development and will break without notice.")
     print("\nThis version breaks backwards and forwards compatibility!")
@@ -1108,7 +1170,7 @@ def main():
     """Do a standalone calculation when run as a script."""
     welcome()
     main_options = Options()
-    info("Starting FAPS version 0.0 %s" % __version__.strip('$Revision: '))
+    info("Starting FAPS version 0.0r%s" % __version__.strip('$Revision: '))
     # try to unpickle the job or
     # fall back to starting a new simulation
     niss_name = main_options.get('job_name') + ".niss"

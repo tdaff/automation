@@ -1,0 +1,36 @@
+# guests.lib
+#
+# Library for guest molecule types
+# These are defaults that can be overridden with
+
+[template]
+pname = Molecule Name
+source = doi or reference
+atoms =
+    at_name  at_mass  at_charge  at_x  at_y  at_z  # must be indented
+    Ox  15.9994 -0.32560  1.1605  0.0  0.0 
+    Ox  15.9994 -0.32560 -1.1605  0.0  0.0 
+potentials =
+    at_name  at_sigma  at_epsilon
+    Cx 2.745 0.05948
+    Ox 3.017 0.17023
+probability =
+    atom_id1 atom_id2 ... atom_idn
+    0  # 0 is centre of mass
+    2 3
+
+[CO2]
+name = Carbon Dioxide
+source = 10.1021/jp810871f
+atoms =
+    Cx  12.0107  0.65120  0.0     0.0  0.0 
+    Ox  15.9994 -0.32560  1.1605  0.0  0.0 
+    Ox  15.9994 -0.32560 -1.1605  0.0  0.0 
+potentials =
+    Cx 2.745 0.05948
+    Ox 3.017 0.17023
+probability =
+    0
+    2 3
+
+# vim:ft=dosini:set paste:

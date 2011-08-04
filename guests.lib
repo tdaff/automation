@@ -1,10 +1,13 @@
 # guests.lib
 #
 # Library for guest molecule types
-# These are defaults that can be overridden with
+# These are defaults that can be overridden with a custom library 
+# in the job directory.
+#
+# Use the template to make new guests. Blocks of text need to be indented.
 
 [template]
-pname = Molecule Name
+name = Molecule Name
 source = doi or reference
 atoms =
     at_name  at_mass  at_charge  at_x  at_y  at_z  # must be indented
@@ -12,12 +15,12 @@ atoms =
     Ox  15.9994 -0.32560 -1.1605  0.0  0.0 
 potentials =
     at_name  at_sigma  at_epsilon
-    Cx 2.745 0.05948
-    Ox 3.017 0.17023
+    Cx  2.745  0.05948
+    Ox  3.017  0.17023
 probability =
-    atom_id1 atom_id2 ... atom_idn
+    atom_id1 atom_id2 ... atom_idN
     0  # 0 is centre of mass
-    2 3
+    2  3
 
 [CO2]
 name = Carbon Dioxide
@@ -27,10 +30,35 @@ atoms =
     Ox  15.9994 -0.32560  1.1605  0.0  0.0 
     Ox  15.9994 -0.32560 -1.1605  0.0  0.0 
 potentials =
-    Cx 2.745 0.05948
-    Ox 3.017 0.17023
+    Cx  2.745  0.05948
+    Ox  3.017  0.17023
 probability =
     0
-    2 3
+    2  3
+
+[CH4-1s]
+name = Methane Single Site
+source = doi://
+atoms =
+    CM  16.000  0.0  0.0  0.0  0.0
+potentials = 
+    CM  3.7300  0.29414
+probability = 
+    0
+
+[CH4-5s]
+name = Methane 5 Site
+source = doi://
+atoms = 
+    C_M  12.000 -0.480  0.000000  0.000000  0.000000
+    H_M   1.000 +0.120  0.640513  0.640513  0.640513
+    H_M   1.000 +0.120 -0.640513 -0.640513  0.640513
+    H_M   1.000 +0.120 -0.640513  0.640513 -0.640513
+    H_M   1.000 +0.120  0.640513 -0.640513 -0.640513
+potentials = 
+    C_M  3.43085  0.10500
+    H_M  2.84600  0.01522
+probability = 
+    0
 
 # vim:ft=dosini:set paste:

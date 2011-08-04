@@ -383,6 +383,12 @@ class PyNiss(object):
         mkdirs(gcmc_dir)
         os.chdir(gcmc_dir)
 
+        # Set the guests before generating the files
+        # Load here as options may change in each run
+        guests = self.options.get('guests')
+        # Try and deal with any list of guests
+        self.structure.guests = [Guest(x) for x in
+                                 re.split('[\s,\(\)\[\]]*', guests) if x]
         config, field = self.structure.to_fastmc(self.options)
 
         filetemp = open("CONFIG", "wb")
@@ -394,7 +400,8 @@ class PyNiss(object):
         filetemp.close()
 
         filetemp = open("CONTROL", "wb")
-        filetemp.writelines(mk_gcmc_control(self.options))
+        filetemp.writelines(mk_gcmc_control(self.options,
+                                            self.structure.guests))
         filetemp.close()
 
         if self.options.getbool('no_submit'):
@@ -612,7 +619,7 @@ class Structure(object):
                               "%4s%4s%4s\n" % (fix_all, fix_all, fix_all))
         return poscar
 
-    def to_cpmd(self, optim_h=True):
+    def to_cpmd(self, options):
         """Return a cpmd input file as a list of lines."""
         raise NotImplementedError
 
@@ -672,9 +679,19 @@ class Structure(object):
             atom_set.extend(atom.type for atom in guest.atoms)
         atom_set = unique(atom_set)
         field.append("VDW %i\n" % ((len(atom_set) * (len(atom_set) + 1)) / 2))
+
+        # modify local ff to deal with guests
+        # TODO(tdaff): extra ones from options?
+        force_field = copy(UFF)
+        for guest in self.guests:
+            force_field.update(guest.potentials)
+
         for idxl in range(len(atom_set)):
             for idxr in range(idxl, len(atom_set)):
-                field.append(len_jones(atom_set[idxl], atom_set[idxr]))
+                left = atom_set[idxl]
+                right = atom_set[idxr]
+                sigma, epsilon = lorentz_berthelot(force_field[left], force_field[right])
+                field.append("%-6s %-6s lj %f %f\n" % (left, right, epsilon, sigma))
         # EOF
         field.append("close\n")
 
@@ -915,8 +932,9 @@ class Guest(object):
                     poten = poten.split()
                     self.potentials[poten[0]] = tuple(float(x) for x in poten[1:])
             elif key == 'probability':
-                self.probability = [x.strip()
-                                    for x in val.splitlines() if x.strip()]
+                prob = [x.strip() for x in val.splitlines() if x.strip()]
+                self.probability = [tuple(int(y) for y in x.split()) for x in prob]
+                print self.probability
             else:
                 setattr(self, key, val)
 
@@ -1019,17 +1037,11 @@ def mk_kpoints(kpoints):
     return kpoints
 
 
-def mk_gcmc_control(options):
+def mk_gcmc_control(options, guests):
     """Standard GCMC CONTROL file."""
     control = [
         "GCMC Run\n"
         "temperature  %f\n" % options.getfloat('mc_temperature'),
-        "&guest 1\n",
-        "  pressure  (bar)  %f\n" % options.getfloat('mc_pressure'),
-        "  probability 2\n",
-        "  1 0\n",
-        "  2 2 3\n",
-        "&end\n",
         "steps    %i\n" % options.getint('mc_prod_steps'),
         "equilibration    %i\n" % options.getint('mc_eq_steps'),
         "cutoff          %f angstrom\n" % options.getfloat('mc_cutoff'),
@@ -1041,6 +1053,23 @@ def mk_gcmc_control(options):
         control.append("jobcontrol\n")
     else:
         control.append("# jobcontrol\n")
+    # Guest stuff
+    if options.getbool('probability_plot'):
+        # We just comment out the probabilty plot lines if unneeded
+        pp = ""
+    else:
+        pp = "# "
+    guest_count = 0
+    for guest in guests:
+        guest_count += 1
+        control.append("&guest %i\n" % guest_count)
+        control.append("  pressure (bar) %f\n" % options.getfloat('mc_pressure'))
+        control.append("%s  probability %i\n" % (pp, len(guest.probability)))
+        for prob in guest.probability:
+            control.append("%s  %i  " % (pp, len(prob)) +
+                           "  ".join(["%i" % x for x in prob]) + "\n")
+        control.append("&end\n")
+
     control.append("finish\n")
     return control
 
@@ -1054,15 +1083,13 @@ def unique(in_list):
     return uniq
 
 
-def len_jones(left, right):
-    """Lorentz-Berthelot mixing rules for atom types"""
-    # UFF is found in elements.py
-    # TODO(tdaff): better way of defaults/custom
-    sigma = (UFF[left][0] + UFF[right][0]) / 2.0
-    epsilon = (UFF[left][1] * UFF[right][1])**0.5
+def lorentz_berthelot(left, right):
+    """Lorentz-Berthelot mixing rules for (sigma, epsilon) tuples."""
+    sigma = (left[0] + right[0]) / 2.0
+    epsilon = (left[1] * right[1])**0.5
     if epsilon == 0:
         sigma = 0
-    return "%-6s %-6s lj %f %f\n" % (left, right, epsilon, sigma)
+    return sigma, epsilon
 
 
 def jobcheck(jobid):

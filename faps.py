@@ -503,6 +503,7 @@ class Structure(object):
         filetemp = open(filename)
         cif_file = filetemp.readlines()
         filetemp.close()
+        cif_file = without_blanks(cif_file)
         params = [None]*6
         loop = False
         idx = 0
@@ -520,7 +521,11 @@ class Structure(object):
                 params[4] = ufloat(line.split()[1])
             elif '_cell_angle_gamma' in line:
                 params[5] = ufloat(line.split()[1])
-            elif line.startswith("loop_"):
+            elif 'loop_' in line:
+                looed = []
+                while '_' in line:
+                    pass
+                idx += 1
                 loop = True
             idx += 1
 
@@ -1193,6 +1198,11 @@ def move_and_overwrite(src, dest):
 def ufloat(text):
     """Convert string to float, ignoring the uncertainty part."""
     return float(re.sub('\(.*\)', '', text))
+
+
+def without_blanks(lines):
+    """Strip lines and remove blank lines."""
+    return [line.strip() for line in lines if line.strip() != '']
 
 
 def welcome():

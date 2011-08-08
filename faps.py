@@ -694,6 +694,7 @@ class Structure(object):
                     sigma, epsilon = lorentz_berthelot(force_field[left],
                                                        force_field[right])
                 except KeyError:
+                    # catch this if not in the UFF -> zero
                     warn("No potential defined for %s %s; defaulting to 0" %
                          (left, right))
                     sigma, epsilon = 0.0, 0.0

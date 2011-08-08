@@ -26,7 +26,7 @@ probability =
 name = Carbon Dioxide
 source = 10.1021/jp810871f
 atoms =
-    Cx  12.0107  0.65120  0.0     0.0  0.0 
+    Cx  12.0107  0.65120  0.0    0.0  0.0 
     Ox  15.9994 -0.32560  1.149  0.0  0.0 
     Ox  15.9994 -0.32560 -1.149  0.0  0.0 
 potentials =

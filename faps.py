@@ -446,7 +446,7 @@ class Structure(object):
         self.atoms = []
         self.esp = None
         self.dft_energy = 0.0
-        self.guests = [Guest('CO2')]
+        self.guests = []
 
     def from_file(self, basename, filetype):
         """Select the correct file parser."""
@@ -480,15 +480,21 @@ class Structure(object):
         filetemp = open(filename)
         pdb_file = filetemp.readlines()
         filetemp.close()
+        # Build a local list before setting attribute
+        newatoms = []
         for line in pdb_file:
-            if 'cryst1' in line.lower():
-                # the cell the input
+            if line.lower().startswith('cryst1'):
                 self.cell.from_pdb(line)
-            if 'atom' in line.lower():
+            elif line.lower().startswith('atom'):
                 newatom = Atom()
                 newatom.from_pdb(line)
-                self.atoms.append(newatom)
+                newatoms.append(newatom)
+            elif line.lower().startswith('hetatm'):
+                newatom = Atom()
+                newatom.from_pdb(line)
+                newatoms.append(newatom)
 
+        self.atoms = newatoms
         self.order_by_types()
 
     def from_cif(self, filename):
@@ -938,11 +944,12 @@ class Guest(object):
                 potens = [x.strip() for x in val.splitlines() if x.strip()]
                 for poten in potens:
                     poten = poten.split()
-                    self.potentials[poten[0]] = tuple(float(x) for x in poten[1:])
+                    self.potentials[poten[0]] = tuple(float(x)
+                                                      for x in poten[1:])
             elif key == 'probability':
                 prob = [x.strip() for x in val.splitlines() if x.strip()]
-                self.probability = [tuple(int(y) for y in x.split()) for x in prob]
-                print self.probability
+                self.probability = [tuple(int(y) for y in x.split())
+                                    for x in prob]
             else:
                 setattr(self, key, val)
 
@@ -1071,7 +1078,8 @@ def mk_gcmc_control(options, guests):
     for guest in guests:
         guest_count += 1
         control.append("&guest %i\n" % guest_count)
-        control.append("  pressure (bar) %f\n" % options.getfloat('mc_pressure'))
+        control.append("  pressure (bar) %f\n" %
+                       options.getfloat('mc_pressure'))
         control.append("%s  probability %i\n" % (pp, len(guest.probability)))
         for prob in guest.probability:
             control.append("%s  %i  " % (pp, len(prob)) +

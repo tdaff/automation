@@ -690,8 +690,15 @@ class Structure(object):
             for idxr in range(idxl, len(atom_set)):
                 left = atom_set[idxl]
                 right = atom_set[idxr]
-                sigma, epsilon = lorentz_berthelot(force_field[left], force_field[right])
-                field.append("%-6s %-6s lj %f %f\n" % (left, right, epsilon, sigma))
+                try:
+                    sigma, epsilon = lorentz_berthelot(force_field[left],
+                                                       force_field[right])
+                except KeyError:
+                    warn("No potential defined for %s %s; defaulting to 0" %
+                         (left, right))
+                    sigma, epsilon = 0.0, 0.0
+                field.append("%-6s %-6s lj %f %f\n" %
+                             (left, right, epsilon, sigma))
         # EOF
         field.append("close\n")
 

@@ -455,6 +455,10 @@ class Structure(object):
             self.from_pdb(basename + '.' + filetype)
         elif filetype.lower() in ['vasp', 'poscar', 'contcar']:
             self.from_vasp()
+        elif filetype.lower() in ['cif']:
+            self.from_cif(basename + '.' + filetype)
+        else:
+            err("Unknown filetype %s" % filetype)
 
     def update_pos(self, opt_code):
         """Select the method for updating atomic positions."""
@@ -505,7 +509,8 @@ class Structure(object):
         filetemp.close()
         cif_file = without_blanks(cif_file)
         params = [None]*6
-        loop = False
+        atoms = []
+        loops = []
         idx = 0
         while idx < len(cif_file):
             line = cif_file[idx].lower()
@@ -522,18 +527,47 @@ class Structure(object):
             elif '_cell_angle_gamma' in line:
                 params[5] = ufloat(line.split()[1])
             elif 'loop_' in line:
-                looed = []
+                # loops for _atom_site and _symmetry
+                heads = []
+                body = []
                 while '_' in line:
-                    pass
-                idx += 1
-                loop = True
+                    heads.extend(line.split())
+                    idx += 1
+                    line = cif_file[idx]
+                while idx < len(cif_file) and '_' not in line:
+                    # shlex keeps 'quoted items' as one
+                    body.extend(shlex.split(line))
+                    idx += 1
+                    try:
+                        line = cif_file[idx]
+                    except IndexError:
+                        line = ''
+                if 'loop_' in heads:
+                    heads.remove('loop_')
+                loops.append((heads, body))
+                continue
             idx += 1
 
+        # cell first
         if np.all(params):
             self.cell.from_params(params)
         else:
             err("No cell or incomplete cell found in cif file")
 
+        # TODO: symmetry
+        # parse loop contents
+        for heads, body in loops:
+            if '_atom_site_fract_x' in heads:
+                while body:
+                    atoms.append(dict(zip(heads, body)))
+                    body = body[len(heads):]
+        newatoms = []
+        for atom in atoms:
+            newatom = Atom()
+            newatom.from_cif(atom, self.cell.cell)
+            newatoms.append(newatom)
+
+        self.atoms = newatoms
         self.order_by_types()
 
     def from_vasp(self, filename='CONTCAR', update=True):
@@ -874,6 +908,16 @@ class Atom(object):
     def __repr__(self):
         return "Atom(%r,%r)" % (self.type, self.pos)
 
+    def from_cif(self, at_dict, cell):
+        """Extract an atom description from dictionary of cif items."""
+        self.type = at_dict['_atom_site_type_symbol']
+        self.site = at_dict['_atom_site_label']
+        self.mass = WEIGHT[self.type]
+        frac_x = ufloat(at_dict['_atom_site_fract_x'])
+        frac_y = ufloat(at_dict['_atom_site_fract_y'])
+        frac_z = ufloat(at_dict['_atom_site_fract_z'])
+        self.pos = dot([frac_x, frac_y, frac_z], cell)
+
     def from_pdb(self, line):
         """Parse the ATOM line from a pdb file."""
         # pdb is defined with fixed width fields rather than splitting
@@ -1009,7 +1053,6 @@ def mk_incar(options):
              "EDIFF   = 1E-5\n",
              "EDIFFG  = -0.02\n",
              "POTIM   = 0.4\n",
-#             "NWRITE  = 0\n",
              "LREAL   = Auto\n",
              "LVTOT   = .TRUE.\n",
              "LVHAR   = .TRUE.\n",
@@ -1076,18 +1119,18 @@ def mk_gcmc_control(options, guests):
     # Guest stuff
     if options.getbool('probability_plot'):
         # We just comment out the probabilty plot lines if unneeded
-        pp = ""
+        probp = ""
     else:
-        pp = "# "
+        probp = "# "
     guest_count = 0
     for guest in guests:
         guest_count += 1
         control.append("&guest %i\n" % guest_count)
         control.append("  pressure (bar) %f\n" %
                        options.getfloat('mc_pressure'))
-        control.append("%s  probability %i\n" % (pp, len(guest.probability)))
+        control.append("%s  probability %i\n" % (probp, len(guest.probability)))
         for prob in guest.probability:
-            control.append("%s  %i  " % (pp, len(prob)) +
+            control.append("%s  %i  " % (probp, len(prob)) +
                            "  ".join(["%i" % x for x in prob]) + "\n")
         control.append("&end\n")
 

@@ -510,6 +510,7 @@ class Structure(object):
         cif_file = without_blanks(cif_file)
         params = [None]*6
         atoms = []
+        symmetry = []
         loops = []
         idx = 0
         while idx < len(cif_file):
@@ -561,6 +562,11 @@ class Structure(object):
                 while body:
                     atoms.append(dict(zip(heads, body)))
                     body = body[len(heads):]
+            if '_symmetry_equiv_pos_as_xyz' in heads:
+                while body:
+                    symmetry.append(dict(zip(heads, body)))
+                    body = body[len(heads):]
+
         newatoms = []
         for atom in atoms:
             newatom = Atom()
@@ -1001,6 +1007,19 @@ class Guest(object):
                                     for x in prob]
             else:
                 setattr(self, key, val)
+
+
+class Symmetry(object):
+    """Translate to symmetry equivalent positions."""
+    def __init__(self, line):
+        """Read the operation from the argument."""
+        self.line = line
+        self.parse_line(line)
+
+    def parse_line(self):
+        """Interpret a symmetry line from a cif."""
+        sym_ops = [x.strip() for x in re.split('[,\s+]*', self.line) if x.strip()]
+
 
 
 def mk_repeat(cube_name='REPEAT_ESP.cube', symmetry=False):

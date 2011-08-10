@@ -1152,7 +1152,7 @@ def mk_gcmc_control(options, guests):
     else:
         control.append("# jobcontrol\n")
     # Guest stuff
-    if options.getbool('probability_plot'):
+    if options.getbool('mc_probability_plot'):
         # We just comment out the probabilty plot lines if unneeded
         probp = ""
     else:

@@ -24,7 +24,7 @@ probability =
 
 [CO2]
 name = Carbon Dioxide
-source = 10.1021/jp810871f
+source = http://dx.doi.org/10.1021/jp810871f
 atoms =
     Cx  12.0107  0.65120  0.0    0.0  0.0 
     Ox  15.9994 -0.32560  1.149  0.0  0.0 
@@ -38,7 +38,7 @@ probability =
 
 [TIP5P]
 name = TIP5P Water
-source = 10.1063/1.481505
+source = http://dx.doi.org/10.1063/1.481505
 atoms = 
     Ow  15.9990  0.000 -0.84626011  1.34987746  0.00000000
     Hw   1.0079  0.241 -0.56648324  0.43447769  0.00000000
@@ -56,7 +56,7 @@ probability =
 
 [TIP5P-Ew]
 name = TIP5P-Ew Water for Ewald sums
-source = 10.1063/1.16524345
+source = http://dx.doi.org/10.1063/1.16524345
 atoms = 
     Ow  15.9990  0.000 -0.84626011  1.34987746  0.00000000
     Hw   1.0079  0.241 -0.56648324  0.43447769  0.00000000
@@ -72,13 +72,13 @@ probability =
     1
     2 3
 
-[CH4-1s]
-name = Methane Single Site
-source = doi://
+[CH4-TraPPE]
+name = TraPPE Methane; Single Site
+source = http://dx.doi.org/10.1021/jp972543+
 atoms =
     CM  16.000  0.0  0.0  0.0  0.0
 potentials = 
-    CM  3.7300  0.29414
+    CM  3.7300  0.294106
 probability = 
     0
 

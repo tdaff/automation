@@ -30,12 +30,12 @@ class Options(object):
     options or changed input files will not be picked up.
 
     """
-    def __init__(self):
+    def __init__(self, job_name=None):
         """Initialize options from all .ini files and the commandline."""
         # use .get{type}() to read attributes, only access args directly
         self.job_dir = ''
         self.script_dir = ''
-        self.job_name = ''
+        self.job_name = job_name
         self.args = []
         self.options = {}
         self.cmdopts = {}
@@ -185,7 +185,11 @@ class Options(object):
                           help="create input files only, do not run any jobs")
         (local_options, local_args) = parser.parse_args()
 
-        if len(local_args) == 0:
+        # job_name may or may not be passed or set initially
+        if self.job_name:
+            if self.job_name in local_args:
+                local_args.remove(self.job_name)
+        elif len(local_args) == 0:
             parser.error("No arguments given (try %prog --help)")
         else:
             # Take the last argument as the job name

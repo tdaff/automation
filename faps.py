@@ -564,14 +564,16 @@ class Structure(object):
                     body = body[len(heads):]
             if '_symmetry_equiv_pos_as_xyz' in heads:
                 while body:
-                    symmetry.append(dict(zip(heads, body)))
+                    sym_dict = dict(zip(heads, body))
+                    symmetry.append(Symmetry(sym_dict['_symmetry_equiv_pos_as_xyz']))
                     body = body[len(heads):]
 
         newatoms = []
         for atom in atoms:
-            newatom = Atom()
-            newatom.from_cif(atom, self.cell.cell)
-            newatoms.append(newatom)
+            for sym_op in symmetry:
+                newatom = Atom()
+                newatom.from_cif(atom, self.cell.cell, sym_op)
+                newatoms.append(newatom)
 
         self.atoms = newatoms
         self.order_by_types()
@@ -914,15 +916,17 @@ class Atom(object):
     def __repr__(self):
         return "Atom(%r,%r)" % (self.type, self.pos)
 
-    def from_cif(self, at_dict, cell):
+    def from_cif(self, at_dict, cell, symmetry=None):
         """Extract an atom description from dictionary of cif items."""
         self.type = at_dict['_atom_site_type_symbol']
         self.site = at_dict['_atom_site_label']
         self.mass = WEIGHT[self.type]
-        frac_x = ufloat(at_dict['_atom_site_fract_x'])
-        frac_y = ufloat(at_dict['_atom_site_fract_y'])
-        frac_z = ufloat(at_dict['_atom_site_fract_z'])
-        self.pos = dot([frac_x, frac_y, frac_z], cell)
+        frac_pos = [ufloat(at_dict['_atom_site_fract_x']),
+                    ufloat(at_dict['_atom_site_fract_y']),
+                    ufloat(at_dict['_atom_site_fract_z'])]
+        if symmetry is not None:
+            frac_pos = symmetry.trans_frac(frac_pos)
+        self.pos = dot(frac_pos, cell)
 
     def from_pdb(self, line):
         """Parse the ATOM line from a pdb file."""
@@ -1010,15 +1014,25 @@ class Guest(object):
 
 
 class Symmetry(object):
-    """Translate to symmetry equivalent positions."""
-    def __init__(self, line):
+    """Apply symmetry operations to atomic coordinates."""
+    def __init__(self, blob):
         """Read the operation from the argument."""
-        self.line = line
-        self.parse_line(line)
+        self.sym_ops = []
+        self.blob = blob
+        self.parse_blob()
+        self.cell = None
 
     def parse_line(self):
         """Interpret a symmetry line from a cif."""
-        sym_ops = [x.strip() for x in re.split('[,\s+]*', self.line) if x.strip()]
+        self.sym_ops = [x.strip().replace('/', '//') 
+                        for x in re.split('[,\s+]*', self.blob) if x.strip()]
+    
+    def trans_frac(self, pos):
+        """Apply symmetry operation to the supplied position."""
+        new_pos = [eval(sym_op.replace('x', str(pos[0]))
+                        .replace('y', str(pos[1]))
+                        .replace('z', str(pos[2]))) for sym_op in sym_ops]
+        return new_pos
 
 
 

@@ -1024,7 +1024,8 @@ class Symmetry(object):
 
     def parse_line(self):
         """Interpret a symmetry line from a cif."""
-        self.sym_ops = [x.strip().replace('/', '//') 
+        # convert integers to floats to avoid integer division
+        self.sym_ops = [re.sub('(\d+[^\.])', '\1.0', x.strip())
                         for x in re.split('[,\s+]*', self.blob) if x.strip()]
     
     def trans_frac(self, pos):

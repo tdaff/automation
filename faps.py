@@ -699,7 +699,8 @@ class Structure(object):
                   "%10i%10i%10i\n" % (levcfg, imcon, natoms)]
         config.extend(self.cell.to_vector_strings(scale=supercell))
         for idx, atom in enumerate(self.supercell(supercell)):
-            config.extend(["%-6s%10i\n" % (atom.type, idx),
+            # idx+1 for 1 based indexes in CONFIG
+            config.extend(["%-6s%10i\n" % (atom.type, idx+1),
                            "%20.12f%20.12f%20.12f\n" % tuple(atom.pos)])
 
         # FIELD

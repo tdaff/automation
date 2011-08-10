@@ -1022,17 +1022,18 @@ class Symmetry(object):
         self.parse_blob()
         self.cell = None
 
-    def parse_line(self):
+    def parse_blob(self):
         """Interpret a symmetry line from a cif."""
         # convert integers to floats to avoid integer division
-        self.sym_ops = [re.sub('(\d+[^\.])', '\1.0', x.strip())
-                        for x in re.split('[,\s+]*', self.blob) if x.strip()]
-    
+        self.sym_ops = [re.sub(r'([\d]+)', r'\1.0', x.strip())
+                        for x in re.split(',', self.blob) if x.strip()]
+
     def trans_frac(self, pos):
         """Apply symmetry operation to the supplied position."""
+        # TODO(tdaff): check for overlapping atoms?
         new_pos = [eval(sym_op.replace('x', str(pos[0]))
                         .replace('y', str(pos[1]))
-                        .replace('z', str(pos[2]))) for sym_op in sym_ops]
+                        .replace('z', str(pos[2]))) for sym_op in self.sym_ops]
         return new_pos
 
 

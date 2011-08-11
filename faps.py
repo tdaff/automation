@@ -509,7 +509,7 @@ class Structure(object):
         cif_file = filetemp.readlines()
         filetemp.close()
         cif_file = without_blanks(cif_file)
-        params = [None]*6
+        params = [None, None, None, None, None, None]
         atoms = []
         symmetry = []
         loops = []
@@ -566,7 +566,8 @@ class Structure(object):
             if '_symmetry_equiv_pos_as_xyz' in heads:
                 while body:
                     sym_dict = dict(zip(heads, body))
-                    symmetry.append(Symmetry(sym_dict['_symmetry_equiv_pos_as_xyz']))
+                    symmetry.append(
+                        Symmetry(sym_dict['_symmetry_equiv_pos_as_xyz']))
                     body = body[len(heads):]
 
         newatoms = []
@@ -702,7 +703,7 @@ class Structure(object):
         config.extend(self.cell.to_vector_strings(scale=supercell))
         for idx, atom in enumerate(self.supercell(supercell)):
             # idx+1 for 1 based indexes in CONFIG
-            config.extend(["%-6s%10i\n" % (atom.type, idx+1),
+            config.extend(["%-6s%10i\n" % (atom.type, idx + 1),
                            "%20.12f%20.12f%20.12f\n" % tuple(atom.pos)])
 
         # FIELD
@@ -809,6 +810,7 @@ class Structure(object):
     # TODO(tdaff): properties: volume, supercell, density, surface area
     # dft_energy, absorbance
 
+
 class Cell(object):
     """
     Crystollagraphic cell representations and interconversion methods.
@@ -827,7 +829,6 @@ class Cell(object):
 
     def from_pdb(self, line):
         """Extract cell from CRYST1 line in a pdb."""
-        # TODO: space groups?
         # Must use fixed widths as -ve numbers do not leave gaps to .split()
         self.params = (float(line[6:15]),
                        float(line[15:24]),
@@ -847,7 +848,7 @@ class Cell(object):
         out_format = 3 * fmt + "\n"
         if isinstance(scale, int):
             scale = [scale, scale, scale]
-            # else assume an iterable
+            # else assume an iterable 3-vector
         if bohr:
             scale = [x / BOHR2ANG for x in scale]
         return [out_format % tuple(scale[0] * self.cell[0]),
@@ -856,16 +857,15 @@ class Cell(object):
 
     def minimum_supercell(self, cutoff):
         """Calculate the smallest supercell with a half-cell width cutoff."""
-
         a_cross_b = cross(self.cell[0], self.cell[1])
         b_cross_c = cross(self.cell[1], self.cell[2])
         c_cross_a = cross(self.cell[2], self.cell[0])
 
         volume = dot(self.cell[0], b_cross_c)
 
-        widths = [volume/norm(b_cross_c),
-                  volume/norm(c_cross_a),
-                  volume/norm(a_cross_b)]
+        widths = [volume / norm(b_cross_c),
+                  volume / norm(c_cross_a),
+                  volume / norm(a_cross_b)]
 
         return tuple(int(ceil(2*cutoff/x)) for x in widths)
 
@@ -893,7 +893,7 @@ class Cell(object):
         return dot(self.cell[0], b_cross_c)
 
     def get_cell(self):
-        """Get the three vector cell representation."""
+        """Get the 3x3 vector cell representation."""
         return self._cell
     def set_cell(self, value):
         """Set cell and params from the cell representation."""
@@ -1082,7 +1082,6 @@ class Symmetry(object):
         return new_pos
 
 
-
 def mk_repeat(cube_name='REPEAT_ESP.cube', symmetry=False):
     """Standard REPEAT input file."""
     # TODO(tdaff): charged systems?
@@ -1199,16 +1198,17 @@ def mk_gcmc_control(options, guests):
     # Guest stuff
     if options.getbool('mc_probability_plot'):
         # We just comment out the probabilty plot lines if unneeded
-        probp = ""
+        prob_on = ""
     else:
-        probp = "# "
+        prob_on = "# "
     guest_count = 0
     for guest in guests:
         guest_count += 1
         control.append("&guest %i\n" % guest_count)
         control.append("  pressure (bar) %f\n" %
                        options.getfloat('mc_pressure'))
-        control.append("%s  probability %i\n" % (probp, len(guest.probability)))
+        control.append("%s  probability %i\n" %
+                       (prob_on, len(guest.probability)))
         for prob in guest.probability:
             control.append("%s  %i  " % (probp, len(prob)) +
                            "  ".join(["%i" % x for x in prob]) + "\n")
@@ -1317,6 +1317,7 @@ def move_and_overwrite(src, dest):
             raise OSError("%s is not a folder or file" % dest)
     else:
         shutil.move(src, dest)
+
 
 def ufloat(text):
     """Convert string to float, ignoring the uncertainty part."""

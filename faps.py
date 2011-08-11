@@ -447,6 +447,7 @@ class Structure(object):
         self.esp = None
         self.dft_energy = 0.0
         self.guests = []
+        self.properties = {}
 
     def from_file(self, basename, filetype):
         """Select the correct file parser."""
@@ -551,7 +552,7 @@ class Structure(object):
 
         # cell first
         if np.all(params):
-            self.cell.from_params(params)
+            self.cell.params = params
         else:
             err("No cell or incomplete cell found in cif file")
 
@@ -686,6 +687,7 @@ class Structure(object):
             warn("Simulation is using a very small cutoff! I hope you "
                  "know, what you are doing!")
         minimum_supercell = self.cell.minimum_supercell(config_cutoff)
+        self.gcmc_supercell = minimum_supercell
         supercell = tuple(max(i, j)
                           for i, j in zip(config_supercell, minimum_supercell))
         info("%s supercell requested in config" % str(config_supercell))
@@ -693,7 +695,7 @@ class Structure(object):
              (str(minimum_supercell), config_cutoff))
         info("Constructing %s supercell for gcmc." % str(supercell))
         levcfg = 0  # always
-        imcon = self.cell.imcon()
+        imcon = self.cell.imcon
         natoms = len(self.atoms) * prod(supercell)
         config = ["%s\n" % self.name[:80],
                   "%10i%10i%10i\n" % (levcfg, imcon, natoms)]
@@ -772,41 +774,56 @@ class Structure(object):
                         newatom.translate(offset)
                         yield newatom
 
-    def types(self):
-        """Ordered list of atom types."""
-        return [atom.type for atom in self.atoms]
-
     def order_by_types(self):
         """Sort the atoms alphabetically and group them."""
         self.atoms.sort(key=lambda x: (x.type, x.site))
         # TODO(tdaff): different for molecules
 
+    @property
+    def types(self):
+        """Ordered list of atom types."""
+        return [atom.type for atom in self.atoms]
+
+    @property
+    def weight(self):
+        """Unit cell weight."""
+        return sum([atom.mass for atom in self.atoms])
+
+    @property
+    def volume(self):
+        """Unite cell volume."""
+        return self.cell.volume
+
+    def get_supercell(self):
+        """Supercell used for gcmc."""
+        if 'supercell' in self.properties:
+            return self.properties['supercell']
+        else:
+            return None
+
+    def set_supercell(self, value):
+        """Set the supercell property for the structure."""
+        self.properties['supercell'] = value
+
+    gcmc_supercell = property(get_supercell, set_supercell)
+    # TODO(tdaff): properties: volume, supercell, density, surface area
+    # dft_energy, absorbance
 
 class Cell(object):
     """
     Crystollagraphic cell representations and interconversion methods.
 
-    To ensure that cell and params are consistent, each format should use a
-    setter method [ick] that calls the private interconversion methods.
+    Setter methods can be defined for different file types, however
+    .cell and .params will be self-consistent if set directly.
 
     """
 
     def __init__(self):
         """Default to a 1A cubic box."""
-        self.cell = array([[1.0, 0.0, 0.0],
-                           [0.0, 1.0, 0.0],
-                           [0.0, 0.0, 1.0]])
-        self.params = (1.0, 1.0, 1.0, 90.0, 90.0, 90.0)
-
-    def from_params(self, params):
-        """Set the params and update the cell representation."""
-        self.params = params
-        self._mkcell()
-
-    def from_cell(self, cell):
-        """Set the params and update the cell representation."""
-        self.cell = array(cell)
-        self._mkparam()
+        self._cell = array([[1.0, 0.0, 0.0],
+                            [0.0, 1.0, 0.0],
+                            [0.0, 0.0, 1.0]])
+        self._params = (1.0, 1.0, 1.0, 90.0, 90.0, 90.0)
 
     def from_pdb(self, line):
         """Extract cell from CRYST1 line in a pdb."""
@@ -818,38 +835,12 @@ class Cell(object):
                        float(line[33:40]),
                        float(line[40:47]),
                        float(line[47:54]))
-        self._mkcell()
 
     def from_vasp(self, lines, scale=1.0):
         """Extract cell from a POSCAR cell representation."""
         self.cell = array([[float(x) * scale for x in lines[0].split()],
                            [float(x) * scale for x in lines[1].split()],
                            [float(x) * scale for x in lines[2].split()]])
-        self._mkparam()
-
-    def _mkcell(self):
-        """Update the cell representation to match the parameters."""
-        a_mag, b_mag, c_mag = self.params[:3]
-        alpha, beta, gamma = [x * DEG2RAD for x in self.params[3:]]
-        a_vec = array([a_mag, 0.0, 0.0])
-        b_vec = array([b_mag * cos(gamma), b_mag * sin(gamma), 0.0])
-        c_x = c_mag * cos(beta)
-        c_y = c_mag * (cos(alpha) - cos(gamma) * cos(beta)) / sin(gamma)
-        c_vec = array([c_x, c_y, (c_mag**2 - c_x**2 - c_y**2)**0.5])
-        self.cell = array([a_vec, b_vec, c_vec])
-
-    def _mkparam(self):
-        """Update the parameters to match the cell."""
-        cell_a = sqrt(sum(x**2 for x in self.cell[0]))
-        cell_b = sqrt(sum(x**2 for x in self.cell[1]))
-        cell_c = sqrt(sum(x**2 for x in self.cell[2]))
-        alpha = arccos(sum(self.cell[1, :] * self.cell[2, :]) /
-                       (cell_b * cell_c)) * 180 / pi
-        beta = arccos(sum(self.cell[0, :] * self.cell[2, :]) /
-                      (cell_a * cell_c)) * 180 / pi
-        gamma = arccos(sum(self.cell[0, :] * self.cell[1, :]) /
-                       (cell_a * cell_b)) * 180 / pi
-        self.params = (cell_a, cell_b, cell_c, alpha, beta, gamma)
 
     def to_vector_strings(self, scale=1, bohr=False, fmt="%20.12f"):
         """Generic [Super]cell vectors in Angstrom as a list of strings."""
@@ -862,22 +853,6 @@ class Cell(object):
         return [out_format % tuple(scale[0] * self.cell[0]),
                 out_format % tuple(scale[1] * self.cell[1]),
                 out_format % tuple(scale[2] * self.cell[2])]
-
-    def imcon(self):
-        """Guess cell shape and return DL_POLY imcon key."""
-        if np.all(self.cell == 0):
-            # no PBC
-            return 0
-        elif np.all(self.params[3:] == 90):
-            if self.params[0] == self.params[1] == self.params[2]:
-                # cubic
-                return 1
-            else:
-                # orthorhombic
-                return 2
-        else:
-            # parallelepiped
-            return 3
 
     def minimum_supercell(self, cutoff):
         """Calculate the smallest supercell with a half-cell width cutoff."""
@@ -893,6 +868,75 @@ class Cell(object):
                   volume/norm(a_cross_b)]
 
         return tuple(int(ceil(2*cutoff/x)) for x in widths)
+
+    @property
+    def imcon(self):
+        """Guess cell shape and return DL_POLY imcon key."""
+        keys = {'none': 0,
+                'cubic': 1,
+                'orthorhombic': 2,
+                'parallelepiped': 3}
+        if np.all(self.cell == 0):
+            return keys['none']
+        elif np.all(self.params[3:] == 90):
+            if self.params[0] == self.params[1] == self.params[2]:
+                return keys['cubic']
+            else:
+                return keys['orthorhombic']
+        else:
+            return keys['parallelepiped']
+
+    @property
+    def volume(self):
+        """Calculate cell volume a.bxc."""
+        b_cross_c = cross(self.cell[1], self.cell[2])
+        return dot(self.cell[0], b_cross_c)
+
+    def get_cell(self):
+        """Get the three vector cell representation."""
+        return self._cell
+    def set_cell(self, value):
+        """Set cell and params from the cell representation."""
+        self._cell = value
+        self.__mkparam()
+    # Property so that params are updated simultaneously
+    cell = property(get_cell, set_cell)
+
+    def get_params(self):
+        """Get the six parameter cell representation."""
+        return self._params
+    def set_params(self, value):
+        """Set cell and params from the cell parameters."""
+        self._params = value
+        self.__mkcell()
+    # Property so that cell is updated simultaneously
+    params = property(get_params, set_params)
+
+    # Implementation details -- directly access the private _{cell|param}
+    # attributes; please don't break.
+    def __mkcell(self):
+        """Update the cell representation to match the parameters."""
+        a_mag, b_mag, c_mag = self.params[:3]
+        alpha, beta, gamma = [x * DEG2RAD for x in self.params[3:]]
+        a_vec = array([a_mag, 0.0, 0.0])
+        b_vec = array([b_mag * cos(gamma), b_mag * sin(gamma), 0.0])
+        c_x = c_mag * cos(beta)
+        c_y = c_mag * (cos(alpha) - cos(gamma) * cos(beta)) / sin(gamma)
+        c_vec = array([c_x, c_y, (c_mag**2 - c_x**2 - c_y**2)**0.5])
+        self._cell = array([a_vec, b_vec, c_vec])
+
+    def __mkparam(self):
+        """Update the parameters to match the cell."""
+        cell_a = sqrt(sum(x**2 for x in self.cell[0]))
+        cell_b = sqrt(sum(x**2 for x in self.cell[1]))
+        cell_c = sqrt(sum(x**2 for x in self.cell[2]))
+        alpha = arccos(sum(self.cell[1, :] * self.cell[2, :]) /
+                       (cell_b * cell_c)) * 180 / pi
+        beta = arccos(sum(self.cell[0, :] * self.cell[2, :]) /
+                      (cell_a * cell_c)) * 180 / pi
+        gamma = arccos(sum(self.cell[0, :] * self.cell[1, :]) /
+                       (cell_a * cell_b)) * 180 / pi
+        self._params = (cell_a, cell_b, cell_c, alpha, beta, gamma)
 
 
 class Atom(object):

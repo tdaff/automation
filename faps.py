@@ -762,6 +762,18 @@ class Structure(object):
 
         return config, field
 
+    def fastmc_postproc(self, filename):
+        """Update structure properties from gcmc OUTPUT."""
+        # TODO(tdaff) multiple guests
+        filetemp = open(filename)
+        output = filetemp.readlines()
+        filetemp.close()
+
+        for line in output:
+            pass
+        prod(supercell)
+
+
     def supercell(self, scale):
         """Iterate over all the atoms of supercell."""
         if isinstance(scale, int):

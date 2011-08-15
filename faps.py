@@ -1010,19 +1010,22 @@ class Atom(object):
 
 class Guest(object):
     """Guest molecule and properties."""
-    def __init__(self, ident):
-        self.ident = ident
+    def __init__(self, ident=None):
+        """Populate an empty guest then load from library if required."""
+        self.ident = ''
         self.name = "Unknown guest"
         self.potentials = {}
         self.probability = []
-        self.raw_guest = {}
         self.atoms = []
         self.source = "Unknown source"
-        self._find_guest()
-        self._parse_guest()
+        # only load if asked, set the ident in the loader
+        if ident:
+            self.load_guest(ident)
 
-    def _find_guest(self):
+    def load_guest(self, ident):
         """Look in guests.lib in submit directory and default."""
+        # Must be updated here
+        self.ident = ident
         # Need the different directories
         job_dir = os.getcwd()
         if __name__ != '__main__':
@@ -1034,28 +1037,31 @@ class Guest(object):
         # Try and find guest in guests.lib
         job_guests.read(os.path.join(job_dir, 'guests.lib'))
         lib_guests.read(os.path.join(script_dir, 'guests.lib'))
-        if job_guests.has_section(self.ident):
-            debug("%s found in job dir" % self.ident)
-            self.raw_guest = job_guests.items(self.ident)
-        elif lib_guests.has_section(self.ident):
-            debug("%s found in library" % self.ident)
-            self.raw_guest = lib_guests.items(self.ident)
+        if job_guests.has_section(ident):
+            debug("%s found in job dir" % ident)
+            self._parse_guest(job_guests.items(ident))
+        elif lib_guests.has_section(ident):
+            debug("%s found in library" % ident)
+            self._parse_guest(lib_guests.items(ident))
         else:
-            err("Guest not found: %s" % self.ident)
+            err("Guest not found: %s" % ident)
 
-    def _parse_guest(self):
+    def _parse_guest(self, raw_text):
         """Set attributes according to the raw input."""
-        for key, val in self.raw_guest:
+        for key, val in raw_text:
             if key == 'atoms':
+                # Build a local list to replace what is there
+                new_atoms = []
                 # Only use non blank lines
                 atoms = [x.strip() for x in val.splitlines() if x.strip()]
                 for atom in atoms:
                     atom = atom.split()
-                    self.atoms.append(Atom(
+                    new_atoms.append(Atom(
                         type=atom[0],
                         mass=float(atom[1]),
                         charge=float(atom[2]),
                         pos=tuple(float(x) for x in atom[3:6])))
+                self.atoms = new_atoms
             elif key == 'potentials':
                 potens = [x.strip() for x in val.splitlines() if x.strip()]
                 for poten in potens:
@@ -1068,6 +1074,18 @@ class Guest(object):
                                     for x in prob]
             else:
                 setattr(self, key, val)
+
+    # Simple attribute-like calculations
+    @property
+    def types(self):
+        """Ordered list of atom types."""
+        return [atom.type for atom in self.atoms]
+
+    @property
+    def weight(self):
+        """Unit cell weight."""
+        return sum([atom.mass for atom in self.atoms])
+
 
 
 class Symmetry(object):
@@ -1222,7 +1240,7 @@ def mk_gcmc_control(options, guests):
         control.append("%s  probability %i\n" %
                        (prob_on, len(guest.probability)))
         for prob in guest.probability:
-            control.append("%s  %i  " % (probp, len(prob)) +
+            control.append("%s  %i  " % (prob_on, len(prob)) +
                            "  ".join(["%i" % x for x in prob]) + "\n")
         control.append("&end\n")
 

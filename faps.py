@@ -782,10 +782,10 @@ class Structure(object):
         output = filetemp.readlines()
         filetemp.close()
 
-        supercell_mult = prod(self.supercell)
+        supercell_mult = prod(self.gcmc_supercell)
         for idx, line in enumerate(output):
             if line.startswith('   final stats'):
-                guest_id = int(line.split()[4])
+                guest_id = int(line.split()[4]) - 1
                 self.guests[guest_id].uptake = float(output[idx + 3].split()[-1])/supercell_mult
                 self.guests[guest_id].hoa = float(output[idx + 7].split()[-1])
 
@@ -1100,7 +1100,7 @@ class Guest(object):
     def weight(self):
         """Unit cell weight."""
         return sum([atom.mass for atom in self.atoms])
-
+    #TODO(tdaff): density? specific volume?
 
 
 class Symmetry(object):

@@ -508,7 +508,7 @@ class Structure(object):
         filetemp = open(filename)
         cif_file = filetemp.readlines()
         filetemp.close()
-        cif_file = without_blanks(cif_file)
+        cif_file = strip_blanks(cif_file)
         params = [None, None, None, None, None, None]
         atoms = []
         symmetry = []
@@ -1024,7 +1024,7 @@ class Guest(object):
 
     def load_guest(self, ident):
         """Look in guests.lib in submit directory and default."""
-        # Must be updated here
+        # Ident set here to keep consistent
         self.ident = ident
         # Need the different directories
         job_dir = os.getcwd()
@@ -1053,9 +1053,10 @@ class Guest(object):
                 # Build a local list to replace what is there
                 new_atoms = []
                 # Only use non blank lines
-                atoms = [x.strip() for x in val.splitlines() if x.strip()]
+                atoms = strip_blanks(val.splitlines())
                 for atom in atoms:
                     atom = atom.split()
+#FIXME(tdaff): type vs at_type!!!
                     new_atoms.append(Atom(
                         type=atom[0],
                         mass=float(atom[1]),
@@ -1063,16 +1064,18 @@ class Guest(object):
                         pos=tuple(float(x) for x in atom[3:6])))
                 self.atoms = new_atoms
             elif key == 'potentials':
-                potens = [x.strip() for x in val.splitlines() if x.strip()]
+                potens = strip_blanks(val.splitlines())
                 for poten in potens:
                     poten = poten.split()
                     self.potentials[poten[0]] = tuple(float(x)
                                                       for x in poten[1:])
             elif key == 'probability':
-                prob = [x.strip() for x in val.splitlines() if x.strip()]
+                prob = strip_blanks(val.splitlines())
                 self.probability = [tuple(int(y) for y in x.split())
                                     for x in prob]
             else:
+                # Arbitrary attributes can be set
+                # Might also enable breakage
                 setattr(self, key, val)
 
     # Simple attribute-like calculations
@@ -1354,7 +1357,7 @@ def ufloat(text):
     return float(re.sub('\(.*\)', '', text))
 
 
-def without_blanks(lines):
+def strip_blanks(lines):
     """Strip lines and remove blank lines."""
     return [line.strip() for line in lines if line.strip() != '']
 

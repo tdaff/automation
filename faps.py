@@ -181,6 +181,7 @@ class PyNiss(object):
                 if not new_state or new_state == 'C':
                     info("Queue reports GCMC simulation has finished")
                     # Read in GCMC data
+                    self.structure.update_gcmc(self.options.get('mc_code'))
                     self.state['gcmc'] = (UPDATED, False)
                     self.dump_state()
                 else:
@@ -370,9 +371,6 @@ class PyNiss(object):
                 warn("Job failed?")
         os.chdir(self.options.get('job_dir'))
 
-    def run_cpmd(self):
-        pass
-
     def run_fastmc(self):
         """Submit a fastmc job to the queue."""
         job_name = self.options.get('job_name')
@@ -470,6 +468,8 @@ class Structure(object):
                            update=True)
         elif opt_code == 'cpmd':
             self.from_cpmd(update=True)
+        else:
+            err("Unknown potions to import %s" % opt_code)
 
     def update_charges(self, charge_method):
         """Select the method for updating charges."""
@@ -478,6 +478,19 @@ class Structure(object):
             info("Updating charges from repeat")
             self.charges_from_repeat(
                 os.path.join(charge_path, self.name + '.esp_fit.out'))
+        else:
+            err("Unknown charge method to import %s" % charge_method)
+
+    def update_gcmc(self, gcmc_code):
+        """Select the source for GCMC results and import."""
+        gcmc_path = os.path.join('faps_%s_%s' % (self.name, gcmc_code))
+        if gcmc_code == 'fastmc':
+            info("Importing results from FastGCMC")
+            self.fastmc_postproc(
+                os.path.join(gcmc_path, 'OUTPUT'))
+        else:
+            err("Unknown gcmc method to import %s" % gcmc_code)
+
 
     def from_pdb(self, filename):
         """Read an initial structure from a pdb file."""
@@ -688,9 +701,9 @@ class Structure(object):
             warn("Simulation is using a very small cutoff! I hope you "
                  "know, what you are doing!")
         minimum_supercell = self.cell.minimum_supercell(config_cutoff)
-        self.gcmc_supercell = minimum_supercell
         supercell = tuple(max(i, j)
                           for i, j in zip(config_supercell, minimum_supercell))
+        self.gcmc_supercell = supercell
         info("%s supercell requested in config" % str(config_supercell))
         info("%s minimum supercell for a %.1f cutoff" %
              (str(minimum_supercell), config_cutoff))
@@ -769,9 +782,12 @@ class Structure(object):
         output = filetemp.readlines()
         filetemp.close()
 
-        for line in output:
-            pass
-        prod(supercell)
+        supercell_mult = prod(self.supercell)
+        for idx, line in enumerate(output):
+            if line.startswith('   final stats'):
+                guest_id = int(line.split()[4])
+                self.guests[guest_id].uptake = float(output[idx + 3].split()[-1])/supercell_mult
+                self.guests[guest_id].hoa = float(output[idx + 7].split()[-1])
 
 
     def supercell(self, scale):
@@ -807,18 +823,15 @@ class Structure(object):
         """Unite cell volume."""
         return self.cell.volume
 
-    def get_supercell(self):
+    def get_gcmc_supercell(self):
         """Supercell used for gcmc."""
-        if 'supercell' in self.properties:
-            return self.properties['supercell']
-        else:
-            return None
+        return self.properties.get('supercell', (1, 1, 1))
 
-    def set_supercell(self, value):
+    def set_gcmc_supercell(self, value):
         """Set the supercell property for the structure."""
         self.properties['supercell'] = value
 
-    gcmc_supercell = property(get_supercell, set_supercell)
+    gcmc_supercell = property(get_gcmc_supercell, set_gcmc_supercell)
     # TODO(tdaff): properties: volume, supercell, density, surface area
     # dft_energy, absorbance
 
@@ -850,7 +863,7 @@ class Cell(object):
                        float(line[47:54]))
 
     def from_vasp(self, lines, scale=1.0):
-        """Extract cell from a POSCAR cell representation."""
+        """Extract cell from a 3-line POSCAR cell representation."""
         self.cell = array([[float(x) * scale for x in lines[0].split()],
                            [float(x) * scale for x in lines[1].split()],
                            [float(x) * scale for x in lines[2].split()]])
@@ -911,7 +924,7 @@ class Cell(object):
         """Set cell and params from the cell representation."""
         self._cell = value
         self.__mkparam()
-    # Property so that params are updated simultaneously
+    # Property so that params are updated when cell is set
     cell = property(get_cell, set_cell)
 
     def get_params(self):
@@ -921,7 +934,7 @@ class Cell(object):
         """Set cell and params from the cell parameters."""
         self._params = value
         self.__mkcell()
-    # Property so that cell is updated simultaneously
+    # Property so that cell is updated when params are set
     params = property(get_params, set_params)
 
     # Implementation details -- directly access the private _{cell|param}
@@ -952,7 +965,7 @@ class Cell(object):
 
 
 class Atom(object):
-    """Base atom type."""
+    """Base atom object."""
 
     def __init__(self, at_type=False, pos=False, **kwargs):
         """Accept arbritary kwargs as attributes."""
@@ -1056,9 +1069,8 @@ class Guest(object):
                 atoms = strip_blanks(val.splitlines())
                 for atom in atoms:
                     atom = atom.split()
-#FIXME(tdaff): type vs at_type!!!
                     new_atoms.append(Atom(
-                        type=atom[0],
+                        at_type=atom[0],
                         mass=float(atom[1]),
                         charge=float(atom[2]),
                         pos=tuple(float(x) for x in atom[3:6])))
@@ -1285,6 +1297,7 @@ def jobcheck(jobid):
         print("Failed to get job information.")
 
 
+# Functions for logging
 def debug(msg):
     """Send DEBUGging to the logging handlers."""
     msg = textwrap.wrap(msg)
@@ -1314,6 +1327,7 @@ def err(msg):
     # TODO(tdaff): should we quit here?
 
 
+# General utility functions
 def mkdirs(directory):
     """Create a directory if it does not exist."""
     if not os.path.exists(directory):

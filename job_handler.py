@@ -9,7 +9,7 @@ are running on.
 
 import os
 import getpass
-from subprocess import Popen, PIPE, STDOUT
+from subprocess import Popen, PIPE
 
 
 class JobHandler(object):
@@ -49,6 +49,51 @@ class JobHandler(object):
                 return status
         else:
             print("Failed to get job information.")  # qstat parsing failed?
+
+
+def _orca_generic(job_name, options, nodes=1):
+    """Simple interface to the 'sqsub' submission on sharcnet"""
+    # TODO(tdaff): self-resubmission?
+    # sqsub -q DR_20293 -f mpi -n 48 -o std.out -j hmof-589 -r 6h --mpp=4g ~/bin/vasp-5.2.11-sequential
+    sqsub_args = ['sqsub']
+    # Dedicated queue
+    sqsub_args.extend(['-q', 'DR_20293'])
+    # job_name
+    sqsub_args.extend(['-j', 'faps-%s' % job_name])
+    # Is it a multiple CPU job?
+    if nodes > 1:
+        # Ensure mpi is enebaled
+        sqsub_args.extend(['-f', 'mpi'])
+        # request nodes
+        sqsub_args.extend(['-n', '%i' % nodes])
+    # run-time estimate mandatory job type default?
+    sqsub_args.extend(['-r', '6h'])
+    # do we need
+
+    # Output
+    # --waitfor=prev_job
+    # "submitted as jobid 364409"
+
+
+    submit = Popen("qsub", shell=False, stdin=PIPE, stdout=PIPE)
+    for line in submit.stdout.readlines():
+        if 'submitted as' in line:
+            jobid = int(line.split()[-1])
+            break
+    else:
+        print("Job submission failed?")
+
+    return jobid
+
+
+def _orca_postrun(jobid):
+    pbs_directives = ["#PBS -N fap-%s" % job_name,
+                      "#PBS -m n",
+                      "#PBS -o std.out",
+                      "#PBS -j oe ",
+                      "#PBS "
+                      "cd $PBS_O_WORKDIR",
+                      "python faps.py"]
 
 
 def _wooki_generic(job_name, nodes=1, attributes=None):
@@ -293,3 +338,13 @@ def _wooki_generic(job_name, nodes=1, attributes=None):
     line = "\n".join(pbs_directives) + "\n" + line
     submit = Popen("qsub", shell=False, stdin=PIPE)
     submit.communicate(input=line)
+
+
+def _wooki_postrun(jobid):
+    pbs_directives = ["#PBS -N fap-%s" % job_name,
+                      "#PBS -m n",
+                      "#PBS -o std.out",
+                      "#PBS -j oe ",
+                      "#PBS "
+                      "cd $PBS_O_WORKDIR",
+                      "python faps.py"]

@@ -678,12 +678,14 @@ class Structure(object):
             fix_all = 'F'
 
         # assume atoms are ordered
+        # Atom lines differ from vasp to ensure spaces between numbers
+        # with <-10 values
         for atom in self.atoms:
             if atom.type == "H":
-                poscar.append("%20.16f%20.16f%20.16f" % tuple(atom.pos) +
+                poscar.append("%20.15f %19.15f %19.15f" % tuple(atom.pos) +
                               "%4s%4s%4s\n" % (fix_h, fix_h, fix_h))
             else:
-                poscar.append("%20.16f%20.16f%20.16f" % tuple(atom.pos) +
+                poscar.append("%20.15f %19.15f %19.15f" % tuple(atom.pos) +
                               "%4s%4s%4s\n" % (fix_all, fix_all, fix_all))
         return poscar
 

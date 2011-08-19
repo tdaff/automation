@@ -1,5 +1,5 @@
 """
-Job handlers
+Job handler
 
 Machine specific job submission and tracking routines. Implements the
 JobHandler class which should be initialized to the machine the calculations
@@ -14,7 +14,7 @@ from subprocess import Popen, PIPE
 
 class JobHandler(object):
     """
-    Abstraction of the different submission routines management and scripting.
+    Abstraction of batch scheduler submission.
 
     """
     #TODO(tdaff): remember to re-run the script once job is finished!
@@ -51,10 +51,18 @@ class JobHandler(object):
             print("Failed to get job information.")  # qstat parsing failed?
 
 
-def _orca_generic(job_name, options, nodes=1):
+def _orca_submit(job_type, options):
     """Simple interface to the 'sqsub' submission on sharcnet"""
     # TODO(tdaff): self-resubmission?
     # sqsub -q DR_20293 -f mpi -n 48 -o std.out -j hmof-589 -r 6h --mpp=4g ~/bin/vasp-5.2.11-sequential
+    # Bind some things locally, so we know what's going on
+    job_name = options.get('job_name')
+    exe = options.get('%s_exe' % job_type)
+    try:
+        nodes = options.getint('%s_ncpu' % job_type)
+    except AttributeError:
+        nodes = 1
+
     sqsub_args = ['sqsub']
     # Dedicated queue
     sqsub_args.extend(['-q', 'DR_20293'])
@@ -68,12 +76,10 @@ def _orca_generic(job_name, options, nodes=1):
         sqsub_args.extend(['-n', '%i' % nodes])
     # run-time estimate mandatory job type default?
     sqsub_args.extend(['-r', '6h'])
-    # do we need
-
     # Output
-    # --waitfor=prev_job
-    # "submitted as jobid 364409"
-
+    sqsub_args.extend(['-o', 'faps-%s.out' % job_name])
+    # Which command?
+    sqsub_args.extend([exe])
 
     submit = Popen("qsub", shell=False, stdin=PIPE, stdout=PIPE)
     for line in submit.stdout.readlines():
@@ -82,11 +88,16 @@ def _orca_generic(job_name, options, nodes=1):
             break
     else:
         print("Job submission failed?")
+    if options.getbool('run_all'):
+        pass
 
     return jobid
 
 
 def _orca_postrun(jobid):
+    # --waitfor=prev_job
+
+    sqsub_args = ['sqsub', '-q', 'DR_20293', '-r', '10m', '-o', 'faps-%i.out' % jobid] + sys.argv
     pbs_directives = ["#PBS -N fap-%s" % job_name,
                       "#PBS -m n",
                       "#PBS -o std.out",

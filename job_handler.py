@@ -9,6 +9,7 @@ are running on from the provided options.
 
 import os
 import getpass
+import sys
 from subprocess import Popen, PIPE, STDOUT
 
 
@@ -27,6 +28,7 @@ class JobHandler(object):
             self.jobcheck = self.wooki_jobcheck
         elif self.queue == 'sharcnet':
             self.submit = _sharcnet_submit
+            self.postrun = _sharcnet_postrun
             self.jobcheck = _sharcnet_jobcheck
         else:
             self.submit = self._pbs_submit
@@ -91,8 +93,6 @@ def _sharcnet_submit(job_type, options):
             break
     else:
         print("Job submission failed?")
-    if options.getbool('run_all'):
-        _sharcnet_postrun(jobid)
 
     return jobid
 
@@ -106,6 +106,7 @@ def _sharcnet_postrun(waitfor_jobid):
         '-o', 'faps-post.out',
         '--waitfor=%s' % waitfor_jobid,
         ] + sys.argv
+
     submit = Popen(sqsub_args, stdout=PIPE, stderr=STDOUT)
 
 

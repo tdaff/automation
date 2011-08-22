@@ -106,7 +106,7 @@ class PyNiss(object):
         """
 
         # In case options have changed, re-intitialize
-        self.job_handler = JobHandler(options)
+        self.job_handler = JobHandler(self.options)
 
         if 'status' in self.options.args:
             self.status(initial=True)
@@ -312,7 +312,7 @@ class PyNiss(object):
             info("Vasp input files generated; skipping job submission")
             self.state['dft'] = (SKIPPED, False)
         else:
-            self.job_handler.submit('dft_code', self.options)
+            jobid = self.job_handler.submit(dft_code, self.options)
             # FIXME(tdaff): wooki specific at the moment
 #            vasp_args = ["vaspsubmit-beta", job_name, "%i" % nproc]
 #            submit = subprocess.Popen(vasp_args, stdout=subprocess.PIPE)
@@ -324,6 +324,9 @@ class PyNiss(object):
 #                    break
 #            else:
 #                warn("Job failed?")
+            if self.options.getbool('run_all'):
+                os.chdir(self.options.get('job_dir'))
+                self.job_handler.postrun(jobid)
         # Tidy up at the end
         os.chdir(self.options.get('job_dir'))
 
@@ -335,7 +338,8 @@ class PyNiss(object):
                                'faps_%s_%s' % (job_name, esp_src))
         os.chdir(src_dir)
         if esp_src == 'vasp':
-            os.chdir(job_name + ".restart_DIR")
+            if self.options.get('queue') == 'wooki':
+                os.chdir(job_name + ".restart_DIR")
             esp2cube_args = shlex.split(self.options.get('vasp2cube'))
             info("Converting esp to cube, this might take a minute...")
             submit = subprocess.Popen(esp2cube_args)
@@ -372,6 +376,9 @@ class PyNiss(object):
                          % jobid)
                     self.state['charges'] = (RUNNING, jobid)
                     break
+            if self.options.getbool('run_all'):
+                os.chdir(self.options.get('job_dir'))
+                self.job_handler.postrun(jobid)
             else:
                 warn("Job failed?")
         os.chdir(self.options.get('job_dir'))

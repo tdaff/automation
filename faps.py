@@ -794,7 +794,7 @@ class Structure(object):
 
     def supercell(self, scale):
         """Iterate over all the atoms of supercell."""
-        if isinstance(scale, int):
+        if isinstance(scale, (int, long)):
             scale = (scale, scale, scale)
         for x_super in range(scale[0]):
             for y_super in range(scale[1]):
@@ -873,7 +873,7 @@ class Cell(object):
     def to_vector_strings(self, scale=1, bohr=False, fmt="%20.12f"):
         """Generic [Super]cell vectors in Angstrom as a list of strings."""
         out_format = 3 * fmt + "\n"
-        if isinstance(scale, int):
+        if isinstance(scale, (int, long)):
             scale = [scale, scale, scale]
             # else assume an iterable 3-vector
         if bohr:

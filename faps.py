@@ -34,6 +34,7 @@ from numpy.linalg import norm
 
 from config import Options
 from elements import WEIGHT, UFF, VASP_PSEUDO_PREF
+from job_handler import JobHandler
 from logo import LOGO
 
 # Global constants
@@ -73,6 +74,7 @@ class PyNiss(object):
                       'esp': (NOT_RUN, False),
                       'charges': (NOT_RUN, False),
                       'gcmc': (NOT_RUN, False)}
+        self.job_handler = JobHandler(options)
 
     def dump_state(self):
         """Write the .niss file holding the current system state."""
@@ -102,6 +104,9 @@ class PyNiss(object):
         in an automated run. Drop to interactive mode, if requested.
 
         """
+
+        # In case options have changed, re-intitialize
+        self.job_handler = JobHandler(options)
 
         if 'status' in self.options.args:
             self.status(initial=True)
@@ -146,7 +151,6 @@ class PyNiss(object):
 
         if self.state['dft'][0] == NOT_RUN or 'dft' in self.options.args:
             self.run_dft()
-            #info("Running optimizaton/dft step")
             self.dump_state()
             terminate(0)
 
@@ -308,17 +312,18 @@ class PyNiss(object):
             info("Vasp input files generated; skipping job submission")
             self.state['dft'] = (SKIPPED, False)
         else:
+            self.job_handler.submit('dft_code', self.options)
             # FIXME(tdaff): wooki specific at the moment
-            vasp_args = ["vaspsubmit-beta", job_name, "%i" % nproc]
-            submit = subprocess.Popen(vasp_args, stdout=subprocess.PIPE)
-            for line in submit.stdout.readlines():
-                if "wooki" in line:
-                    jobid = line.split(".")[0]
-                    info("Running VASP job in queue. Jobid: %s" % jobid)
-                    self.state['dft'] = (RUNNING, jobid)
-                    break
-            else:
-                warn("Job failed?")
+#            vasp_args = ["vaspsubmit-beta", job_name, "%i" % nproc]
+#            submit = subprocess.Popen(vasp_args, stdout=subprocess.PIPE)
+#            for line in submit.stdout.readlines():
+#                if "wooki" in line:
+#                    jobid = line.split(".")[0]
+#                    info("Running VASP job in queue. Jobid: %s" % jobid)
+#                    self.state['dft'] = (RUNNING, jobid)
+#                    break
+#            else:
+#                warn("Job failed?")
         # Tidy up at the end
         os.chdir(self.options.get('job_dir'))
 
@@ -1285,8 +1290,8 @@ def lorentz_berthelot(left, right):
 
 def jobcheck(jobid):
     """Get job status."""
-    jobid = "%s" % jobid
-    qstat = subprocess.Popen(['qstat', '%s' % jobid], stdout=subprocess.PIPE,
+    jobid = ("%s" % jobid).strip()
+    qstat = subprocess.Popen(['qstat', jobid], stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT)
     for line in qstat.stdout.readlines():
         debug(line)

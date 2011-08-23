@@ -81,6 +81,8 @@ def _sharcnet_submit(job_type, options):
         sqsub_args.extend(['-n', '%i' % nodes])
     # run-time estimate mandatory job type default?
     sqsub_args.extend(['-r', '6h'])
+    # Memory might need increasing
+    sqsub_args.extend(['--mpp=4g'])
     # Output
     sqsub_args.extend(['-o', 'faps-%s.out' % job_name])
     # Which command?

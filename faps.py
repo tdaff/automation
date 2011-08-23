@@ -137,8 +137,8 @@ class PyNiss(object):
                 warn("Job might fail if you need the ESP")
                 self.state['dft'] = (SKIPPED, False)
             elif self.state['dft'][0] == RUNNING:
-                new_state = jobcheck(self.state['dft'][1])
-                if not new_state or new_state == 'C':
+                job_state = self.job_handler.jobcheck(self.state['dft'][1])
+                if not job_state:
                     info("Queue reports DFT step has finished")
                     # Finished running update positions
                     self.structure.update_pos(self.options.get('dft_code'))
@@ -159,8 +159,8 @@ class PyNiss(object):
                 info("Skipping charge calculation")
                 self.state['charges'] = (SKIPPED, False)
             elif self.state['charges'][0] == RUNNING:
-                new_state = jobcheck(self.state['charges'][1])
-                if not new_state or new_state == 'C':
+                job_state = self.job_handler.jobcheck(self.state['charges'][1])
+                if not job_state:
                     info("Queue reports charge calculation has finished")
                     self.structure.update_charges(
                         self.options.get('charge_method'))
@@ -181,8 +181,8 @@ class PyNiss(object):
                 info("Skipping GCMC simulation")
                 self.state['gcmc'] = (UPDATED, False)
             elif self.state['gcmc'][0] == RUNNING:
-                new_state = jobcheck(self.state['gcmc'][1])
-                if not new_state or new_state == 'C':
+                job_state = self.job_handler.jobcheck(self.state['gcmc'][1])
+                if not job_state:
                     info("Queue reports GCMC simulation has finished")
                     # Read in GCMC data
                     self.structure.update_gcmc(self.options.get('mc_code'))
@@ -313,17 +313,8 @@ class PyNiss(object):
             self.state['dft'] = (SKIPPED, False)
         else:
             jobid = self.job_handler.submit(dft_code, self.options)
-            # FIXME(tdaff): wooki specific at the moment
-#            vasp_args = ["vaspsubmit-beta", job_name, "%i" % nproc]
-#            submit = subprocess.Popen(vasp_args, stdout=subprocess.PIPE)
-#            for line in submit.stdout.readlines():
-#                if "wooki" in line:
-#                    jobid = line.split(".")[0]
-#                    info("Running VASP job in queue. Jobid: %s" % jobid)
-#                    self.state['dft'] = (RUNNING, jobid)
-#                    break
-#            else:
-#                warn("Job failed?")
+            info("Running VASP job in queue. Jobid: %s" % jobid)
+            self.state['dft'] = (RUNNING, jobid)
             if self.options.getbool('run_all'):
                 os.chdir(self.options.get('job_dir'))
                 self.job_handler.postrun(jobid)
@@ -366,21 +357,13 @@ class PyNiss(object):
             info("REPEAT input files generated; skipping job submission")
             self.state['charges'] = (SKIPPED, False)
         else:
-            repeat_args = ['repeatsubmit', job_name + '.cube']
-            submit = subprocess.Popen(repeat_args, stdout=subprocess.PIPE)
-            jobid = None
-            for line in submit.stdout.readlines():
-                if "wooki" in line:
-                    jobid = line.split(".")[0]
-                    info("Running REPEAT calculation in queue: Jobid %s"
-                         % jobid)
-                    self.state['charges'] = (RUNNING, jobid)
-                    break
+            jobid = self.job_handler.submit(charge_code, self.options)
+            info("Running REPEAT calculation in queue: Jobid %s" % jobid)
+            self.state['charges'] = (RUNNING, jobid)
             if self.options.getbool('run_all'):
                 os.chdir(self.options.get('job_dir'))
                 self.job_handler.postrun(jobid)
-            else:
-                warn("Job failed?")
+
         os.chdir(self.options.get('job_dir'))
 
     def run_fastmc(self):
@@ -418,17 +401,10 @@ class PyNiss(object):
             info("FastMC input files generated; skipping job submission")
             self.state['gcmc'] = (SKIPPED, False)
         else:
-            fastmc_args = ['fastmcsubmit', job_name]
-            submit = subprocess.Popen(fastmc_args, stdout=subprocess.PIPE)
-            jobid = None
-            for line in submit.stdout.readlines():
-                if "wooki" in line:
-                    jobid = line.split(".")[0]
-                    info("Running FastMC in queue: Jobid %s" % jobid)
-                    self.state['gcmc'] = (RUNNING, jobid)
-                    break
-            else:
-                warn("Job submission failed?")
+            jobid = self.job_handler.submit(mc_code, self.options)
+            info("Running FastMC in queue: Jobid %s" % jobid)
+            self.state['gcmc'] = (RUNNING, jobid)
+
         os.chdir(self.options.get('job_dir'))
 
 
@@ -476,8 +452,8 @@ class Structure(object):
         opt_path = os.path.join('faps_%s_%s' % (self.name, opt_code))
         info("Updating positions from %s" % opt_code)
         if opt_code == 'vasp':
-            self.from_vasp(os.path.join(opt_path, self.name + '.contcar'),
-                           update=True)
+            # TODO(tdaff): not CONTCAR on wooki
+            self.from_vasp(os.path.join(opt_path, 'CONTCAR'), update=True)
         elif opt_code == 'cpmd':
             self.from_cpmd(update=True)
         else:
@@ -489,7 +465,7 @@ class Structure(object):
         if charge_method == 'repeat':
             info("Updating charges from repeat")
             self.charges_from_repeat(
-                os.path.join(charge_path, self.name + '.esp_fit.out'))
+                os.path.join(charge_path, 'faps-%s.out' % self.name))
         else:
             err("Unknown charge method to import %s" % charge_method)
 

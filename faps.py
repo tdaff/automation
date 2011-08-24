@@ -237,6 +237,10 @@ class PyNiss(object):
             self.state['charges'] = (UPDATED, False)
         except IOError:
             info("No charges found to import")
+        # Need to generate supercell here on import so that it is set, and
+        # is based on the cell from dft, if changed
+        self.structure.gen_supercell(self.options)
+
         # Reset directory at end
         os.chdir(job_dir)
 
@@ -384,7 +388,7 @@ class PyNiss(object):
         # Set the guests before generating the files
         # Load here as options may change in each run
         guests = self.options.get('guests')
-        # Try and deal with any list of guests
+        # Try and deal with any list of guests with regex
         self.structure.guests = [Guest(x) for x in
                                  re.split('[\s,\(\)\[\]]*', guests) if x]
         config, field = self.structure.to_fastmc(self.options)
@@ -398,8 +402,8 @@ class PyNiss(object):
         filetemp.close()
 
         filetemp = open("CONTROL", "wb")
-        filetemp.writelines(mk_gcmc_control(self.options,
-                                            self.structure.guests))
+        filetemp.writelines(
+            mk_gcmc_control(self.options, self.structure.guests))
         filetemp.close()
 
         if self.options.getbool('no_submit'):
@@ -469,7 +473,7 @@ class Structure(object):
         elif opt_code == 'cpmd':
             self.from_cpmd(update=True)
         else:
-            err("Unknown potions to import %s" % opt_code)
+            err("Unknown positions to import %s" % opt_code)
 
     def update_charges(self, charge_method):
         """Select the method for updating charges."""
@@ -695,21 +699,9 @@ class Structure(object):
 
     def to_fastmc(self, options):
         """Return the FIELD and CONFIG needed for a fastmc run"""
-        # TODO(tdaff): initialize guests
         # CONFIG
-        config_supercell = options.gettuple('mc_supercell')
-        config_cutoff = options.getfloat('mc_cutoff')
-        if config_cutoff < 12:
-            warn("Simulation is using a very small cutoff! I hope you "
-                 "know, what you are doing!")
-        minimum_supercell = self.cell.minimum_supercell(config_cutoff)
-        supercell = tuple(max(i, j)
-                          for i, j in zip(config_supercell, minimum_supercell))
-        self.gcmc_supercell = supercell
-        info("%s supercell requested in config" % str(config_supercell))
-        info("%s minimum supercell for a %.1f cutoff" %
-             (str(minimum_supercell), config_cutoff))
-        info("Constructing %s supercell for gcmc." % str(supercell))
+        self.gen_supercell(options)
+        supercell = self.gcmc_supercell
         levcfg = 0  # always
         imcon = self.cell.imcon
         natoms = len(self.atoms) * prod(supercell)
@@ -789,8 +781,24 @@ class Structure(object):
             if line.startswith('   final stats'):
                 guest_id = int(line.split()[4]) - 1
                 self.guests[guest_id].uptake = float(output[idx + 3].split()[-1])/supercell_mult
+                # This will sometimes be NaN
                 self.guests[guest_id].hoa = float(output[idx + 7].split()[-1])
 
+    def gen_supercell(self, options):
+        """Cacluate the smallest satisfactory supercell and set attribute."""
+        config_supercell = options.gettuple('mc_supercell')
+        config_cutoff = options.getfloat('mc_cutoff')
+        if config_cutoff < 12:
+            warn("Simulation is using a very small cutoff! I hope you "
+                 "know, what you are doing!")
+        minimum_supercell = self.cell.minimum_supercell(config_cutoff)
+        supercell = tuple(max(i, j)
+                          for i, j in zip(config_supercell, minimum_supercell))
+        self.gcmc_supercell = supercell
+        info("%s supercell requested in config" % str(config_supercell))
+        info("%s minimum supercell for a %.1f cutoff" %
+             (str(minimum_supercell), config_cutoff))
+        info("Constructing %s supercell for gcmc." % str(supercell))
 
     def supercell(self, scale):
         """Iterate over all the atoms of supercell."""

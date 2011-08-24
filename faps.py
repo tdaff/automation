@@ -316,8 +316,11 @@ class PyNiss(object):
             info("Running VASP job in queue. Jobid: %s" % jobid)
             self.state['dft'] = (RUNNING, jobid)
             if self.options.getbool('run_all'):
+                debug('Submitting postrun script')
                 os.chdir(self.options.get('job_dir'))
                 self.job_handler.postrun(jobid)
+            else:
+                debug('Postrun script not submitted')
         # Tidy up at the end
         os.chdir(self.options.get('job_dir'))
 
@@ -361,8 +364,12 @@ class PyNiss(object):
             info("Running REPEAT calculation in queue: Jobid %s" % jobid)
             self.state['charges'] = (RUNNING, jobid)
             if self.options.getbool('run_all'):
+                debug('Submitting postrun script')
                 os.chdir(self.options.get('job_dir'))
                 self.job_handler.postrun(jobid)
+            else:
+                debug('Postrun script not submitted')
+
 
         os.chdir(self.options.get('job_dir'))
 
@@ -404,6 +411,12 @@ class PyNiss(object):
             jobid = self.job_handler.submit(mc_code, self.options)
             info("Running FastMC in queue: Jobid %s" % jobid)
             self.state['gcmc'] = (RUNNING, jobid)
+            if self.options.getbool('run_all'):
+                debug('Submitting postrun script')
+                os.chdir(self.options.get('job_dir'))
+                self.job_handler.postrun(jobid)
+            else:
+                debug('Postrun script not submitted')
 
         os.chdir(self.options.get('job_dir'))
 

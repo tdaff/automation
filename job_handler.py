@@ -105,12 +105,14 @@ def _sharcnet_postrun(waitfor_jobid):
         'sqsub',
         '-q', 'DR_20293',
         '-r', '10m',
-        '-o', 'faps-post.out',
+        '-o', 'faps-post-%s.out' % waitfor_jobid,
         '--waitfor=%s' % waitfor_jobid,
         ] + sys.argv
-
+    print sqsub_args
     submit = Popen(sqsub_args, stdout=PIPE, stderr=STDOUT)
-
+    # sqsub is slow sometimes, so we wait for it to complete
+    submit.wait()
+    print submit.stdout.readlines()
 
 def _sharcnet_jobcheck(jobid):
     """Return true if job is still running or queued."""

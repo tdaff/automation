@@ -11,6 +11,7 @@ __all__ = ['Options']
 import ConfigParser
 import logging
 import os
+import re
 import sys
 import textwrap
 from StringIO import StringIO
@@ -110,13 +111,12 @@ class Options(object):
         value = self.get(item)
         return float(value)
 
-    def gettuple(self, item):
-        """Return item's value interpreted as a tuple (best guess)."""
+    def gettuple(self, item, dtype=None):
+        """Return item's value interpreted as a tuple of dtype [strings]."""
         value = self.get(item)
-        if isinstance(item, basestring):
-            # NOTE: be careful, eval can be dangerous
-            value = eval(value, {}, {})
-            return tuple(value)
+        value = [x for x in re.split('[\s,\(\)\[\]]*', value) if x]
+        if dtype is not None:
+            return tuple([dtype(x) for x in value])
         else:
             return tuple(value)
 

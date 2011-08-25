@@ -72,7 +72,7 @@ class PyNiss(object):
                       'dft': (NOT_RUN, False),
                       'esp': (NOT_RUN, False),
                       'charges': (NOT_RUN, False),
-                      'gcmc': (NOT_RUN, False)}
+                      'gcmc': {}}
 
     def dump_state(self):
         """Write the .niss file holding the current system state."""
@@ -172,23 +172,23 @@ class PyNiss(object):
             self.dump_state()
             terminate(0)
 
-        if self.state['gcmc'][0] not in [UPDATED, SKIPPED]:
-            if self.options.getbool('no_gcmc'):
-                info("Skipping GCMC simulation")
-                self.state['gcmc'] = (UPDATED, False)
-            elif self.state['gcmc'][0] == RUNNING:
-                new_state = jobcheck(self.state['gcmc'][1])
-                if not new_state or new_state == 'C':
-                    info("Queue reports GCMC simulation has finished")
-                    # Read in GCMC data
-                    self.structure.update_gcmc(self.options.get('mc_code'))
-                    self.state['gcmc'] = (UPDATED, False)
-                    self.dump_state()
-                else:
-                    info("GCMC still running")
-                    terminate(0)
+        #if self.state['gcmc'] not in [UPDATED, SKIPPED]:
+        #    if self.options.getbool('no_gcmc'):
+        #        info("Skipping GCMC simulation")
+        #        self.state['gcmc'] = (UPDATED, False)
+        #    elif self.state['gcmc'][0] == RUNNING:
+        #        new_state = jobcheck(self.state['gcmc'][1])
+        #        if not new_state or new_state == 'C':
+        #            info("Queue reports GCMC simulation has finished")
+        #            # Read in GCMC data
+        #            self.structure.update_gcmc(self.options.get('mc_code'))
+        #            self.state['gcmc'] = (UPDATED, False)
+        #            self.dump_state()
+        #        else:
+        #            info("GCMC still running")
+        #            terminate(0)
 
-        if self.state['gcmc'][0] == NOT_RUN or 'gcmc' in self.options.args:
+        if not self.state['gcmc'] or 'gcmc' in self.options.args:
             self.run_fastmc()
             info("Running gcmc step")
             self.dump_state()
@@ -211,7 +211,9 @@ class PyNiss(object):
         else:
             info("Current system status:")
         for step, state in self.state.iteritems():
-            if state[0] is RUNNING:
+            if step == 'gcmc':
+                info(" * GCMCs: %s" % state)
+            elif state[0] is RUNNING:
                 info(" * State of %s: Running, jobid: %s" % (step, state[1]))
             else:
                 info(" * State of %s: %s" % (step, valid_states[state[0]]))
@@ -288,7 +290,7 @@ class PyNiss(object):
         filetemp.close()
 
         filetemp = open("KPOINTS", "wb")
-        filetemp.writelines(mk_kpoints(self.options.gettuple('kpoints')))
+        filetemp.writelines(mk_kpoints(self.options.gettuple('kpoints', int)))
         filetemp.close()
 
         potcar_types = unique([atom.type for atom in self.structure.atoms])
@@ -387,10 +389,10 @@ class PyNiss(object):
 
         # Set the guests before generating the files
         # Load here as options may change in each run
-        guests = self.options.get('guests')
-        # Try and deal with any list of guests with regex
         self.structure.guests = [Guest(x) for x in
-                                 re.split('[\s,\(\)\[\]]*', guests) if x]
+                                 self.options.gettuple('guests')]
+        guests = self.structure.guests
+
         config, field = self.structure.to_fastmc(self.options)
 
         filetemp = open("CONFIG", "wb")
@@ -401,26 +403,38 @@ class PyNiss(object):
         filetemp.writelines(field)
         filetemp.close()
 
-        filetemp = open("CONTROL", "wb")
-        filetemp.writelines(
-            mk_gcmc_control(self.options, self.structure.guests))
-        filetemp.close()
+        pressures = self.options.gettuple('mc_pressure', float)
+        pressures = subgroup(pressures, len(guests))
+        temperatures = self.options.gettuple('mc_temperature', float)
+        for temp in temperatures:
+            for press in pressures:
+                info("Running GCMC: T=%s P=%s" % (temp, press))
+                tp_path = 'T%sP%s' % (temp, press)
+                mkdirs(tp_path)
+                shutil.copy('CONFIG', tp_path)
+                shutil.copy('FIELD', tp_path)
+                os.chdir(tp_path)
+                filetemp = open("CONTROL", "wb")
+                filetemp.writelines(mk_gcmc_control(temp, press, self.options,
+                                                    guests))
+                filetemp.close()
 
-        if self.options.getbool('no_submit'):
-            info("FastMC input files generated; skipping job submission")
-            self.state['gcmc'] = (SKIPPED, False)
-        else:
-            fastmc_args = ['fastmcsubmit', job_name]
-            submit = subprocess.Popen(fastmc_args, stdout=subprocess.PIPE)
-            jobid = None
-            for line in submit.stdout.readlines():
-                if "wooki" in line:
-                    jobid = line.split(".")[0]
-                    info("Running FastMC in queue: Jobid %s" % jobid)
-                    self.state['gcmc'] = (RUNNING, jobid)
-                    break
-            else:
-                warn("Job submission failed?")
+                if self.options.getbool('no_submit'):
+                    info("FastMC input files generated; skipping job submission")
+                    self.state['gcmc'][(temp, press)] = (SKIPPED, False)
+                else:
+                    fastmc_args = ['fastmcsubmit', job_name]
+                    submit = subprocess.Popen(fastmc_args, stdout=subprocess.PIPE)
+                    jobid = None
+                    for line in submit.stdout.readlines():
+                        if "wooki" in line:
+                            jobid = line.split(".")[0]
+                            info("Running FastMC in queue: Jobid %s" % jobid)
+                            self.state['gcmc'][(temp, press)] = (RUNNING, jobid)
+                            break
+                    else:
+                        warn("Job submission failed?")
+                os.chdir('..')
         os.chdir(self.options.get('job_dir'))
 
 
@@ -786,7 +800,7 @@ class Structure(object):
 
     def gen_supercell(self, options):
         """Cacluate the smallest satisfactory supercell and set attribute."""
-        config_supercell = options.gettuple('mc_supercell')
+        config_supercell = options.gettuple('mc_supercell', int)
         config_cutoff = options.getfloat('mc_cutoff')
         if config_cutoff < 12:
             warn("Simulation is using a very small cutoff! I hope you "
@@ -1234,11 +1248,11 @@ def mk_kpoints(kpoints):
     return kpoints
 
 
-def mk_gcmc_control(options, guests):
+def mk_gcmc_control(temperature, pressures, options, guests):
     """Standard GCMC CONTROL file."""
     control = [
         "GCMC Run\n"
-        "temperature  %f\n" % options.getfloat('mc_temperature'),
+        "temperature  %f\n" % temperature,
         "steps    %i\n" % options.getint('mc_prod_steps'),
         "equilibration    %i\n" % options.getint('mc_eq_steps'),
         "cutoff          %f angstrom\n" % options.getfloat('mc_cutoff'),
@@ -1256,12 +1270,15 @@ def mk_gcmc_control(options, guests):
         prob_on = ""
     else:
         prob_on = "# "
+    if len(guests) > 1:
+        gp_zip = zip(guests, pressures)
+    else:
+        gp_zip = zip(guests, [pressures])
     guest_count = 0
-    for guest in guests:
+    for guest, press in gp_zip:
         guest_count += 1
         control.append("&guest %i\n" % guest_count)
-        control.append("  pressure (bar) %f\n" %
-                       options.getfloat('mc_pressure'))
+        control.append("  pressure (bar) %f\n" % press)
         control.append("%s  probability %i\n" %
                        (prob_on, len(guest.probability)))
         for prob in guest.probability:
@@ -1385,6 +1402,12 @@ def strip_blanks(lines):
     """Strip lines and remove blank lines."""
     return [line.strip() for line in lines if line.strip() != '']
 
+def subgroup(iterable, width):
+    """Split a list into sublists of with width members"""
+    if width == 1 or width > len(iterable):
+        return iterable
+    else:
+        return [iterable[x:x+width] for x in range(0, len(iterable), width)]
 
 def welcome():
     """Print any important messages."""

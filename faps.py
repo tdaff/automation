@@ -188,14 +188,29 @@ class PyNiss(object):
         #            info("GCMC still running")
         #            terminate(0)
 
-        if not self.state['gcmc'] or 'gcmc' in self.options.args:
+        if self.options.getbool('no_gcmc'):
+            info("Skipping GCMC simulation")
+        elif not self.state['gcmc'] or 'gcmc' in self.options.args:
+            info("Starting gcmc step")
             self.run_fastmc()
-            info("Running gcmc step")
             self.dump_state()
             terminate(0)
         else:
-            # Everything finished
-            info("GCMC run has finished")
+            unfinished_gcmc = False
+            for tp_point, tp_state in self.state['gcmc'].iteritems():
+                if tp_state[0] == RUNNING:
+                    new_state = jobcheck(tp_state[1])
+                    if not new_state:
+                        info("Queue reports GCMC %s finished" % (tp_point,))
+                        self.structure.update_gcmc(self.options.get('mc_code'), tp_point)
+                        self.state['gcmc'][tp_point] = (UPDATED, False)
+                        self.dump_state()
+                    else:
+                        info("GCMC %s still running" % (tp_point,))
+                        unfinished_gcmc = True
+            if not unfinished_gcmc:
+                info("GCMC run has finished")
+                terminate(0)
 
     def status(self, initial=False):
         """Print the current status to the terminal."""
@@ -408,8 +423,11 @@ class PyNiss(object):
         temperatures = self.options.gettuple('mc_temperature', float)
         for temp in temperatures:
             for press in pressures:
-                info("Running GCMC: T=%s P=%s" % (temp, press))
-                tp_path = 'T%sP%s' % (temp, press)
+                # press is always a list
+                info("Running GCMC: T=%.1f " % temp +
+                     " ".join(["P=%.2f" % x for x in press]))
+                tp_path = ('T%s' % temp +
+                           ''.join(['P%.2f' % x for x in press]))
                 mkdirs(tp_path)
                 shutil.copy('CONFIG', tp_path)
                 shutil.copy('FIELD', tp_path)
@@ -499,13 +517,16 @@ class Structure(object):
         else:
             err("Unknown charge method to import %s" % charge_method)
 
-    def update_gcmc(self, gcmc_code):
+    def update_gcmc(self, gcmc_code, tp_point):
         """Select the source for GCMC results and import."""
         gcmc_path = os.path.join('faps_%s_%s' % (self.name, gcmc_code))
+        # Runs in subdirectories
+        tp_path = ('T%s' % tp_point[0] +
+                   ''.join(['P%.2f' % x for x in tp_point[1]]))
         if gcmc_code == 'fastmc':
             info("Importing results from FastGCMC")
             self.fastmc_postproc(
-                os.path.join(gcmc_path, 'OUTPUT'))
+                os.path.join(gcmc_path, tp_path, 'OUTPUT'), tp_point)
         else:
             err("Unknown gcmc method to import %s" % gcmc_code)
 
@@ -783,9 +804,8 @@ class Structure(object):
 
         return config, field
 
-    def fastmc_postproc(self, filename):
+    def fastmc_postproc(self, filename, tp_point):
         """Update structure properties from gcmc OUTPUT."""
-        # TODO(tdaff) multiple guests
         filetemp = open(filename)
         output = filetemp.readlines()
         filetemp.close()
@@ -794,9 +814,9 @@ class Structure(object):
         for idx, line in enumerate(output):
             if line.startswith('   final stats'):
                 guest_id = int(line.split()[4]) - 1
-                self.guests[guest_id].uptake = float(output[idx + 3].split()[-1])/supercell_mult
+                self.guests[guest_id].uptake[tp_point] = float(output[idx + 3].split()[-1])/supercell_mult
                 # This will sometimes be NaN
-                self.guests[guest_id].hoa = float(output[idx + 7].split()[-1])
+                self.guests[guest_id].hoa[tp_point] = float(output[idx + 7].split()[-1])
 
     def gen_supercell(self, options):
         """Cacluate the smallest satisfactory supercell and set attribute."""
@@ -1055,6 +1075,8 @@ class Guest(object):
         self.probability = []
         self.atoms = []
         self.source = "Unknown source"
+        self.uptake = {}
+        self.hoa = {}
         # only load if asked, set the ident in the loader
         if ident:
             self.load_guest(ident)
@@ -1402,12 +1424,17 @@ def strip_blanks(lines):
     """Strip lines and remove blank lines."""
     return [line.strip() for line in lines if line.strip() != '']
 
-def subgroup(iterable, width):
-    """Split a list into sublists of with width members"""
-    if width == 1 or width > len(iterable):
-        return iterable
-    else:
-        return [iterable[x:x+width] for x in range(0, len(iterable), width)]
+def subgroup(iterable, width, itype=None):
+    """Split an iterable into nested sub-itypes of width members."""
+    # Return the same type as iterable
+    if itype is None:
+        if isinstance(iterable, list):
+            itype = list
+        else:
+            itype = tuple
+    # Will leave short groups if not enough members
+    return itype([itype(iterable[x:x+width])
+                  for x in range(0, len(iterable), width)])
 
 def welcome():
     """Print any important messages."""

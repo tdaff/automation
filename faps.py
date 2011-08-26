@@ -34,6 +34,7 @@ from numpy.linalg import norm
 
 from config import Options
 from elements import WEIGHT, UFF, VASP_PSEUDO_PREF
+from job_handler import JobHandler
 from logo import LOGO
 
 # Global constants
@@ -73,6 +74,7 @@ class PyNiss(object):
                       'esp': (NOT_RUN, False),
                       'charges': (NOT_RUN, False),
                       'gcmc': {}}
+        self.job_handler = JobHandler(options)
 
     def dump_state(self):
         """Write the .niss file holding the current system state."""
@@ -103,6 +105,9 @@ class PyNiss(object):
 
         """
 
+        # In case options have changed, re-intitialize
+        self.job_handler = JobHandler(self.options)
+
         if 'status' in self.options.args:
             self.status(initial=True)
 
@@ -132,8 +137,8 @@ class PyNiss(object):
                 warn("Job might fail if you need the ESP")
                 self.state['dft'] = (SKIPPED, False)
             elif self.state['dft'][0] == RUNNING:
-                new_state = jobcheck(self.state['dft'][1])
-                if not new_state or new_state == 'C':
+                job_state = self.job_handler.jobcheck(self.state['dft'][1])
+                if not job_state:
                     info("Queue reports DFT step has finished")
                     # Finished running update positions
                     self.structure.update_pos(self.options.get('dft_code'))
@@ -146,7 +151,6 @@ class PyNiss(object):
 
         if self.state['dft'][0] == NOT_RUN or 'dft' in self.options.args:
             self.run_dft()
-            #info("Running optimizaton/dft step")
             self.dump_state()
             terminate(0)
 
@@ -155,8 +159,8 @@ class PyNiss(object):
                 info("Skipping charge calculation")
                 self.state['charges'] = (SKIPPED, False)
             elif self.state['charges'][0] == RUNNING:
-                new_state = jobcheck(self.state['charges'][1])
-                if not new_state or new_state == 'C':
+                job_state = self.job_handler.jobcheck(self.state['charges'][1])
+                if not job_state:
                     info("Queue reports charge calculation has finished")
                     self.structure.update_charges(
                         self.options.get('charge_method'))
@@ -329,17 +333,15 @@ class PyNiss(object):
             info("Vasp input files generated; skipping job submission")
             self.state['dft'] = (SKIPPED, False)
         else:
-            # FIXME(tdaff): wooki specific at the moment
-            vasp_args = ["vaspsubmit-beta", job_name, "%i" % nproc]
-            submit = subprocess.Popen(vasp_args, stdout=subprocess.PIPE)
-            for line in submit.stdout.readlines():
-                if "wooki" in line:
-                    jobid = line.split(".")[0]
-                    info("Running VASP job in queue. Jobid: %s" % jobid)
-                    self.state['dft'] = (RUNNING, jobid)
-                    break
+            jobid = self.job_handler.submit(dft_code, self.options)
+            info("Running VASP job in queue. Jobid: %s" % jobid)
+            self.state['dft'] = (RUNNING, jobid)
+            if self.options.getbool('run_all'):
+                debug('Submitting postrun script')
+                os.chdir(self.options.get('job_dir'))
+                self.job_handler.postrun(jobid)
             else:
-                warn("Job failed?")
+                debug('Postrun script not submitted')
         # Tidy up at the end
         os.chdir(self.options.get('job_dir'))
 
@@ -351,7 +353,8 @@ class PyNiss(object):
                                'faps_%s_%s' % (job_name, esp_src))
         os.chdir(src_dir)
         if esp_src == 'vasp':
-            os.chdir(job_name + ".restart_DIR")
+            if self.options.get('queue') == 'wooki':
+                os.chdir(job_name + ".restart_DIR")
             esp2cube_args = shlex.split(self.options.get('vasp2cube'))
             info("Converting esp to cube, this might take a minute...")
             submit = subprocess.Popen(esp2cube_args)
@@ -378,18 +381,17 @@ class PyNiss(object):
             info("REPEAT input files generated; skipping job submission")
             self.state['charges'] = (SKIPPED, False)
         else:
-            repeat_args = ['repeatsubmit', job_name + '.cube']
-            submit = subprocess.Popen(repeat_args, stdout=subprocess.PIPE)
-            jobid = None
-            for line in submit.stdout.readlines():
-                if "wooki" in line:
-                    jobid = line.split(".")[0]
-                    info("Running REPEAT calculation in queue: Jobid %s"
-                         % jobid)
-                    self.state['charges'] = (RUNNING, jobid)
-                    break
+            jobid = self.job_handler.submit(charge_code, self.options)
+            info("Running REPEAT calculation in queue: Jobid %s" % jobid)
+            self.state['charges'] = (RUNNING, jobid)
+            if self.options.getbool('run_all'):
+                debug('Submitting postrun script')
+                os.chdir(self.options.get('job_dir'))
+                self.job_handler.postrun(jobid)
             else:
-                warn("Job failed?")
+                debug('Postrun script not submitted')
+
+
         os.chdir(self.options.get('job_dir'))
 
     def run_fastmc(self):
@@ -441,17 +443,15 @@ class PyNiss(object):
                     info("FastMC input files generated; skipping job submission")
                     self.state['gcmc'][(temp, press)] = (SKIPPED, False)
                 else:
-                    fastmc_args = ['fastmcsubmit', job_name]
-                    submit = subprocess.Popen(fastmc_args, stdout=subprocess.PIPE)
-                    jobid = None
-                    for line in submit.stdout.readlines():
-                        if "wooki" in line:
-                            jobid = line.split(".")[0]
-                            info("Running FastMC in queue: Jobid %s" % jobid)
-                            self.state['gcmc'][(temp, press)] = (RUNNING, jobid)
-                            break
+                    jobid = self.job_handler.submit(mc_code, self.options)
+                    info("Running FastMC in queue: Jobid %s" % jobid)
+                    self.state['gcmc'][(temp, pressure)] = (RUNNING, jobid)
+                    if self.options.getbool('run_all'):
+                        debug('Submitting postrun script')
+                        os.chdir(self.options.get('job_dir'))
+                        self.job_handler.postrun(jobid)
                     else:
-                        warn("Job submission failed?")
+                        debug('Postrun script not submitted')
                 os.chdir('..')
         os.chdir(self.options.get('job_dir'))
 
@@ -500,8 +500,8 @@ class Structure(object):
         opt_path = os.path.join('faps_%s_%s' % (self.name, opt_code))
         info("Updating positions from %s" % opt_code)
         if opt_code == 'vasp':
-            self.from_vasp(os.path.join(opt_path, self.name + '.contcar'),
-                           update=True)
+            # TODO(tdaff): not CONTCAR on wooki
+            self.from_vasp(os.path.join(opt_path, 'CONTCAR'), update=True)
         elif opt_code == 'cpmd':
             self.from_cpmd(update=True)
         else:
@@ -513,7 +513,7 @@ class Structure(object):
         if charge_method == 'repeat':
             info("Updating charges from repeat")
             self.charges_from_repeat(
-                os.path.join(charge_path, self.name + '.esp_fit.out'))
+                os.path.join(charge_path, 'faps-%s.out' % self.name))
         else:
             err("Unknown charge method to import %s" % charge_method)
 
@@ -1332,8 +1332,8 @@ def lorentz_berthelot(left, right):
 
 def jobcheck(jobid):
     """Get job status."""
-    jobid = "%s" % jobid
-    qstat = subprocess.Popen(['qstat', '%s' % jobid], stdout=subprocess.PIPE,
+    jobid = ("%s" % jobid).strip()
+    qstat = subprocess.Popen(['qstat', jobid], stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT)
     for line in qstat.stdout.readlines():
         debug(line)

@@ -2,14 +2,15 @@
 Job handler
 
 Machine specific job submission and tracking routines. Implements the
-JobHandler class which should be initialized to the machine the calculations
-are running on.
+JobHandler class which will be initialized to the machine the calculations
+are running on from the provided options.
 
 """
 
 import os
 import getpass
-from subprocess import Popen, PIPE
+import sys
+from subprocess import Popen, PIPE, STDOUT
 
 
 class JobHandler(object):
@@ -25,9 +26,13 @@ class JobHandler(object):
         if self.queue == 'wooki':
             self.submit = self._wooki_submit
             self.jobcheck = self.wooki_jobcheck
+        elif self.queue == 'sharcnet':
+            self.submit = _sharcnet_submit
+            self.postrun = _sharcnet_postrun
+            self.jobcheck = _sharcnet_jobcheck
         else:
             self.submit = self._pbs_submit
-            self.submit = self._pbs_jobcheck
+            self.jobcheck = self._pbs_jobcheck
 
     def _wooki_submit(self, job_type, nodes, **kwargs):
         """Submit a job to wooki; return the jobid."""
@@ -51,7 +56,7 @@ class JobHandler(object):
             print("Failed to get job information.")  # qstat parsing failed?
 
 
-def _orca_submit(job_type, options):
+def _sharcnet_submit(job_type, options):
     """Simple interface to the 'sqsub' submission on sharcnet"""
     # TODO(tdaff): self-resubmission?
     # sqsub -q DR_20293 -f mpi -n 48 -o std.out -j hmof-589 -r 6h --mpp=4g ~/bin/vasp-5.2.11-sequential
@@ -76,35 +81,63 @@ def _orca_submit(job_type, options):
         sqsub_args.extend(['-n', '%i' % nodes])
     # run-time estimate mandatory job type default?
     sqsub_args.extend(['-r', '6h'])
+    # Memory might need increasing
+    sqsub_args.extend(['--mpp=2.5g'])
     # Output
     sqsub_args.extend(['-o', 'faps-%s.out' % job_name])
     # Which command?
     sqsub_args.extend([exe])
 
-    submit = Popen("qsub", shell=False, stdin=PIPE, stdout=PIPE)
+    submit = Popen(sqsub_args, stdin=PIPE, stdout=PIPE)
     for line in submit.stdout.readlines():
         if 'submitted as' in line:
             jobid = int(line.split()[-1])
             break
     else:
         print("Job submission failed?")
-    if options.getbool('run_all'):
-        pass
 
     return jobid
 
 
-def _orca_postrun(jobid):
-    # --waitfor=prev_job
+def _sharcnet_postrun(waitfor_jobid):
+    """Resubmit this script for the postrun on job completion."""
+    sqsub_args = [
+        'sqsub',
+        '-q', 'DR_20293',
+        '-r', '10m',
+        '-o', 'faps-post-%s.out' % waitfor_jobid,
+        '--waitfor=%s' % waitfor_jobid,
+        ] + sys.argv
+    print sqsub_args
+    submit = Popen(sqsub_args, stdout=PIPE, stderr=STDOUT)
+    # sqsub is slow sometimes, so we wait for it to complete
+    submit.wait()
+    print submit.stdout.readlines()
 
-    sqsub_args = ['sqsub', '-q', 'DR_20293', '-r', '10m', '-o', 'faps-%i.out' % jobid] + sys.argv
-    pbs_directives = ["#PBS -N fap-%s" % job_name,
-                      "#PBS -m n",
-                      "#PBS -o std.out",
-                      "#PBS -j oe ",
-                      "#PBS "
-                      "cd $PBS_O_WORKDIR",
-                      "python faps.py"]
+def _sharcnet_jobcheck(jobid):
+    """Return true if job is still running or queued."""
+    # can deal with jobid as an int or a string
+    jobid = ("%s" % jobid).strip()
+    running_status = ['Q', 'R', 'Z']
+    qstat = Popen(['sqjobs', jobid], stdout=PIPE, stderr=STDOUT)
+    for line in qstat.stdout.readlines():
+        if "ERROR" in line:
+            # Job finished and removed
+            return False
+        elif jobid in line:
+            # use of 'in' should be fine as only this job will be shown
+            # can't use positional slicing as columns resize
+            status = line.split()[3]
+            if status in running_status:
+                return True
+            else:
+                return False
+    else:
+        print("Failed to get job information.")  # qstat parsing failed?
+        # Act as if the job is still running, in case it hasn't finished
+        return True
+
+
 
 
 def _wooki_generic(job_name, nodes=1, attributes=None):

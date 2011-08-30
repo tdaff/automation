@@ -203,7 +203,7 @@ class PyNiss(object):
             unfinished_gcmc = False
             for tp_point, tp_state in self.state['gcmc'].iteritems():
                 if tp_state[0] == RUNNING:
-                    new_state = jobcheck(tp_state[1])
+                    new_state = self.job_handler.jobcheck(tp_state[1])
                     if not new_state:
                         info("Queue reports GCMC %s finished" % (tp_point,))
                         self.structure.update_gcmc(self.options.get('mc_code'), tp_point)
@@ -423,6 +423,7 @@ class PyNiss(object):
         pressures = self.options.gettuple('mc_pressure', float)
         pressures = subgroup(pressures, len(guests))
         temperatures = self.options.gettuple('mc_temperature', float)
+        jobids = []
         for temp in temperatures:
             for press in pressures:
                 # press is always a list
@@ -440,20 +441,24 @@ class PyNiss(object):
                 filetemp.close()
 
                 if self.options.getbool('no_submit'):
-                    info("FastMC input files generated; skipping job submission")
+                    info("FastMC input files generated; "
+                         "skipping job submission")
                     self.state['gcmc'][(temp, press)] = (SKIPPED, False)
                 else:
                     jobid = self.job_handler.submit(mc_code, self.options)
                     info("Running FastMC in queue: Jobid %s" % jobid)
-                    self.state['gcmc'][(temp, pressure)] = (RUNNING, jobid)
-                    if self.options.getbool('run_all'):
-                        debug('Submitting postrun script')
-                        os.chdir(self.options.get('job_dir'))
-                        self.job_handler.postrun(jobid)
-                    else:
-                        debug('Postrun script not submitted')
+                    self.state['gcmc'][(temp, press)] = (RUNNING, jobid)
+                    jobids.append(jobid)
                 os.chdir('..')
+
+        # Postrun after all submitted so don't have to deal with messy
+        # directory switching
         os.chdir(self.options.get('job_dir'))
+        if self.options.getbool('run_all'):
+            debug('Submitting postrun script')
+            self.job_handler.postrun(jobids)
+        else:
+            debug('Postrun script not submitted')
 
 
 class Structure(object):

@@ -9,7 +9,9 @@ are running on from the provided options.
 
 import os
 import getpass
+import subprocess
 import sys
+import time
 from subprocess import Popen, PIPE, STDOUT
 
 
@@ -88,7 +90,7 @@ def _sharcnet_submit(job_type, options):
     # Which command?
     sqsub_args.extend([exe])
 
-    submit = Popen(sqsub_args, stdin=PIPE, stdout=PIPE)
+    submit = Popen(sqsub_args, stdout=PIPE)
     for line in submit.stdout.readlines():
         if 'submitted as' in line:
             jobid = int(line.split()[-1])
@@ -99,20 +101,38 @@ def _sharcnet_submit(job_type, options):
     return jobid
 
 
-def _sharcnet_postrun(waitfor_jobid):
-    """Resubmit this script for the postrun on job completion."""
+def _sharcnet_postrun(waitid):
+    """
+    Resubmit this script for the postrun on job completion. Will accept
+    a single jobid or a list, as integers or strings.
+    """
+
+    # Magic makes everything into a set of strings
+    if hasattr(waitid, '__iter__'):
+        waitid = frozenset([("%s" % id).strip() for id in waitid])
+    else:
+        waitid = frozenset([("%s" % waitid).strip()])
+    # Check that job appears in sqjobs before submitting next one
+    for loop_num in range(10):
+        sqjobs = Popen('sqjobs', stdout=PIPE)
+        if waitid.issubset(sqjobs.stdout.read().split()):
+            # All jobs there
+            break
+        else:
+            # Wait longer each time, in case the system is very slow
+            time.sleep(loop_num)
+    # Sumbit here, even if jobs never found in queue
     sqsub_args = [
         'sqsub',
         '-q', 'DR_20293',
         '-r', '10m',
-        '-o', 'faps-post-%s.out' % waitfor_jobid,
-        '--waitfor=%s' % waitfor_jobid,
+        '-o', 'faps-post-%s.out' % '-'.join(sorted(waitid)),
+        '--mpp=2g',
+        '--waitfor=%s' % ','.join(waitid),
         ] + sys.argv
-    print sqsub_args
-    submit = Popen(sqsub_args, stdout=PIPE, stderr=STDOUT)
-    # sqsub is slow sometimes, so we wait for it to complete
-    submit.wait()
-    print submit.stdout.readlines()
+    # We can just call this as we don't care about the jobid
+    submit = subprocess.call(sqsub_args)
+
 
 def _sharcnet_jobcheck(jobid):
     """Return true if job is still running or queued."""

@@ -172,25 +172,10 @@ class PyNiss(object):
             self.dump_state()
             terminate(0)
 
-        #if self.state['gcmc'] not in [UPDATED, SKIPPED]:
-        #    if self.options.getbool('no_gcmc'):
-        #        info("Skipping GCMC simulation")
-        #        self.state['gcmc'] = (UPDATED, False)
-        #    elif self.state['gcmc'][0] == RUNNING:
-        #        new_state = jobcheck(self.state['gcmc'][1])
-        #        if not new_state or new_state == 'C':
-        #            info("Queue reports GCMC simulation has finished")
-        #            # Read in GCMC data
-        #            self.structure.update_gcmc(self.options.get('mc_code'))
-        #            self.state['gcmc'] = (UPDATED, False)
-        #            self.dump_state()
-        #        else:
-        #            info("GCMC still running")
-        #            terminate(0)
-
         if self.options.getbool('no_gcmc'):
             info("Skipping GCMC simulation")
         elif not self.state['gcmc'] or 'gcmc' in self.options.args:
+            # The dictionary is empty before any runs
             info("Starting gcmc step")
             self.run_fastmc()
             self.dump_state()

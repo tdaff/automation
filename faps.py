@@ -195,6 +195,7 @@ class PyNiss(object):
                         unfinished_gcmc = True
             if not unfinished_gcmc:
                 info("GCMC run has finished")
+                self.post_summary()
                 terminate(0)
 
     def status(self, initial=False):
@@ -212,11 +213,38 @@ class PyNiss(object):
             info("Current system status:")
         for step, state in self.state.iteritems():
             if step == 'gcmc':
-                info(" * GCMCs: %s" % state)
+                if not state:
+                    info(" * State of GCMC: Not run")
+                else:
+                    for point, job in state.iteritems():
+                        if job[0] is RUNNING:
+                            info(" * GCMC %s: Running, jobid: %s" %
+                                 (point, job[1]))
+                        else:
+                            info(" * GCMC %s: %s" %
+                                 (point, valid_states[job[0]]))
             elif state[0] is RUNNING:
                 info(" * State of %s: Running, jobid: %s" % (step, state[1]))
             else:
                 info(" * State of %s: %s" % (step, valid_states[state[0]]))
+
+    def post_summary(self):
+        """Summarise any GCMC results."""
+        info("Summary of GCMC results")
+        for guest in self.structure.guests:
+            info(guest.name)
+            info(" mol/uc  mmol/g     hoa     T_P")
+            for tp_point in guest.uptake:
+                # <N>, sd, supercell
+                uptake = guest.uptake[tp_point]
+                hoa = guest.hoa[tp_point]
+                info("%7.2f %7.2f %7.2f %s" % (
+                    uptake[0]/uptake[2],
+                    1000*uptake[0]/(uptake[2]*self.structure.weight),
+                    hoa[0],
+                    ("T=%s" % tp_point[0] +
+                     ''.join(['P=%s' % x for x in tp_point[1]]))))
+
 
     def import_old(self):
         """Try and import any data from previous stopped simulation."""
@@ -799,9 +827,14 @@ class Structure(object):
         for idx, line in enumerate(output):
             if line.startswith('   final stats'):
                 guest_id = int(line.split()[4]) - 1
-                self.guests[guest_id].uptake[tp_point] = float(output[idx + 3].split()[-1])/supercell_mult
+                self.guests[guest_id].uptake[tp_point] = (
+                    float(output[idx + 3].split()[-1]),
+                    float(output[idx + 4].split()[-1]),
+                    supercell_mult)
                 # This will sometimes be NaN
-                self.guests[guest_id].hoa[tp_point] = float(output[idx + 7].split()[-1])
+                self.guests[guest_id].hoa[tp_point] = (
+                    float(output[idx + 7].split()[-1]),
+                    float(output[idx + 8].split()[-1]))
 
     def gen_supercell(self, options):
         """Cacluate the smallest satisfactory supercell and set attribute."""

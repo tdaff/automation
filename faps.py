@@ -15,6 +15,7 @@ __version__ = "$Revision$"
 
 import code
 import ConfigParser
+import itertools
 import logging
 import os
 import pickle
@@ -33,7 +34,7 @@ from numpy import array, identity, dot, cross
 from numpy.linalg import norm
 
 from config import Options
-from elements import WEIGHT, UFF, VASP_PSEUDO_PREF
+from elements import WEIGHT, ATOMIC_NUMBER, UFF, VASP_PSEUDO_PREF
 from logo import LOGO
 
 # Global constants
@@ -280,6 +281,8 @@ class PyNiss(object):
         info("Running a %s calculation" % dft_code)
         if dft_code == 'vasp':
             self.run_vasp()
+        elif dft_code == 'siesta':
+            self.run_siesta()
         elif dft_code == 'cpmd':
             err("CPMD calculation not yet implemented")
         else:
@@ -321,14 +324,15 @@ class PyNiss(object):
         filetemp.writelines(mk_kpoints(self.options.gettuple('kpoints', int)))
         filetemp.close()
 
-        potcar_types = unique([atom.type for atom in self.structure.atoms])
+        potcar_types = unique(self.structure.types)
         filetemp = open("POTCAR", "wb")
+        potcar_dir = self.options.get('potcar_dir')
         for at_type in potcar_types:
             # Try and get the preferred POTCARS
             # TODO(tdaff): update these with custom pseudos
             debug("Using %s pseudopotential for %s" %
                  (VASP_PSEUDO_PREF.get(at_type, at_type), at_type))
-            potcar_src = os.path.join(self.options.get('potcar_dir'),
+            potcar_src = os.path.join(potcar_dir,
                                       VASP_PSEUDO_PREF.get(at_type, at_type),
                                       "POTCAR")
             shutil.copyfileobj(open(potcar_src), filetemp)
@@ -340,6 +344,48 @@ class PyNiss(object):
 
         if self.options.getbool('no_submit'):
             info("Vasp input files generated; skipping job submission")
+            self.state['dft'] = (SKIPPED, False)
+        else:
+            # FIXME(tdaff): wooki specific at the moment
+            vasp_args = ["vaspsubmit-beta", job_name, "%i" % nproc]
+            submit = subprocess.Popen(vasp_args, stdout=subprocess.PIPE)
+            for line in submit.stdout.readlines():
+                if "wooki" in line:
+                    jobid = line.split(".")[0]
+                    info("Running VASP job in queue. Jobid: %s" % jobid)
+                    self.state['dft'] = (RUNNING, jobid)
+                    break
+            else:
+                warn("Job failed?")
+        # Tidy up at the end
+        os.chdir(self.options.get('job_dir'))
+
+    def run_siesta(self):
+        """Make siesta input and run job."""
+        job_name = self.options.get('job_name')
+        nproc = self.options.getint('siesta_ncpu')
+        # Keep things tidy in a subdirectory
+        dft_code = self.options.get('dft_code')
+        siesta_dir = os.path.join(self.options.get('job_dir'),
+                                  'faps_%s_%s' % (job_name, dft_code))
+        mkdirs(siesta_dir)
+        os.chdir(siesta_dir)
+        debug("Running in %s" % siesta_dir)
+        info("Running on %i nodes" % nproc)
+
+        filetemp = open("%s.fdf" % job_name, "wb")
+        filetemp.writelines(self.structure.to_siesta(self.options))
+        filetemp.close()
+
+        psf_types = unique(self.structure.types)
+        psf_dir = self.options.get('psf_dir')
+        for at_type in psf_types:
+            psf_src = os.path.join(psf_dir, "%s.psf" % at_type)
+            shutil.copy(psf_src, siesta_dir)
+        filetemp.close()
+
+        if self.options.getbool('no_submit'):
+            info("Siesta input files generated; skipping job submission")
             self.state['dft'] = (SKIPPED, False)
         else:
             # FIXME(tdaff): wooki specific at the moment
@@ -745,6 +791,56 @@ class Structure(object):
         """Return a cpmd input file as a list of lines."""
         raise NotImplementedError
 
+    def to_siesta(self, options):
+        """Return a siesta input file as a list of lines."""
+        job_name = options.get('job_name')
+        siesta_accuracy = options.get("siesta_accuracy")
+        if siesta_accuracy == 'high':
+            basis = ('DZ', 250, 200)
+        else:
+            basis = ('SZ', 150, 100)
+        u_atoms = unique(self.atoms, key=lambda x: x.type)
+        u_types = unique(self.types)
+        fdf = ([
+            "SystemName %s\n" % job_name,
+            "SystemLabel %s\n" % job_name,
+            "\n",
+            "NumberOfAtoms %i\n" % len(self.atoms),
+            "NumberOfSpecies %i\n" % len(u_atoms),
+            "\n",
+            "SaveElectrostaticPotential .true.\n",
+            "\n",
+            "# Accuracy bits\n",
+            "\n",
+            "PAO.BasisSize %s\n" % basis[0],
+            "PAO.EnergyShift %i\n" % basis[1],
+            "MeshCutoff %i\n" % basis[2],
+            "\n",
+            "MaxSCFIterations 100\n",
+            "XC.Functional GGA\n",
+            "XC.Authors PBE\n",
+            "SolutionMethod diagon\n",
+            "ElectronicTemperature 25 K\n",
+            "\n",
+            "%block ChemicalSpeciesLabel\n"] + [
+            "%6i %6i %6s\n" % ((idx + 1), atom.atomic_number, atom.type)
+                for idx, atom in enumerate(u_atoms)] + [
+            "%endblock ChemicalSpeciesLabel\n",
+            "\n",
+            "LatticeConstant 1 Ang\n"
+            "%block LatticeVectors\n"] +
+            self.cell.to_vector_strings() + [
+            "%endblock LatticeVectors\n",
+            "\n",
+            "AtomicCoordinatesFormat   Ang\n",
+            "\n",
+            "%block AtomicCoordinatesAndAtomicSpecies\n"] + [
+            "%12.8f %12.8f %12.8f" % tuple(atom.pos) + "%6i\n" %
+                (u_types.index(atom.type) + 1) for atom in self.atoms] + [
+            "%endblock AtomicCoordinatesAndAtomicSpecies"])
+
+        return fdf
+
     def to_fastmc(self, options):
         """Return the FIELD and CONFIG needed for a fastmc run"""
         # CONFIG
@@ -874,6 +970,11 @@ class Structure(object):
     def types(self):
         """Ordered list of atom types."""
         return [atom.type for atom in self.atoms]
+
+    @property
+    def atominc_numbers(self):
+        """Ordered list of atomic numbers."""
+        return [atom.atomic_number for atom in self.atoms]
 
     @property
     def weight(self):
@@ -1082,6 +1183,23 @@ class Atom(object):
         """Move the atom by the given vector."""
         self.pos = [x + y for x, y in zip(self.pos, vec)]
 
+    def get_atomic_number(self):
+        """The atomic number for the element, or closest match."""
+        name = self.type
+        atomic_number = None
+        while name:
+            try:
+                atomic_number = ATOMIC_NUMBER.index(name)
+                break
+            except ValueError:
+                name = name[-1]
+        return atomic_number
+
+    def set_atomic_number(self, value):
+        """Set the atom type based on the atomic number."""
+        self.type = ATOMIC_NUMBER[value]
+
+    atomic_number = property(get_atomic_number, set_atomic_number)
 
 class Guest(object):
     """Guest molecule and properties."""
@@ -1330,12 +1448,20 @@ def mk_gcmc_control(temperature, pressures, options, guests):
     return control
 
 
-def unique(in_list):
+def unique(in_list, key=None):
     """Unique values in list ordered by first occurance"""
     uniq = []
-    for item in in_list:
-        if item not in uniq:
-            uniq.append(item)
+    if key is not None:
+        keys = []
+        for item in in_list:
+            item_key = key(item)
+            if item_key not in keys:
+                uniq.append(item)
+                keys.append(item_key)
+    else:
+        for item in in_list:
+            if item not in uniq:
+                uniq.append(item)
     return uniq
 
 

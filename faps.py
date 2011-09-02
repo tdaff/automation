@@ -294,7 +294,7 @@ class PyNiss(object):
         info("Calculating charges with %s" % chg_method)
         if chg_method == 'repeat':
             # Get ESP
-            self.esp2cube()
+            self.esp_to_cube()
             self.run_repeat()
         else:
             err("Unknown charge calculation method: %s" % chg_method)
@@ -389,12 +389,14 @@ class PyNiss(object):
             self.state['dft'] = (SKIPPED, False)
         else:
             # FIXME(tdaff): wooki specific at the moment
-            vasp_args = ["vaspsubmit-beta", job_name, "%i" % nproc]
-            submit = subprocess.Popen(vasp_args, stdout=subprocess.PIPE)
+#            siesta_args = [self.options.get('siesta_exe'), '<', '%s.fdf' % job_name]
+            siesta_args = ['siestasubmit', '%s' % job_name]
+            submit = subprocess.Popen(siesta_args, stdout=subprocess.PIPE)
             for line in submit.stdout.readlines():
+                print line
                 if "wooki" in line:
                     jobid = line.split(".")[0]
-                    info("Running VASP job in queue. Jobid: %s" % jobid)
+                    info("Running SIESTA job in queue. Jobid: %s" % jobid)
                     self.state['dft'] = (RUNNING, jobid)
                     break
             else:
@@ -402,26 +404,41 @@ class PyNiss(object):
         # Tidy up at the end
         os.chdir(self.options.get('job_dir'))
 
-    def esp2cube(self):
+    def esp_to_cube(self):
         """Make the cube for repeat input."""
         job_name = self.options.get('job_name')
         esp_src = self.options.get('esp_src')
+        repeat_dir = os.path.join(self.options.get('job_dir'),
+                                  'faps_%s_repeat' % job_name)
+        mkdirs(repeat_dir)
         src_dir = os.path.join(self.options.get('job_dir'),
                                'faps_%s_%s' % (job_name, esp_src))
         os.chdir(src_dir)
         if esp_src == 'vasp':
             os.chdir(job_name + ".restart_DIR")
-            esp2cube_args = shlex.split(self.options.get('vasp2cube'))
-            info("Converting esp to cube, this might take a minute...")
-            submit = subprocess.Popen(esp2cube_args)
+            esp_to_cube_args = shlex.split(self.options.get('vasp_to_cube'))
+            info("Converting vasp esp to cube, this might take a minute...")
+            submit = subprocess.Popen(esp_to_cube_args)
             submit.wait()
-            # TODO(tdaff): leave the cube name as job-name..
-            # Move it to the repeat directory
-            repeat_dir = os.path.join(self.options.get('job_dir'),
-                                      'faps_%s_repeat' % job_name)
-            mkdirs(repeat_dir)
+            # Cube should have job_name; Move it to the repeat directory
             move_and_overwrite(job_name + '.cube', repeat_dir)
-            os.chdir(self.options.get('job_dir'))
+        elif esp_src == 'siesta':
+            esp_to_cube_args = shlex.split(self.options.get('siesta_to_cube'))
+            resolution = self.options.getfloat('esp_resolution')
+            # Nice even grids probably scale better in parallel repeat
+            esp_grid = tuple([8*np.ceil(x/(8*resolution))
+                              for x in self.structure.cell.params[:3]])
+            info("Generating ESP grid of %ix%ix%i" % esp_grid)
+            siesta_to_cube_input = [
+                "%s\n" % job_name,
+                "%f %f %f\n" % (0.0, 0.0, 0.0),
+                "%i %i %i\n" % esp_grid]
+            info("Converting siesta esp to cube, this might take a minute...")
+            submit = subprocess.Popen(esp_to_cube_args, stdin=subprocess.PIPE)
+            submit.communicate(input=''.join(siesta_to_cube_input))
+            move_and_overwrite(job_name + '.cube', repeat_dir)
+
+        os.chdir(self.options.get('job_dir'))
 
     def run_repeat(self):
         """Submit the repeat calc to the queue."""
@@ -794,11 +811,17 @@ class Structure(object):
     def to_siesta(self, options):
         """Return a siesta input file as a list of lines."""
         job_name = options.get('job_name')
-        siesta_accuracy = options.get("siesta_accuracy")
-        if siesta_accuracy == 'high':
-            basis = ('DZ', 250, 200)
-        else:
+        siesta_accuracy = options.get("siesta_accuracy").lower()
+        if siesta_accuracy in ['high']:
+            info("Using 'high' accuracy siesta settings")
+            basis = ('DZP', 250, 200)
+        if siesta_accuracy in ['low']:
+            info("Using 'low' accuracy siesta settings")
             basis = ('SZ', 150, 100)
+        else:
+            info("Using default siesta accuracy settings")
+            basis = ('DZ', 150, 100)
+
         u_atoms = unique(self.atoms, key=lambda x: x.type)
         u_types = unique(self.types)
         fdf = ([
@@ -809,12 +832,13 @@ class Structure(object):
             "NumberOfSpecies %i\n" % len(u_atoms),
             "\n",
             "SaveElectrostaticPotential .true.\n",
+            "WriteMullikenPop 1\n"
             "\n",
             "# Accuracy bits\n",
             "\n",
             "PAO.BasisSize %s\n" % basis[0],
-            "PAO.EnergyShift %i\n" % basis[1],
-            "MeshCutoff %i\n" % basis[2],
+            "PAO.EnergyShift %i meV\n" % basis[1],
+            "MeshCutoff %i Ry\n" % basis[2],
             "\n",
             "MaxSCFIterations 100\n",
             "XC.Functional GGA\n",

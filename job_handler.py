@@ -74,7 +74,7 @@ def _sharcnet_submit(job_type, options):
     # Dedicated queue
     sqsub_args.extend(['-q', 'DR_20293'])
     # job_name
-    sqsub_args.extend(['-j', 'faps-%s' % job_name])
+    sqsub_args.extend(['-j', 'faps-%s-%s' % (job_name, job_type)])
     # Is it a multiple CPU job?
     if nodes > 1:
         # Ensure mpi is enebaled
@@ -82,9 +82,15 @@ def _sharcnet_submit(job_type, options):
         # request nodes
         sqsub_args.extend(['-n', '%i' % nodes])
     # run-time estimate mandatory job type default?
-    sqsub_args.extend(['-r', '6h'])
+    if job_type == 'repeat':
+        sqsub_args.extend(['-r', '12h'])
+    else:
+        sqsub_args.extend(['-r', '6h'])
     # Memory might need increasing
-    sqsub_args.extend(['--mpp=2.5g'])
+    if job_type == 'repeat':
+        sqsub_args.extend(['--mpp=6g'])
+    else:
+        sqsub_args.extend(['--mpp=2.5g'])
     # Output
     sqsub_args.extend(['-o', 'faps-%s.out' % job_name])
     # Which command?
@@ -135,7 +141,7 @@ def _sharcnet_postrun(waitid):
 
 
 def _sharcnet_jobcheck(jobid):
-    """Return true if job is still running or queued."""
+    """Return true if job is still running or queued, or check fails."""
     # can deal with jobid as an int or a string
     jobid = ("%s" % jobid).strip()
     running_status = ['Q', 'R', 'Z']

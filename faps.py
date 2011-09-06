@@ -232,10 +232,12 @@ class PyNiss(object):
     def post_summary(self):
         """Summarise any GCMC results."""
         info("Summary of GCMC results")
-        for guest in self.structure.guests:
+        nguests = len(self.structure.guests)
+        for idx, guest in enumerate(self.structure.guests):
+            csv = ["#T/K,p/bar,mol/uc,mmol/g,stdev,hoa/kcal/mol,stdev\n"]
             info(guest.name)
             info(" mol/uc  mmol/g     hoa     T_P")
-            for tp_point in guest.uptake:
+            for tp_point in sorted(guest.uptake):
                 # <N>, sd, supercell
                 uptake = guest.uptake[tp_point]
                 hoa = guest.hoa[tp_point]
@@ -245,6 +247,16 @@ class PyNiss(object):
                     hoa[0],
                     ("T=%s" % tp_point[0] +
                      ''.join(['P=%s' % x for x in tp_point[1]]))))
+                csv.append("%f,%f,%f,%f,%f,%f,%f," % (
+                    tp_point[0], tp_point[1][idx], uptake[0]/uptake[2],
+                    1000*uptake[0]/(uptake[2]*self.structure.weight),
+                    1000*uptake[1]/(uptake[2]*self.structure.weight),
+                    hoa[0], hoa[1]) + 
+                    ",".join("%f" % x for x in tp_point[1]) + "\n")
+            csv_file = file('%s-%s.csv' %
+                            (self.options.get('job_name'), guest.ident), 'wb')
+            csv_file.writelines(csv)
+            csv_file.close()
 
 
     def import_old(self):
@@ -373,14 +385,14 @@ class PyNiss(object):
         debug("Running in %s" % siesta_dir)
         info("Running on %i nodes" % nproc)
 
-        filetemp = open("%s.fdf" % job_name, "wb")
+        filetemp = open('%s.fdf' % job_name, 'wb')
         filetemp.writelines(self.structure.to_siesta(self.options))
         filetemp.close()
 
         psf_types = unique(self.structure.types)
         psf_dir = self.options.get('psf_dir')
         for at_type in psf_types:
-            psf_src = os.path.join(psf_dir, "%s.psf" % at_type)
+            psf_src = os.path.join(psf_dir, '%s.psf' % at_type)
             shutil.copy(psf_src, siesta_dir)
         filetemp.close()
 
@@ -390,6 +402,7 @@ class PyNiss(object):
         else:
             # FIXME(tdaff): wooki specific at the moment
 #            siesta_args = [self.options.get('siesta_exe'), '<', '%s.fdf' % job_name]
+            shutil.copy('%s.fdf' % job_name, '%s.in' % job_name)
             siesta_args = ['siestasubmit', '%s' % job_name]
             submit = subprocess.Popen(siesta_args, stdout=subprocess.PIPE)
             for line in submit.stdout.readlines():
@@ -423,6 +436,7 @@ class PyNiss(object):
             # Cube should have job_name; Move it to the repeat directory
             move_and_overwrite(job_name + '.cube', repeat_dir)
         elif esp_src == 'siesta':
+            os.chdir(job_name + ".restart_DIR")
             esp_to_cube_args = shlex.split(self.options.get('siesta_to_cube'))
             resolution = self.options.getfloat('esp_resolution')
             # Nice even grids probably scale better in parallel repeat

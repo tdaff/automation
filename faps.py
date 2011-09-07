@@ -1513,22 +1513,6 @@ def lorentz_berthelot(left, right):
     return sigma, epsilon
 
 
-def jobcheck(jobid):
-    """Get job status."""
-    jobid = ("%s" % jobid).strip()
-    qstat = subprocess.Popen(['qstat', jobid], stdout=subprocess.PIPE,
-                             stderr=subprocess.STDOUT)
-    for line in qstat.stdout.readlines():
-        debug(line)
-        if "Unknown Job Id" in line:
-            return False
-        elif line.startswith(jobid):
-            status = line[68:69]
-            return status
-    else:
-        print("Failed to get job information.")
-
-
 # Functions for logging
 def debug(msg):
     """Send DEBUGging to the logging handlers."""
@@ -1578,6 +1562,7 @@ def terminate(exit_code=0):
 
 def move_and_overwrite(src, dest):
     """Move src to dest and overwrite if it is an existing file."""
+    # As src and dest can be files or directories, do some checks.
     if os.path.exists(dest):
         if os.path.isdir(dest):
             dest_full = os.path.join(dest, os.path.basename(src))
@@ -1623,13 +1608,11 @@ def welcome():
     """Print any important messages."""
     print("FAPS version 0.0r%s" % __version__.strip('$Revision: '))
     print(LOGO)
-    print("\nFaps is under heavy development and will break without notice.")
-    print("\nThis version breaks backwards and forwards compatibility!")
+    print("\nFaps is still under development and will break without notice.")
+    print("\nMost versions break backwards and forwards compatibility!")
     print("EXISTING JOBS WILL NOT WORK [automatically], sorry :(")
-    print("\n * Jobs now run in subdirectories;")
-    print("   You need to manually move some files to --import existing jobs!")
-    print("\n * Internal structure of the .niss file has changed,")
-    print("   this should be deleted before '--import'ing.")
+    print("\n * You may need to manually move files to continue jobs!")
+    print(" * Or delete the .niss file before '--import'ing,")
     print("\n")
 
 

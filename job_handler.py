@@ -20,14 +20,14 @@ class JobHandler(object):
     Abstraction of batch scheduler submission.
 
     """
-    #TODO(tdaff): remember to re-run the script once job is finished!
 
     def __init__(self, options):
         """Initialize for machine specified by options."""
         self.queue = options.get('queue')
         if self.queue == 'wooki':
-            self.submit = self._wooki_submit
-            self.jobcheck = self.wooki_jobcheck
+            self.submit = _wooki_submit
+            self.postrun = _wooki_postrun
+            self.jobcheck = wooki_jobcheck
         elif self.queue == 'sharcnet':
             self.submit = _sharcnet_submit
             self.postrun = _sharcnet_postrun
@@ -36,26 +36,9 @@ class JobHandler(object):
             self.submit = self._pbs_submit
             self.jobcheck = self._pbs_jobcheck
 
-    def _wooki_submit(self, job_type, nodes, **kwargs):
-        """Submit a job to wooki; return the jobid."""
-        pass
-
     def _pbs_submit(self, job_type, nodes, **kwargs):
         """Submit a generic pbs job; return the jobid."""
         pass
-
-    def _wooki_jobcheck(self, jobid):
-        """Get job status. Return status or False for non existent job."""
-        jobid = "%s" % jobid
-        qstat = Popen(['qstat', '%s' % jobid], stdout=PIPE, stderr=STDOUT)
-        for line in qstat.stdout.readlines():
-            if "Unknown Job Id" in line:
-                return False
-            elif line.startswith(jobid):
-                status = line[68:69]
-                return status
-        else:
-            print("Failed to get job information.")  # qstat parsing failed?
 
 
 def _sharcnet_submit(job_type, options, input_file=None):
@@ -413,11 +396,81 @@ def _wooki_generic(job_name, nodes=1, attributes=None):
     submit.communicate(input=line)
 
 
-def _wooki_postrun(jobid):
-    pbs_directives = ["#PBS -N fap-%s" % job_name,
-                      "#PBS -m n",
-                      "#PBS -o std.out",
-                      "#PBS -j oe ",
-                      "#PBS "
-                      "cd $PBS_O_WORKDIR",
-                      "python faps.py"]
+
+def _wooki_submit(job_type, options, input_file=None):
+    """
+    Interface to the submission scripts on wooki. Let them deal with the
+    node types, because it is too fiddly to care about.
+    """
+    submit_scripts = {
+        'vasp': 'vaspsubmit-beta',
+        'repeat': 'repeatsubmit',
+        'siesta': 'siestasubmit',
+        'fastmc': 'fastmcsubmit'
+    }
+    job_name = options.get('job_name')
+    try:
+        nodes = options.getint('%s_ncpu' % job_type)
+    except AttributeError:
+        nodes = 1
+
+    submit_args = [submit_scripts[job_type], job_name, "%i" % nodes]
+    submit = Popen(submit_args, stdout=subprocess.PIPE)
+    for line in submit.stdout.readlines():
+        if "wooki" in line:
+            jobid = line.split(".")[0]
+            break
+    else:
+        print("Job submission failed?")
+
+    return jobid
+
+
+
+def _wooki_postrun(waitid):
+    """
+    Resubmit this script for the postrun on job completion. Will accept
+    a single jobid or a list, as integers or strings.
+    """
+
+    # Magic makes everything into a set of strings
+    if hasattr(waitid, '__iter__'):
+        waitid = frozenset([("%s" % id).strip() for id in waitid])
+    else:
+        waitid = frozenset([("%s" % waitid).strip()])
+    # No jobcheck here as we assume wooki works
+    pbs_script = ['#PBS -N fap-post-%s\n' % job_name,
+                  '#PBS -m n\n',
+                  '#PBS -o faps-post-%s.out\n' % '-'.join(sorted(waitid)),
+                  '#PBS -j oe\n',
+                  '#PBS -W depend=afterok:%s\n' % ':'.join(waitid),
+                  'cd $PBS_O_WORKDIR\n'] + sys.argv
+
+    pbs_script = ''.join(pbs_script)
+    print(pbs_script)
+    submit = Popen("qsub", shell=False, stdin=PIPE)
+    submit.communicate(input=pbs_script)
+
+
+def _wooki_jobcheck(jobid):
+    """Return true if job is still running or queued, or check fails."""
+    # can deal with jobid as an int or a string
+    jobid = ("%s" % jobid).strip()
+    running_status = ['Q', 'R', 'Z']
+    qstat = Popen(['qstat', jobid], stdout=PIPE, stderr=STDOUT)
+    for line in qstat.stdout.readlines():
+        if "Unknown Job Id" in line:
+            # Job finished and removed
+            return False
+        elif jobid in line:
+            # use of 'in' should be fine as only this job will be shown
+            status = line[68:69]
+            if status in running_status:
+                return True
+            else:
+                # Not running
+                return False
+    else:
+        print("Failed to get job information.")  # qstat parsing failed?
+        # Act as if the job is still running, in case it hasn't finished
+        return True

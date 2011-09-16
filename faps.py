@@ -29,7 +29,7 @@ from copy import copy
 from math import ceil
 
 import numpy as np
-from numpy import pi, cos, sin, sqrt, arccos, prod
+from numpy import pi, cos, sin, sqrt, arccos
 from numpy import array, identity, dot, cross
 from numpy.linalg import norm
 
@@ -435,13 +435,14 @@ class PyNiss(object):
             submit.wait()
             # Cube should have job_name; Move it to the repeat directory
             move_and_overwrite(job_name + '.cube', repeat_dir)
+            unneeded_files = ['WAVECAR', 'CHG', 'DOSCAR', 'EIGENVAL', 'POTCAR']
+            remove_files('.', unneeded_files)
+            keep_files = ['LOCPOT', 'CHGCAR', 'vasprun.xml', 'XDATCAR']
+            compress_files('.', keep_files)
         elif esp_src == 'siesta':
             os.chdir(job_name + ".restart_DIR")
             esp_to_cube_args = shlex.split(self.options.get('siesta_to_cube'))
-            resolution = self.options.getfloat('esp_resolution')
-            # Nice even grids probably scale better in parallel repeat
-            esp_grid = tuple([8*np.ceil(x/(8*resolution))
-                              for x in self.structure.cell.params[:3]])
+            esp_grid = self.esp_grid
             info("Generating ESP grid of %ix%ix%i" % esp_grid)
             siesta_to_cube_input = [
                 "%s\n" % job_name,
@@ -545,6 +546,35 @@ class PyNiss(object):
                 os.chdir('..')
         os.chdir(self.options.get('job_dir'))
 
+    @property
+    def esp_grid(self):
+        """Estimate the esp grid based on resolution and memory."""
+        # If repeat is unsing double precision, use 4 for single
+        repeat_prec = 8
+        # User defined resolution, try to use this
+        resolution = self.options.getfloat('esp_resolution')
+        repeat_ncpu = self.options.getint('repeat_ncpu')
+        if repeat_ncpu == 1:
+            vmem = self.options.getfloat('serial_memory')
+        else:
+            vmem = self.options.getfloat('threaded_memory')
+        # Nice even grids might scale better in parallel repeat
+        esp_grid = tuple([int(4*np.ceil(x/(4*resolution)))
+                          for x in self.structure.cell.params[:3]])
+        memory_guess = prod(esp_grid)*self.structure.natoms*repeat_prec/1e9
+        print memory_guess
+        if memory_guess > vmem:
+            warn("ESP at this resolution might need up to %.1f GB of memory "
+                 "but calculation will only request %.1f" %
+                 (memory_guess, vmem))
+            resolution = resolution/pow(vmem/memory_guess, 1.0/3)
+            esp_grid = tuple([int(4*np.ceil(x/(4*resolution)))
+                              for x in self.structure.cell.params[:3]])
+            warn("Reduced grid to %.2f A resolution to fit" % resolution)
+
+        return esp_grid
+
+
 
 class Structure(object):
     """
@@ -604,6 +634,10 @@ class Structure(object):
             info("Updating charges from repeat")
             self.charges_from_repeat(
                 os.path.join(charge_path, self.name + '.esp_fit.out'))
+            # Cleanup of REPEAT files
+            unneeded_files = ['ESP_real_coul.dat', 'fort.30', 'fort.40']
+            remove_files(charge_path, unneeded_files)
+
         else:
             err("Unknown charge method to import %s" % charge_method)
 
@@ -1028,6 +1062,11 @@ class Structure(object):
     def volume(self):
         """Unite cell volume."""
         return self.cell.volume
+
+    @property
+    def natoms(self):
+        """Number of atoms in the unit cell."""
+        return len(self.atoms)
 
     def get_gcmc_supercell(self):
         """Supercell used for gcmc."""
@@ -1606,6 +1645,35 @@ def ufloat(text):
     """Convert string to float, ignoring the uncertainty part."""
     return float(re.sub('\(.*\)', '', text))
 
+def prod(seq):
+    """Calculate the product of all members of a sequence."""
+    # numpy.prod will silently overflow 32 bit integer values
+    # so we can use python bignums natively
+    product = 1
+    for item in seq:
+        product *= item
+    return product
+
+def remove_files(directory, files):
+    """Delete any of the files if they exist, or ignore if not found."""
+    directory_contents = os.listdir(directory)
+    for file_name in files:
+        if file_name in directory_contents:
+            debug("deleting %s" % file_name)
+            os.remove(os.path.join(directory, file_name))
+        else:
+            debug("file not found %s" % file_name)
+
+def compress_files(directory, files):
+    """Gzip any big files to keep."""
+    directory_contents = os.listdir(directory)
+    for file_name in files:
+        if file_name in directory_contents:
+            debug("compressing %s" % file_name)
+            gzip_command = ['gzip', '-f', os.path.join(directory, file_name)]
+            subprocess.call(gzip_command)
+        else:
+            debug("file not found %s" % file_name)
 
 def strip_blanks(lines):
     """Strip lines and remove blank lines."""

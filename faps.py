@@ -829,13 +829,13 @@ class Structure(object):
         siesta_accuracy = options.get("siesta_accuracy").lower()
         if siesta_accuracy in ['high']:
             info("Using 'high' accuracy siesta settings")
-            basis = ('DZP', 250, 200)
-        if siesta_accuracy in ['low']:
+            basis = ('DZP', 100, 200)
+        elif siesta_accuracy in ['low']:
             info("Using 'low' accuracy siesta settings")
-            basis = ('SZ', 150, 100)
+            basis = ('SZ', 200, 100)
         else:
             info("Using default siesta accuracy settings")
-            basis = ('DZ', 150, 100)
+            basis = ('DZ', 150, 150)
 
         u_atoms = unique(self.atoms, key=lambda x: x.type)
         u_types = unique(self.types)
@@ -860,6 +860,8 @@ class Structure(object):
             "XC.Authors PBE\n",
             "SolutionMethod diagon\n",
             "ElectronicTemperature 25 K\n",
+            "DM.NumberPulay 5\n",
+            "DM.MixingWeight 0.05\n",
             "\n",
             "%block ChemicalSpeciesLabel\n"] + [
             "%6i %6i %6s\n" % ((idx + 1), atom.atomic_number, atom.type)

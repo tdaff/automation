@@ -275,9 +275,25 @@ def options_test():
     print(testopts.get('verbose'))
     print(testopts.get('script_dir'))
     print(testopts.getbool('interactive'))
-    print(testopts.get('whot'))
-    print(testopts.get('repeat_exe'))
-    print(testopts.gettuple('test_tuple'))
+    for arg in testopts.get('args'):
+        print('%s: %s' % (arg, testopts.get(arg)))
+        try:
+            print(testopts.getbool(arg))
+        except ValueError:
+            print('%s is not a bool' % arg)
+        try:
+            print(testopts.getint(arg))
+        except ValueError:
+            print('%s is not an int' % arg)
+        try:
+            print(testopts.getfloat(arg))
+        except ValueError:
+            print('%s is not a float' % arg)
+        try:
+            print(testopts.gettuple(arg))
+        except ValueError:
+            print('%s is not a tuple' % arg)
+    print(testopts.get('not an option'))
 
 
 if __name__ == '__main__':

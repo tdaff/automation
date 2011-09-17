@@ -43,8 +43,9 @@ class JobHandler(object):
 
 def _sharcnet_submit(job_type, options, input_file=None):
     """Simple interface to the 'sqsub' submission on sharcnet"""
-    # TODO(tdaff): self-resubmission?
-    # sqsub -q DR_20293 -f mpi -n 48 -o std.out -j hmof-589 -r 6h --mpp=4g ~/bin/vasp-5.2.11-sequential
+    # Threaded codes have different behaviour
+    openmp_codes = options.gettuple('threaded_codes')
+
     # Bind some things locally, so we know what's going on
     job_name = options.get('job_name')
     exe = options.get('%s_exe' % job_type)
@@ -54,26 +55,28 @@ def _sharcnet_submit(job_type, options, input_file=None):
         nodes = 1
 
     sqsub_args = ['sqsub']
-    # Dedicated queue
+    # Always use the dedicated queue; faster
     sqsub_args.extend(['-q', 'DR_20293'])
     # job_name
     sqsub_args.extend(['-j', 'faps-%s-%s' % (job_name, job_type)])
     # Is it a multiple CPU job?
+    # Memory is mandatory; set depending on job type...
     if nodes > 1:
-        # Ensure mpi is enebaled
-        sqsub_args.extend(['-f', 'mpi'])
         # request nodes
         sqsub_args.extend(['-n', '%i' % nodes])
-    # run-time estimate mandatory job type default?
-    if job_type == 'repeat':
-        sqsub_args.extend(['-r', '12h'])
-    else:
-        sqsub_args.extend(['-r', '6h'])
-    # Memory might need increasing
-    if job_type == 'repeat':
-        sqsub_args.extend(['--mpp=6g'])
+        if job_type in openmp_codes:
+            # Some jobs are only openmp
+            sqsub_args.extend(['-f', 'threaded'])
+            sqsub_args.extend(['--mpp=%ig' % nodes])
+        else:
+            # Ensure mpi is enebaled
+            sqsub_args.extend(['-f', 'mpi'])
+            sqsub_args.extend(['--mpp=1.33g'])
+            sqsub_args.extend(['--pack'])
     else:
         sqsub_args.extend(['--mpp=2.5g'])
+    # run-time estimate mandatory; 12 hours is plenty?
+    sqsub_args.extend(['-r', '12h'])
     # Some codes need the input file name
     if input_file is not None:
         sqsub_args.extend(['-i', '%s' % input_file])

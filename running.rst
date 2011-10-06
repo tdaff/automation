@@ -9,15 +9,20 @@ and a configuration file is optional.
 On ``wooki`` the job will stop after each step and can be continued by
 re-issuing the command. Jobs on ``orca`` will run to completion by default.
 
+.. _structure-files:
+
 ---------------
 Structure files
 ---------------
 
-One file from this list is **required**.
+One file from this list is **required**. By default the code will use a
+``$JOBNAME.pdb``, other file formats may be set in the config files or on the
+commandline.
 
 .. object:: $JOBNAME.pdb
 
-   Faps will process any standard pdb structure file, ``$JOBNAME.pdb``.
+   Faps will take the structure from any standard Protein Data Bank (PDB)
+   structure file, ``$JOBNAME.pdb``.
 
    .. warning::
 
@@ -29,8 +34,9 @@ One file from this list is **required**.
 
 .. object:: $JOBNAME.cif
 
-   Faps has rudimentary .cif file processing, atom positions are extracted and
-   symmetry operations are attempted ``$JOBNAME.cif``.
+   Faps has rudimentary Crystallogrphic Information File (CIF) file processing
+   capability; atom positions are extracted and symmetry operations are
+   applied.
 
    .. warning::
 
@@ -39,21 +45,39 @@ One file from this list is **required**.
       structures. These will be fine if only the identity operation is used.
 
 
+.. _config-files:
+
 ------------
 Config files
 ------------
 
-These files are optional.
+These files are optional. Faps will try to use sensible defaults for
+everything, most installations will require customisation of the ``site.ini``.
 
 .. object:: $JOBNAME.fap
 
-   change any program options.
+   The per-job settings. This file should be placed in the running directory
+   with the same basename as the structure file. This is not a conventional
+   *'input file'*, as it is only required if non-defalut options are needed.
+   Options are set as
 
 
-.. object::  site.ini
+.. object:: site.ini
+
+   .. _site-ini:
 
    The ``site.ini`` is located in the code directory and can be used to
    override any of the options set in ``default.ini`` that is found in the same
    directory. Usually this file will be used to set all configuration for a
    particular machine (e.g. binary or pseudopotential locations), or a set of
    calaultions (desired state points for all high throughput structures).
+
+.. _library-files:
+
+-------------
+Library files
+-------------
+
+.. object:: guests.lib
+
+   Predefined guests

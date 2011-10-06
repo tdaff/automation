@@ -9,6 +9,7 @@ are running on from the provided options.
 
 import os
 import getpass
+import re
 import subprocess
 import sys
 import time
@@ -28,10 +29,12 @@ class JobHandler(object):
             self.submit = _wooki_submit
             self.postrun = _wooki_postrun
             self.jobcheck = wooki_jobcheck
+            self.env = _pass
         elif self.queue == 'sharcnet':
             self.submit = _sharcnet_submit
             self.postrun = _sharcnet_postrun
             self.jobcheck = _sharcnet_jobcheck
+            self.env = _sharcnet_env
         else:
             self.submit = self._pbs_submit
             self.jobcheck = self._pbs_jobcheck
@@ -72,7 +75,8 @@ def _sharcnet_submit(job_type, options, input_file=None):
             # Ensure mpi is enebaled
             sqsub_args.extend(['-f', 'mpi'])
             sqsub_args.extend(['--mpp=1.33g'])
-            sqsub_args.extend(['--pack'])
+            if nodes%24 == 0:
+                sqsub_args.extend(['--pack'])
     else:
         sqsub_args.extend(['--mpp=2.5g'])
     # run-time estimate mandatory; 12 hours is plenty?
@@ -153,7 +157,27 @@ def _sharcnet_jobcheck(jobid):
         return True
 
 
+def _sharcnet_env(code):
+    """Update the running environment for specific codes."""
+    if code == 'siesta':
+        # Siesta uses pathscale libraries and is a module
+        # the pathscale currently appends the 32 bit lib_dir
+        # so we have to try and chop that out
+        newenv = subprocess.Popen(
+            ['/usr/bin/modulecmd', 'python', 'load', 'siesta'], stdout=PIPE)
+        #newenv = newenv.stdout.read()
+        exec(newenv.stdout)
+        ld_lib = os.environ['LD_LIBRARY_PATH']
+        ld_lib = re.sub('/opt/sharcnet/pathscale/(.*)/lib/(.*)/32',
+                        '/opt/sharcnet/pathscale/\\1/lib/\\2', ld_lib)
+        os.environ['LD_LIBRARY_PATH'] = ld_lib
+    else:
+        pass
 
+
+def _pass(*args, **kwargs):
+    """Sometimes we want to do nothing."""
+    pass
 
 def _wooki_generic(job_name, nodes=1, attributes=None):
     """Generic wooki submission to qsub."""

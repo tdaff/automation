@@ -354,8 +354,9 @@ class PyNiss(object):
         filetemp.close()
 
         # different names for input files on wooki
-        for vasp_file in ['POSCAR', 'INCAR', 'KPOINTS', 'POTCAR']:
-            shutil.copy(vasp_file, job_name + '.' + vasp_file.lower())
+        if self.options.get('queue') == 'wooki':
+            for vasp_file in ['POSCAR', 'INCAR', 'KPOINTS', 'POTCAR']:
+                shutil.copy(vasp_file, job_name + '.' + vasp_file.lower())
 
         if self.options.getbool('no_submit'):
             info("Vasp input files generated; skipping job submission")
@@ -401,6 +402,8 @@ class PyNiss(object):
             info("Siesta input files generated; skipping job submission")
             self.state['dft'] = (SKIPPED, False)
         else:
+            # sharcnet does weird things for siesta
+            self.job_handler.env(dft_code)
             jobid = self.job_handler.submit(dft_code, self.options,
                                             input_file='%s.fdf' % job_name)
             info("Running SIESTA job in queue. Jobid: %s" % jobid)
@@ -638,8 +641,8 @@ class Structure(object):
             # Cleanup of REPEAT files
             unneeded_files = ['ESP_real_coul.dat', 'fort.30', 'fort.40']
             remove_files(charge_path, unneeded_files)
-            keep_files = ['%s.cube' % job_name]
-            compress_files('.', keep_files)
+            keep_files = ['%s.cube' % self.name]
+            compress_files(charge_path, keep_files)
         else:
             err("Unknown charge method to import %s" % charge_method)
 
@@ -886,6 +889,7 @@ class Structure(object):
             "\n",
             "SaveElectrostaticPotential .true.\n",
             "WriteMullikenPop 1\n"
+            "WriteXML F\n",
             "\n",
             "# Accuracy bits\n",
             "\n",
@@ -1453,7 +1457,7 @@ def mk_incar(options):
         info("Cell vectors will be optimized")
         incar.extend(["ENCUT = 520\n",
                       "IBRION  = 2\n",
-                      "NSW     = 300\n",
+                      "NSW     = 800\n",
                       "ISIF    = 3\n"])
     elif optim_all or optim_h:
         # Just move positions

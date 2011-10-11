@@ -162,7 +162,6 @@ class Options(object):
         # add the handler to the root logger
         logging.getLogger('').addHandler(console)
 
-
     def commandline(self):
         """Specified options, highest priority."""
         usage = "usage: %prog [options] [COMMAND] JOB_NAME"
@@ -265,6 +264,7 @@ def debug(msg):
     msg = textwrap.wrap(msg)
     for line in msg:
         logging.debug(line)
+
 
 def options_test():
     """Try and read a few options from different sources."""

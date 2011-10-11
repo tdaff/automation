@@ -60,7 +60,6 @@ class PyNiss(object):
     dump_state().
 
     """
-    # TODO(tdaff): automate the whole thing unless told otherwise
     def __init__(self, options):
         """
         Instance an empty structure in the calculation; The dispatcher should
@@ -130,7 +129,6 @@ class PyNiss(object):
             self.state['init'] = (UPDATED, False)
             self.dump_state()
 
-        # TODO(tdaff): does dft/optim always generate ESP?
         if self.state['dft'][0] not in [UPDATED, SKIPPED]:
             if self.options.getbool('no_dft'):
                 info("Skipping DFT step completely")
@@ -237,7 +235,8 @@ class PyNiss(object):
         info("Summary of GCMC results")
         nguests = len(self.structure.guests)
         for idx, guest in enumerate(self.structure.guests):
-            csv = ["#T/K,p/bar,mol/uc,mmol/g,stdev,hoa/kcal/mol,stdev\n"]
+            csv = ["#T/K,p/bar,mol/uc,mmol/g,stdev,hoa/kcal/mol,stdev,",
+                   ",".join("p(g%i)" % gidx for gidx in range(nguests)), "\n"]
             info(guest.name)
             info(" mol/uc  mmol/g     hoa     T_P")
             for tp_point in sorted(guest.uptake):
@@ -260,7 +259,6 @@ class PyNiss(object):
                             (self.options.get('job_name'), guest.ident), 'wb')
             csv_file.writelines(csv)
             csv_file.close()
-
 
     def import_old(self):
         """Try and import any data from previous stopped simulation."""
@@ -344,7 +342,6 @@ class PyNiss(object):
         potcar_dir = self.options.get('potcar_dir')
         for at_type in potcar_types:
             # Try and get the preferred POTCARS
-            # TODO(tdaff): update these with custom pseudos
             debug("Using %s pseudopotential for %s" %
                  (VASP_PSEUDO_PREF.get(at_type, at_type), at_type))
             potcar_src = os.path.join(potcar_dir,
@@ -475,7 +472,6 @@ class PyNiss(object):
             else:
                 debug('Postrun script not submitted')
 
-
         os.chdir(self.options.get('job_dir'))
 
     def run_fastmc(self):
@@ -572,7 +568,6 @@ class PyNiss(object):
         return esp_grid
 
 
-
 class Structure(object):
     """
     The current state of the structure; update as the calculations proceed.
@@ -588,7 +583,7 @@ class Structure(object):
     * Internal manipulation methods
 
     """
-    # FIXME: no symmetry right now, eh?
+    # FIXME: symmetry not considered
     # TODO: dft energy?
     def __init__(self, name):
         """Just instance an empty structure initially."""
@@ -618,8 +613,8 @@ class Structure(object):
         info("Updating positions from %s" % opt_code)
         if opt_code == 'vasp':
             self.from_vasp(os.path.join(opt_path, 'CONTCAR'), update=True)
-        elif opt_code == 'cpmd':
-            self.from_cpmd(update=True)
+        elif opt_code == 'siesta':
+            self.from_siesta(update=True)
         else:
             err("Unknown positions to import %s" % opt_code)
 
@@ -650,7 +645,6 @@ class Structure(object):
                 os.path.join(gcmc_path, tp_path, 'OUTPUT'), tp_point)
         else:
             err("Unknown gcmc method to import %s" % gcmc_code)
-
 
     def from_pdb(self, filename):
         """Read an initial structure from a pdb file."""
@@ -729,7 +723,6 @@ class Structure(object):
         else:
             err("No cell or incomplete cell found in cif file")
 
-        # TODO: symmetry
         # parse loop contents
         for heads, body in loops:
             if '_atom_site_fract_x' in heads:
@@ -750,6 +743,7 @@ class Structure(object):
                 newatom.from_cif(atom, self.cell.cell, sym_op)
                 newatoms.append(newatom)
 
+        #TODO(tdaff): overlapping atoms check
         self.atoms = newatoms
         self.order_by_types()
 
@@ -804,7 +798,7 @@ class Structure(object):
                 if float(line.split()[-1]) > 0.6:
                     warn("Error in repeat charges is very high - check cube!")
         filetemp.close()
-        # TODO(tdaff): no symmetry here yet!
+        # TODO(tdaff): no symmetry yet
         if len(charges) != len(self.atoms):
             err("Incorrect number of charges; check REPEAT output")
             terminate(90)
@@ -851,10 +845,6 @@ class Structure(object):
                 poscar.append("%20.15f %19.15f %19.15f" % tuple(atom.pos) +
                               "%4s%4s%4s\n" % (fix_all, fix_all, fix_all))
         return poscar
-
-    def to_cpmd(self, options):
-        """Return a cpmd input file as a list of lines."""
-        raise NotImplementedError
 
     def to_siesta(self, options):
         """Return a siesta input file as a list of lines."""
@@ -933,7 +923,6 @@ class Structure(object):
                            "%20.12f%20.12f%20.12f\n" % tuple(atom.pos)])
 
         # FIELD
-        # TODO(tdaff): ntypes = nguests + nummols
         ntypes = len(self.guests) + 1
         field = ["%s\n" % self.name[:80],
                  "UNITS   kcal\n",
@@ -964,7 +953,6 @@ class Structure(object):
         field.append("VDW %i\n" % ((len(atom_set) * (len(atom_set) + 1)) / 2))
 
         # modify local ff to deal with guests
-        # TODO(tdaff): extra ones from options?
         force_field = copy(UFF)
         for guest in self.guests:
             force_field.update(guest.potentials)
@@ -1039,7 +1027,6 @@ class Structure(object):
     def order_by_types(self):
         """Sort the atoms alphabetically and group them."""
         self.atoms.sort(key=lambda x: (x.type, x.site))
-        # TODO(tdaff): different for molecules
 
     @property
     def types(self):
@@ -1075,8 +1062,7 @@ class Structure(object):
         self.properties['supercell'] = value
 
     gcmc_supercell = property(get_gcmc_supercell, set_gcmc_supercell)
-    # TODO(tdaff): properties: volume, supercell, density, surface area
-    # dft_energy, absorbance
+    # TODO(tdaff): properties: density, surface area, dft_energy, absorbance
 
 
 class Cell(object):
@@ -1163,20 +1149,24 @@ class Cell(object):
     def get_cell(self):
         """Get the 3x3 vector cell representation."""
         return self._cell
+
     def set_cell(self, value):
         """Set cell and params from the cell representation."""
         self._cell = value
         self.__mkparam()
+
     # Property so that params are updated when cell is set
     cell = property(get_cell, set_cell)
 
     def get_params(self):
         """Get the six parameter cell representation."""
         return self._params
+
     def set_params(self, value):
         """Set cell and params from the cell parameters."""
         self._params = value
         self.__mkcell()
+
     # Property so that cell is updated when params are set
     params = property(get_params, set_params)
 
@@ -1281,6 +1271,7 @@ class Atom(object):
 
     atomic_number = property(get_atomic_number, set_atomic_number)
 
+
 class Guest(object):
     """Guest molecule and properties."""
     def __init__(self, ident=None):
@@ -1362,7 +1353,6 @@ class Guest(object):
     def weight(self):
         """Unit cell weight."""
         return sum([atom.mass for atom in self.atoms])
-    #TODO(tdaff): density? specific volume?
 
 
 class Symmetry(object):
@@ -1382,7 +1372,6 @@ class Symmetry(object):
 
     def trans_frac(self, pos):
         """Apply symmetry operation to the supplied position."""
-        # TODO(tdaff): check for overlapping atoms?
         new_pos = [eval(sym_op.replace('x', str(pos[0]))
                         .replace('y', str(pos[1]))
                         .replace('z', str(pos[2]))) for sym_op in self.sym_ops]
@@ -1391,7 +1380,6 @@ class Symmetry(object):
 
 def mk_repeat(cube_name='REPEAT_ESP.cube', symmetry=False):
     """Standard REPEAT input file."""
-    # TODO(tdaff): charged systems?
     if symmetry:
         symmetry_flag = 1
         # TODO(tdaff): connectivity.ff
@@ -1581,7 +1569,6 @@ def err(msg):
     msg = textwrap.wrap(msg)
     for line in msg:
         logging.error(line)
-    # TODO(tdaff): should we quit here?
 
 
 # General utility functions
@@ -1628,6 +1615,7 @@ def ufloat(text):
     """Convert string to float, ignoring the uncertainty part."""
     return float(re.sub('\(.*\)', '', text))
 
+
 def prod(seq):
     """Calculate the product of all members of a sequence."""
     # numpy.prod will silently overflow 32 bit integer values
@@ -1636,6 +1624,7 @@ def prod(seq):
     for item in seq:
         product *= item
     return product
+
 
 def remove_files(directory, files):
     """Delete any of the files if they exist, or ignore if not found."""
@@ -1646,6 +1635,7 @@ def remove_files(directory, files):
             os.remove(os.path.join(directory, file_name))
         else:
             debug("file not found %s" % file_name)
+
 
 def compress_files(directory, files):
     """Gzip any big files to keep."""
@@ -1658,9 +1648,11 @@ def compress_files(directory, files):
         else:
             debug("file not found %s" % file_name)
 
+
 def strip_blanks(lines):
     """Strip lines and remove blank lines."""
     return [line.strip() for line in lines if line.strip() != '']
+
 
 def subgroup(iterable, width, itype=None):
     """Split an iterable into nested sub-itypes of width members."""
@@ -1674,12 +1666,13 @@ def subgroup(iterable, width, itype=None):
     return itype([itype(iterable[x:x+width])
                   for x in range(0, len(iterable), width)])
 
+
 def welcome():
     """Print any important messages."""
-    print("FAPS version 0.0r%s" % __version__.strip('$Revision: '))
+    print("FAPS version 0.999-r%s" % __version__.strip('$Revision: '))
     print(LOGO)
-    print("\nFaps is still under development and will break without notice.")
-    print("\nMost versions break backwards and forwards compatibility!")
+    print("\nFaps is in alpha testing phase for a version 1.0 milestone.")
+    print("\nBackwards and forwards compatibility are still likely to break.")
     print("EXISTING JOBS WILL NOT WORK [automatically], sorry :(")
     print("\n * You may need to manually move files to continue jobs!")
     print(" * Or delete the .niss file before '--import'ing,")
@@ -1690,7 +1683,7 @@ def main():
     """Do a standalone calculation when run as a script."""
     welcome()
     main_options = Options()
-    info("Starting FAPS version 0.0r%s" % __version__.strip('$Revision: '))
+    info("Starting FAPS version 0.999-r%s" % __version__.strip('$Revision: '))
     # try to unpickle the job or
     # fall back to starting a new simulation
     niss_name = main_options.get('job_name') + ".niss"

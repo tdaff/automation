@@ -431,9 +431,9 @@ def _wooki_submit(job_type, options, input_file=None):
     node types, because it is too fiddly to care about.
     """
     submit_scripts = {
-        'vasp': 'vaspsubmit-beta',
-        'repeat': 'repeatsubmit',
-        'siesta': 'siestasubmit',
+        'vasp': 'vaspsubmit-faps',
+        'repeat': 'repeatsubmit-faps',
+        'siesta': 'siestasubmit-faps',
         'fastmc': 'fastmcsubmit'
     }
     job_name = options.get('job_name')
@@ -442,13 +442,9 @@ def _wooki_submit(job_type, options, input_file=None):
     except AttributeError:
         nodes = 1
 
-    if job_type == 'repeat':
-        job_name = '%s.cube' % job_name
     submit_args = [submit_scripts[job_type], job_name, "%i" % nodes]
-    print submit_args
     submit = Popen(submit_args, stdout=subprocess.PIPE)
     for line in submit.stdout.readlines():
-        print line
         if "wooki" in line:
             jobid = line.split(".")[0]
             break
@@ -458,13 +454,11 @@ def _wooki_submit(job_type, options, input_file=None):
     return jobid
 
 
-
 def _wooki_postrun(waitid):
     """
     Resubmit this script for the postrun on job completion. Will accept
     a single jobid or a list, as integers or strings.
     """
-
     # Magic makes everything into a set of strings
     if hasattr(waitid, '__iter__'):
         waitid = frozenset([("%s" % id).strip() for id in waitid])
@@ -477,13 +471,11 @@ def _wooki_postrun(waitid):
                   '#PBS -j oe\n',
                   '#PBS -W depend=afterok:%s\n' % ':'.join(waitid),
                   'cd $PBS_O_WORKDIR\n',
-                  'unset PYTHONPATH\n',
-                  '/home/program/PYTHON/epd-7.0-2-rh5-x86_64/bin/python ',
+                  'python ',
                   ' '.join(sys.argv)]
 
     pbs_script = ''.join(pbs_script)
-    print(pbs_script)
-    submit = Popen("qsub", shell=False, stdin=PIPE)
+    submit = Popen("/usr/local/bin/qsub", shell=False, stdin=PIPE)
     submit.communicate(input=pbs_script)
 
 
@@ -512,13 +504,4 @@ def _wooki_jobcheck(jobid):
 
 def _wooki_env(code, **kwargs):
     """Hacks to get things working with wooki submission scripts"""
-    print code
-    print kwargs
-    if code == 'vasp':
-        job_name = kwargs['options'].get('job_name')
-        for vasp_file in ['POSCAR', 'INCAR', 'KPOINTS', 'POTCAR']:
-            shutil.copy(vasp_file, job_name + '.' + vasp_file.lower())
-    elif code == 'siesta':
-        job_name = kwargs['options'].get('job_name')
-        shutil.copy('%s.fdf' % job_name, '%s.in' % job_name)
-
+    pass

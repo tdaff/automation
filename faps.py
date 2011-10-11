@@ -353,11 +353,6 @@ class PyNiss(object):
             shutil.copyfileobj(open(potcar_src), filetemp)
         filetemp.close()
 
-        # different names for input files on wooki
-#        if self.options.get('queue') == 'wooki':
-#            for vasp_file in ['POSCAR', 'INCAR', 'KPOINTS', 'POTCAR']:
-#                shutil.copy(vasp_file, job_name + '.' + vasp_file.lower())
-
         if self.options.getbool('no_submit'):
             info("Vasp input files generated; skipping job submission")
             self.state['dft'] = (SKIPPED, False)
@@ -429,8 +424,6 @@ class PyNiss(object):
                                'faps_%s_%s' % (job_name, esp_src))
         os.chdir(src_dir)
         if esp_src == 'vasp':
-            if self.options.get('queue') == 'wooki':
-                os.chdir(job_name + ".restart_DIR")
             esp_to_cube_args = shlex.split(self.options.get('vasp_to_cube'))
             info("Converting vasp esp to cube, this might take a minute...")
             submit = subprocess.Popen(esp_to_cube_args)
@@ -567,7 +560,6 @@ class PyNiss(object):
         esp_grid = tuple([int(4*np.ceil(x/(4*resolution)))
                           for x in self.structure.cell.params[:3]])
         memory_guess = prod(esp_grid)*self.structure.natoms*repeat_prec/1e9
-        print memory_guess
         if memory_guess > vmem:
             warn("ESP at this resolution might need up to %.1f GB of memory "
                  "but calculation will only request %.1f" %
@@ -625,7 +617,6 @@ class Structure(object):
         opt_path = os.path.join('faps_%s_%s' % (self.name, opt_code))
         info("Updating positions from %s" % opt_code)
         if opt_code == 'vasp':
-            # TODO(tdaff): not CONTCAR on wooki
             self.from_vasp(os.path.join(opt_path, 'CONTCAR'), update=True)
         elif opt_code == 'cpmd':
             self.from_cpmd(update=True)
@@ -641,7 +632,7 @@ class Structure(object):
                 self.charges_from_repeat(
                     os.path.join(charge_path, 'faps-%s.out' % self.name))
             except IOError:
-                # try other filename for wooki
+                # try other filename for wooki etc
                 self.charges_from_repeat(
                     os.path.join(charge_path, '%s.esp_fit.out' % self.name))
             # Cleanup of REPEAT files

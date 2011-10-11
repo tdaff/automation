@@ -628,13 +628,8 @@ class Structure(object):
         charge_path = os.path.join('faps_%s_%s' % (self.name, charge_method))
         if charge_method == 'repeat':
             info("Updating charges from repeat")
-            try:
-                self.charges_from_repeat(
-                    os.path.join(charge_path, 'faps-%s.out' % self.name))
-            except IOError:
-                # try other filename for wooki etc
-                self.charges_from_repeat(
-                    os.path.join(charge_path, '%s.esp_fit.out' % self.name))
+            self.charges_from_repeat(
+                os.path.join(charge_path, 'faps-%s.out' % self.name))
             # Cleanup of REPEAT files
             unneeded_files = ['ESP_real_coul.dat', 'fort.30', 'fort.40']
             remove_files(charge_path, unneeded_files)

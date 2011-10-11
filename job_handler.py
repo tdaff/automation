@@ -8,9 +8,7 @@ are running on from the provided options.
 """
 
 import os
-import getpass
 import re
-import shutil
 import subprocess
 import sys
 import time
@@ -37,8 +35,11 @@ class JobHandler(object):
             self.jobcheck = _sharcnet_jobcheck
             self.env = _sharcnet_env
         else:
-            self.submit = self._pbs_submit
-            self.jobcheck = self._pbs_jobcheck
+            print("ERROR unknown queue %s. Using null handler" % self.queue)
+            self.submit = _pass
+            self.postrun = _pass
+            self.jobcheck = _pass
+            self.env = _pass
 
     def _pbs_submit(self, job_type, nodes, **kwargs):
         """Submit a generic pbs job; return the jobid."""
@@ -71,15 +72,17 @@ def _sharcnet_submit(job_type, options, input_file=None):
         if job_type in openmp_codes:
             # Some jobs are only openmp
             sqsub_args.extend(['-f', 'threaded'])
-            sqsub_args.extend(['--mpp=%ig' % nodes])
+            sqsub_args.extend(['--mpp=%fg' %
+                               options.getfloat('threaded_memory')])
         else:
             # Ensure mpi is enebaled
             sqsub_args.extend(['-f', 'mpi'])
             sqsub_args.extend(['--mpp=1.33g'])
-            if nodes%24 == 0:
+            # be nice and use whole nodes if possible
+            if nodes % 24 == 0:
                 sqsub_args.extend(['--pack'])
     else:
-        sqsub_args.extend(['--mpp=2.5g'])
+        sqsub_args.extend(['--mpp=%fg' % options.getfloat('threaded_memory')])
     # run-time estimate mandatory; 12 hours is plenty?
     sqsub_args.extend(['-r', '12h'])
     # Some codes need the input file name
@@ -109,7 +112,7 @@ def _sharcnet_postrun(waitid):
 
     # Magic makes everything into a set of strings
     if hasattr(waitid, '__iter__'):
-        waitid = frozenset([("%s" % id).strip() for id in waitid])
+        waitid = frozenset([("%s" % wid).strip() for wid in waitid])
     else:
         waitid = frozenset([("%s" % waitid).strip()])
     # Check that job appears in sqjobs before submitting next one
@@ -131,7 +134,7 @@ def _sharcnet_postrun(waitid):
         '--waitfor=%s' % ','.join(waitid),
         ] + sys.argv
     # We can just call this as we don't care about the jobid
-    submit = subprocess.call(sqsub_args)
+    subprocess.call(sqsub_args)
 
 
 def _sharcnet_jobcheck(jobid):
@@ -176,7 +179,7 @@ def _sharcnet_env(code):
         pass
 
 
-def _wooki_submit(job_type, options, input_file=None):
+def _wooki_submit(job_type, options, *args, **kwargs):
     """
     Interface to the submission scripts on wooki. Let them deal with the
     node types, because it is too fiddly to care about.
@@ -212,7 +215,7 @@ def _wooki_postrun(waitid):
     """
     # Magic makes everything into a set of strings
     if hasattr(waitid, '__iter__'):
-        waitid = frozenset([("%s" % id).strip() for id in waitid])
+        waitid = frozenset([("%s" % wid).strip() for wid in waitid])
     else:
         waitid = frozenset([("%s" % waitid).strip()])
     # No jobcheck here as we assume wooki works
@@ -254,7 +257,7 @@ def _wooki_jobcheck(jobid):
         return True
 
 
-def _wooki_env(code, **kwargs):
+def _wooki_env(code, *args, **kwargs):
     """Hacks to get things working with wooki submission scripts"""
     pass
 

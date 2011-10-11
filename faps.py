@@ -354,14 +354,15 @@ class PyNiss(object):
         filetemp.close()
 
         # different names for input files on wooki
-        if self.options.get('queue') == 'wooki':
-            for vasp_file in ['POSCAR', 'INCAR', 'KPOINTS', 'POTCAR']:
-                shutil.copy(vasp_file, job_name + '.' + vasp_file.lower())
+#        if self.options.get('queue') == 'wooki':
+#            for vasp_file in ['POSCAR', 'INCAR', 'KPOINTS', 'POTCAR']:
+#                shutil.copy(vasp_file, job_name + '.' + vasp_file.lower())
 
         if self.options.getbool('no_submit'):
             info("Vasp input files generated; skipping job submission")
             self.state['dft'] = (SKIPPED, False)
         else:
+            self.job_handler.env(dft_code, options=self.options)
             jobid = self.job_handler.submit(dft_code, self.options)
             info("Running VASP job in queue. Jobid: %s" % jobid)
             self.state['dft'] = (RUNNING, jobid)
@@ -403,7 +404,7 @@ class PyNiss(object):
             self.state['dft'] = (SKIPPED, False)
         else:
             # sharcnet does weird things for siesta
-            self.job_handler.env(dft_code)
+            self.job_handler.env(dft_code, options=self.options)
             jobid = self.job_handler.submit(dft_code, self.options,
                                             input_file='%s.fdf' % job_name)
             info("Running SIESTA job in queue. Jobid: %s" % jobid)
@@ -636,8 +637,13 @@ class Structure(object):
         charge_path = os.path.join('faps_%s_%s' % (self.name, charge_method))
         if charge_method == 'repeat':
             info("Updating charges from repeat")
-            self.charges_from_repeat(
-                os.path.join(charge_path, 'faps-%s.out' % self.name))
+            try:
+                self.charges_from_repeat(
+                    os.path.join(charge_path, 'faps-%s.out' % self.name))
+            except IOError:
+                # try other filename for wooki
+                self.charges_from_repeat(
+                    os.path.join(charge_path, '%s.esp_fit.out' % self.name))
             # Cleanup of REPEAT files
             unneeded_files = ['ESP_real_coul.dat', 'fort.30', 'fort.40']
             remove_files(charge_path, unneeded_files)

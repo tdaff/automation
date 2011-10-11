@@ -10,6 +10,7 @@ are running on from the provided options.
 import os
 import getpass
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -28,8 +29,8 @@ class JobHandler(object):
         if self.queue == 'wooki':
             self.submit = _wooki_submit
             self.postrun = _wooki_postrun
-            self.jobcheck = wooki_jobcheck
-            self.env = _pass
+            self.jobcheck = _wooki_jobcheck
+            self.env = _wooki_env
         elif self.queue == 'sharcnet':
             self.submit = _sharcnet_submit
             self.postrun = _sharcnet_postrun
@@ -441,9 +442,13 @@ def _wooki_submit(job_type, options, input_file=None):
     except AttributeError:
         nodes = 1
 
+    if job_type == 'repeat':
+        job_name = '%s.cube' % job_name
     submit_args = [submit_scripts[job_type], job_name, "%i" % nodes]
+    print submit_args
     submit = Popen(submit_args, stdout=subprocess.PIPE)
     for line in submit.stdout.readlines():
+        print line
         if "wooki" in line:
             jobid = line.split(".")[0]
             break
@@ -466,12 +471,15 @@ def _wooki_postrun(waitid):
     else:
         waitid = frozenset([("%s" % waitid).strip()])
     # No jobcheck here as we assume wooki works
-    pbs_script = ['#PBS -N fap-post-%s\n' % job_name,
+    pbs_script = ['#PBS -N fap-post-%s\n' % '-'.join(sorted(waitid)),
                   '#PBS -m n\n',
                   '#PBS -o faps-post-%s.out\n' % '-'.join(sorted(waitid)),
                   '#PBS -j oe\n',
                   '#PBS -W depend=afterok:%s\n' % ':'.join(waitid),
-                  'cd $PBS_O_WORKDIR\n'] + sys.argv
+                  'cd $PBS_O_WORKDIR\n',
+                  'unset PYTHONPATH\n',
+                  '/home/program/PYTHON/epd-7.0-2-rh5-x86_64/bin/python ',
+                  ' '.join(sys.argv)]
 
     pbs_script = ''.join(pbs_script)
     print(pbs_script)
@@ -484,7 +492,7 @@ def _wooki_jobcheck(jobid):
     # can deal with jobid as an int or a string
     jobid = ("%s" % jobid).strip()
     running_status = ['Q', 'R', 'Z']
-    qstat = Popen(['qstat', jobid], stdout=PIPE, stderr=STDOUT)
+    qstat = Popen(['/usr/local/bin/qstat', jobid], stdout=PIPE, stderr=STDOUT)
     for line in qstat.stdout.readlines():
         if "Unknown Job Id" in line:
             # Job finished and removed
@@ -501,3 +509,16 @@ def _wooki_jobcheck(jobid):
         print("Failed to get job information.")  # qstat parsing failed?
         # Act as if the job is still running, in case it hasn't finished
         return True
+
+def _wooki_env(code, **kwargs):
+    """Hacks to get things working with wooki submission scripts"""
+    print code
+    print kwargs
+    if code == 'vasp':
+        job_name = kwargs['options'].get('job_name')
+        for vasp_file in ['POSCAR', 'INCAR', 'KPOINTS', 'POTCAR']:
+            shutil.copy(vasp_file, job_name + '.' + vasp_file.lower())
+    elif code == 'siesta':
+        job_name = kwargs['options'].get('job_name')
+        shutil.copy('%s.fdf' % job_name, '%s.in' % job_name)
+

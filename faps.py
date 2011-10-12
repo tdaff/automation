@@ -614,7 +614,7 @@ class Structure(object):
         if opt_code == 'vasp':
             self.from_vasp(os.path.join(opt_path, 'CONTCAR'), update=True)
         elif opt_code == 'siesta':
-            self.from_siesta(update=True)
+            self.from_siesta(os.path.join(opt_path, '%s.STRUCT_OUT' % self.name))
         else:
             err("Unknown positions to import %s" % opt_code)
 
@@ -783,6 +783,10 @@ class Structure(object):
                 this_atom.from_vasp(at_line, at_type, mcell)
                 atom_list.append(this_atom)
             self.atoms = atom_list
+
+    def from_siesta(self, filename):
+        """Update the structure from the siesta output."""
+        pass
 
     def charges_from_repeat(self, filename):
         """Parse charges and update structure."""

@@ -161,7 +161,7 @@ def _sharcnet_jobcheck(jobid):
         return True
 
 
-def _sharcnet_env(code):
+def _sharcnet_env(code, *args, **kwargs):
     """Update the running environment for specific codes."""
     if code == 'siesta':
         # Siesta uses pathscale libraries and is a module

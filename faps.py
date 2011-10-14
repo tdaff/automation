@@ -756,7 +756,7 @@ class Structure(object):
         filetemp.close()
         atom_list = []
         scale = float(contcar[1])
-        self.cell.from_vasp(contcar[2:5], scale)
+        self.cell.from_lines(contcar[2:5], scale)
         if contcar[5].split()[0].isalpha():
             # vasp 5 with atom names
             del contcar[5]
@@ -786,7 +786,13 @@ class Structure(object):
 
     def from_siesta(self, filename):
         """Update the structure from the siesta output."""
-        pass
+        info("Updating positions from file: %s" % filename)
+        filetemp = open(filename)
+        struct_out = filetemp.readlines()
+        filetemp.close()
+        self.cell.from_lines(struct_out[:3])
+        for atom, line in zip(self.atoms, struct_out[4:]):
+            atom.from_siesta(line, self.cell.cell)
 
     def charges_from_repeat(self, filename):
         """Parse charges and update structure."""
@@ -906,7 +912,31 @@ class Structure(object):
             "%block AtomicCoordinatesAndAtomicSpecies\n"] + [
             "%12.8f %12.8f %12.8f" % tuple(atom.pos) + "%6i\n" %
                 (u_types.index(atom.type) + 1) for atom in self.atoms] + [
-            "%endblock AtomicCoordinatesAndAtomicSpecies"])
+            "%endblock AtomicCoordinatesAndAtomicSpecies\n"])
+        if "Br" in u_types:
+            fdf.extend(["%block PS.lmax\n",
+                        "   Br 2\n",
+                        "%endblock PS.lmax\n"])
+
+        optim_h = options.getbool('optim_h')
+        optim_all = options.getbool('optim_all')
+        optim_cell =  options.getbool('optim_cell')
+
+        if optim_h or optim_all or optim_cell:
+            info("Optimizing atom positons")
+            fdf.append("MD.TypeOfRun  CG\n")
+            fdf.append("MD.NumCGSteps %i\n" % 300)
+        if optim_cell:
+            info("Cell vectors will be optimized")
+            fdf.append("MD.VariableCell .true.\n")
+        if optim_h and not optim_all and "H" in self.types:
+            info("Optimizing only hydrogen positons")
+            fdf.extend([
+                "\n%block GeometryConstraints\n"
+                "position " + " ".join("%i" % (idx+1) for
+                                       idx, species in enumerate(self.types)
+                                       if species not in ["H"]) + "\n"
+                "%endblock GeometryConstraints\n"])
 
         return fdf
 
@@ -1095,7 +1125,7 @@ class Cell(object):
                        float(line[40:47]),
                        float(line[47:54]))
 
-    def from_vasp(self, lines, scale=1.0):
+    def from_lines(self, lines, scale=1.0):
         """Extract cell from a 3-line POSCAR cell representation."""
         self.cell = array([[float(x) * scale for x in lines[0].split()],
                            [float(x) * scale for x in lines[1].split()],
@@ -1252,6 +1282,11 @@ class Atom(object):
         if at_type is not None:
             self.type = at_type
             self.mass = WEIGHT[at_type]
+
+    def from_siesta(self, line, cell):
+        self.pos = dot([float(x) for x in line.split()[2:5]], cell)
+        self.atomic_number = int(line.split()[1])
+        self.mass = WEIGHT[self.type]
 
     def translate(self, vec):
         """Move the atom by the given vector."""

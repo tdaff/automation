@@ -15,6 +15,7 @@ Contents:
    installation
    running
    options
+   examples
 
 ==================
 Indices and tables

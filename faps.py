@@ -15,6 +15,7 @@ __version__ = "$Revision$"
 
 import code
 import ConfigParser
+import glob
 import logging
 import os
 import pickle
@@ -425,8 +426,19 @@ class PyNiss(object):
             info("Converting vasp esp to cube, this might take a minute...")
             submit = subprocess.Popen(esp_to_cube_args)
             submit.wait()
-            # Cube should have job_name; Move it to the repeat directory
-            move_and_overwrite(job_name + '.cube', repeat_dir)
+            # Cube should have job_name, but can get truncated;
+            # therefore we try to look for it first
+            cube_file = glob.glob('*.cube')
+            if len(cube_file) == 1:
+                cube_file = cube_file[0]
+            elif len(cube_file) > 1:
+                cube_file = cube_file[0]
+                warn("More or than one .cube found; using %s" % cube_file)
+            else:
+                err("No cube files found; will break soon")
+            # Move it to the repeat directory and give a proper name
+            move_and_overwrite(cube_file,
+                               os.path.join(repeat_dir, job_name + '.cube'))
             unneeded_files = ['WAVECAR', 'CHG', 'DOSCAR', 'EIGENVAL', 'POTCAR']
             remove_files('.', unneeded_files)
             keep_files = ['LOCPOT', 'CHGCAR', 'vasprun.xml', 'XDATCAR']

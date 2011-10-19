@@ -72,6 +72,23 @@ probability =
     1
     2 3
 
+[TIP4P-Ew]
+name = TIP4P-Ew four-site water model for biomolecular simulations
+source = http://dx.doi.org/10.1063/1.1683075
+atoms = 
+    Ow  15.9994  0.00000  0.0000000  0.000000  0.0000000 
+    Hw   1.0079  0.54244  0.7569503 -0.585882  0.0000000
+    Hw   1.0079  0.52422 -0.7569503 -0.585882  0.0000000
+    Hx   0.0000 -1.04844  0.0000000 -0.125000  0.0000000
+potentials = 
+    Ow  3.16435  0.16275
+    Hw  0.00000  0.00000
+    Hx  0.00000  0.00000
+probability = 
+    0
+    1
+    2 3
+
 [CH4-TraPPE]
 name = TraPPE Methane; Single Site
 source = http://dx.doi.org/10.1021/jp972543+
@@ -96,5 +113,19 @@ potentials =
     H_M  2.84600  0.01522
 probability = 
     0
+
+[N2]
+name = Nitrogen based on Etters potential
+source = doi://10.1063/1.1352078
+atoms = 
+    Nx   14.0067 -0.4954 -0.556 0.000 0.000
+    Nx   14.0067 -0.4954  0.556 0.000 0.000
+    E     0.0000 +0.9908  0.000 0.000 0.000
+potentials = 
+    Nx   3.2096  0.0809
+    E    0.0000  0.0000
+probability = 
+    0
+    1 2
 
 # vim:ft=dosini:set paste:

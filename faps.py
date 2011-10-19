@@ -15,7 +15,7 @@ __version__ = "$Revision$"
 
 import code
 import ConfigParser
-import itertools
+import glob
 import logging
 import os
 import pickle
@@ -35,6 +35,7 @@ from numpy.linalg import norm
 
 from config import Options
 from elements import WEIGHT, ATOMIC_NUMBER, UFF, VASP_PSEUDO_PREF
+from job_handler import JobHandler
 from logo import LOGO
 
 # Global constants
@@ -60,7 +61,6 @@ class PyNiss(object):
     dump_state().
 
     """
-    # TODO(tdaff): automate the whole thing unless told otherwise
     def __init__(self, options):
         """
         Instance an empty structure in the calculation; The dispatcher should
@@ -74,6 +74,7 @@ class PyNiss(object):
                       'esp': (NOT_RUN, False),
                       'charges': (NOT_RUN, False),
                       'gcmc': {}}
+        self.job_handler = JobHandler(options)
 
     def dump_state(self):
         """Write the .niss file holding the current system state."""
@@ -104,6 +105,9 @@ class PyNiss(object):
 
         """
 
+        # In case options have changed, re-intitialize
+        self.job_handler = JobHandler(self.options)
+
         if 'status' in self.options.args:
             self.status(initial=True)
 
@@ -126,15 +130,14 @@ class PyNiss(object):
             self.state['init'] = (UPDATED, False)
             self.dump_state()
 
-        # TODO(tdaff): does dft/optim always generate ESP?
         if self.state['dft'][0] not in [UPDATED, SKIPPED]:
             if self.options.getbool('no_dft'):
                 info("Skipping DFT step completely")
                 warn("Job might fail if you need the ESP")
                 self.state['dft'] = (SKIPPED, False)
             elif self.state['dft'][0] == RUNNING:
-                new_state = jobcheck(self.state['dft'][1])
-                if not new_state or new_state == 'C':
+                job_state = self.job_handler.jobcheck(self.state['dft'][1])
+                if not job_state:
                     info("Queue reports DFT step has finished")
                     # Finished running update positions
                     self.structure.update_pos(self.options.get('dft_code'))
@@ -147,7 +150,6 @@ class PyNiss(object):
 
         if self.state['dft'][0] == NOT_RUN or 'dft' in self.options.args:
             self.run_dft()
-            #info("Running optimizaton/dft step")
             self.dump_state()
             terminate(0)
 
@@ -156,8 +158,8 @@ class PyNiss(object):
                 info("Skipping charge calculation")
                 self.state['charges'] = (SKIPPED, False)
             elif self.state['charges'][0] == RUNNING:
-                new_state = jobcheck(self.state['charges'][1])
-                if not new_state or new_state == 'C':
+                job_state = self.job_handler.jobcheck(self.state['charges'][1])
+                if not job_state:
                     info("Queue reports charge calculation has finished")
                     self.structure.update_charges(
                         self.options.get('charge_method'))
@@ -185,7 +187,7 @@ class PyNiss(object):
             unfinished_gcmc = False
             for tp_point, tp_state in self.state['gcmc'].iteritems():
                 if tp_state[0] == RUNNING:
-                    new_state = jobcheck(tp_state[1])
+                    new_state = self.job_handler.jobcheck(tp_state[1])
                     if not new_state:
                         info("Queue reports GCMC %s finished" % (tp_point,))
                         self.structure.update_gcmc(self.options.get('mc_code'), tp_point)
@@ -234,7 +236,8 @@ class PyNiss(object):
         info("Summary of GCMC results")
         nguests = len(self.structure.guests)
         for idx, guest in enumerate(self.structure.guests):
-            csv = ["#T/K,p/bar,mol/uc,mmol/g,stdev,hoa/kcal/mol,stdev\n"]
+            csv = ["#T/K,p/bar,mol/uc,mmol/g,stdev,hoa/kcal/mol,stdev,",
+                   ",".join("p(g%i)" % gidx for gidx in range(nguests)), "\n"]
             info(guest.name)
             info(" mol/uc  mmol/g     hoa     T_P")
             for tp_point in sorted(guest.uptake):
@@ -257,7 +260,6 @@ class PyNiss(object):
                             (self.options.get('job_name'), guest.ident), 'wb')
             csv_file.writelines(csv)
             csv_file.close()
-
 
     def import_old(self):
         """Try and import any data from previous stopped simulation."""
@@ -341,7 +343,6 @@ class PyNiss(object):
         potcar_dir = self.options.get('potcar_dir')
         for at_type in potcar_types:
             # Try and get the preferred POTCARS
-            # TODO(tdaff): update these with custom pseudos
             debug("Using %s pseudopotential for %s" %
                  (VASP_PSEUDO_PREF.get(at_type, at_type), at_type))
             potcar_src = os.path.join(potcar_dir,
@@ -350,25 +351,20 @@ class PyNiss(object):
             shutil.copyfileobj(open(potcar_src), filetemp)
         filetemp.close()
 
-        # different names for input files on wooki
-        for vasp_file in ['POSCAR', 'INCAR', 'KPOINTS', 'POTCAR']:
-            shutil.copy(vasp_file, job_name + '.' + vasp_file.lower())
-
         if self.options.getbool('no_submit'):
             info("Vasp input files generated; skipping job submission")
             self.state['dft'] = (SKIPPED, False)
         else:
-            # FIXME(tdaff): wooki specific at the moment
-            vasp_args = ["vaspsubmit-beta", job_name, "%i" % nproc]
-            submit = subprocess.Popen(vasp_args, stdout=subprocess.PIPE)
-            for line in submit.stdout.readlines():
-                if "wooki" in line:
-                    jobid = line.split(".")[0]
-                    info("Running VASP job in queue. Jobid: %s" % jobid)
-                    self.state['dft'] = (RUNNING, jobid)
-                    break
+            self.job_handler.env(dft_code, options=self.options)
+            jobid = self.job_handler.submit(dft_code, self.options)
+            info("Running VASP job in queue. Jobid: %s" % jobid)
+            self.state['dft'] = (RUNNING, jobid)
+            if self.options.getbool('run_all'):
+                debug('Submitting postrun script')
+                os.chdir(self.options.get('job_dir'))
+                self.job_handler.postrun(jobid)
             else:
-                warn("Job failed?")
+                debug('Postrun script not submitted')
         # Tidy up at the end
         os.chdir(self.options.get('job_dir'))
 
@@ -400,20 +396,18 @@ class PyNiss(object):
             info("Siesta input files generated; skipping job submission")
             self.state['dft'] = (SKIPPED, False)
         else:
-            # FIXME(tdaff): wooki specific at the moment
-#            siesta_args = [self.options.get('siesta_exe'), '<', '%s.fdf' % job_name]
-            shutil.copy('%s.fdf' % job_name, '%s.in' % job_name)
-            siesta_args = ['siestasubmit', '%s' % job_name]
-            submit = subprocess.Popen(siesta_args, stdout=subprocess.PIPE)
-            for line in submit.stdout.readlines():
-                print line
-                if "wooki" in line:
-                    jobid = line.split(".")[0]
-                    info("Running SIESTA job in queue. Jobid: %s" % jobid)
-                    self.state['dft'] = (RUNNING, jobid)
-                    break
+            # sharcnet does weird things for siesta
+            self.job_handler.env(dft_code, options=self.options)
+            jobid = self.job_handler.submit(dft_code, self.options,
+                                            input_file='%s.fdf' % job_name)
+            info("Running SIESTA job in queue. Jobid: %s" % jobid)
+            self.state['dft'] = (RUNNING, jobid)
+            if self.options.getbool('run_all'):
+                debug('Submitting postrun script')
+                os.chdir(self.options.get('job_dir'))
+                self.job_handler.postrun(jobid)
             else:
-                warn("Job failed?")
+                debug('Postrun script not submitted')
         # Tidy up at the end
         os.chdir(self.options.get('job_dir'))
 
@@ -428,19 +422,30 @@ class PyNiss(object):
                                'faps_%s_%s' % (job_name, esp_src))
         os.chdir(src_dir)
         if esp_src == 'vasp':
-            os.chdir(job_name + ".restart_DIR")
             esp_to_cube_args = shlex.split(self.options.get('vasp_to_cube'))
             info("Converting vasp esp to cube, this might take a minute...")
             submit = subprocess.Popen(esp_to_cube_args)
             submit.wait()
-            # Cube should have job_name; Move it to the repeat directory
-            move_and_overwrite(job_name + '.cube', repeat_dir)
+            # Cube should have job_name, but can get truncated;
+            # therefore we try to look for it first
+            cube_file = glob.glob('*.cube')
+            if len(cube_file) == 1:
+                cube_file = cube_file[0]
+            elif len(cube_file) > 1:
+                cube_file = cube_file[0]
+                warn("More or than one .cube found; using %s" % cube_file)
+            else:
+                err("No cube files found; will break soon")
+            # Move it to the repeat directory and give a proper name
+            move_and_overwrite(cube_file,
+                               os.path.join(repeat_dir, job_name + '.cube'))
             unneeded_files = ['WAVECAR', 'CHG', 'DOSCAR', 'EIGENVAL', 'POTCAR']
             remove_files('.', unneeded_files)
             keep_files = ['LOCPOT', 'CHGCAR', 'vasprun.xml', 'XDATCAR']
             compress_files('.', keep_files)
         elif esp_src == 'siesta':
-            os.chdir(job_name + ".restart_DIR")
+            if self.options.get('queue') == 'wooki':
+                os.chdir(job_name + ".restart_DIR")
             esp_to_cube_args = shlex.split(self.options.get('siesta_to_cube'))
             esp_grid = self.esp_grid
             info("Generating ESP grid of %ix%ix%i" % esp_grid)
@@ -469,18 +474,16 @@ class PyNiss(object):
             info("REPEAT input files generated; skipping job submission")
             self.state['charges'] = (SKIPPED, False)
         else:
-            repeat_args = ['repeatsubmit', job_name + '.cube']
-            submit = subprocess.Popen(repeat_args, stdout=subprocess.PIPE)
-            jobid = None
-            for line in submit.stdout.readlines():
-                if "wooki" in line:
-                    jobid = line.split(".")[0]
-                    info("Running REPEAT calculation in queue: Jobid %s"
-                         % jobid)
-                    self.state['charges'] = (RUNNING, jobid)
-                    break
+            jobid = self.job_handler.submit(charge_code, self.options)
+            info("Running REPEAT calculation in queue: Jobid %s" % jobid)
+            self.state['charges'] = (RUNNING, jobid)
+            if self.options.getbool('run_all'):
+                debug('Submitting postrun script')
+                os.chdir(self.options.get('job_dir'))
+                self.job_handler.postrun(jobid)
             else:
-                warn("Job failed?")
+                debug('Postrun script not submitted')
+
         os.chdir(self.options.get('job_dir'))
 
     def run_fastmc(self):
@@ -512,6 +515,7 @@ class PyNiss(object):
         pressures = self.options.gettuple('mc_pressure', float)
         pressures = subgroup(pressures, len(guests))
         temperatures = self.options.gettuple('mc_temperature', float)
+        jobids = []
         for temp in temperatures:
             for press in pressures:
                 # press is always a list
@@ -529,22 +533,24 @@ class PyNiss(object):
                 filetemp.close()
 
                 if self.options.getbool('no_submit'):
-                    info("FastMC input files generated; skipping job submission")
+                    info("FastMC input files generated; "
+                         "skipping job submission")
                     self.state['gcmc'][(temp, press)] = (SKIPPED, False)
                 else:
-                    fastmc_args = ['fastmcsubmit', job_name]
-                    submit = subprocess.Popen(fastmc_args, stdout=subprocess.PIPE)
-                    jobid = None
-                    for line in submit.stdout.readlines():
-                        if "wooki" in line:
-                            jobid = line.split(".")[0]
-                            info("Running FastMC in queue: Jobid %s" % jobid)
-                            self.state['gcmc'][(temp, press)] = (RUNNING, jobid)
-                            break
-                    else:
-                        warn("Job submission failed?")
+                    jobid = self.job_handler.submit(mc_code, self.options)
+                    info("Running FastMC in queue: Jobid %s" % jobid)
+                    self.state['gcmc'][(temp, press)] = (RUNNING, jobid)
+                    jobids.append(jobid)
                 os.chdir('..')
+
+        # Postrun after all submitted so don't have to deal with messy
+        # directory switching
         os.chdir(self.options.get('job_dir'))
+        if self.options.getbool('run_all'):
+            debug('Submitting postrun script')
+            self.job_handler.postrun(jobids)
+        else:
+            debug('Postrun script not submitted')
 
     @property
     def esp_grid(self):
@@ -562,7 +568,6 @@ class PyNiss(object):
         esp_grid = tuple([int(4*np.ceil(x/(4*resolution)))
                           for x in self.structure.cell.params[:3]])
         memory_guess = prod(esp_grid)*self.structure.natoms*repeat_prec/1e9
-        print memory_guess
         if memory_guess > vmem:
             warn("ESP at this resolution might need up to %.1f GB of memory "
                  "but calculation will only request %.1f" %
@@ -573,7 +578,6 @@ class PyNiss(object):
             warn("Reduced grid to %.2f A resolution to fit" % resolution)
 
         return esp_grid
-
 
 
 class Structure(object):
@@ -591,7 +595,7 @@ class Structure(object):
     * Internal manipulation methods
 
     """
-    # FIXME: no symmetry right now, eh?
+    # FIXME: symmetry not considered
     # TODO: dft energy?
     def __init__(self, name):
         """Just instance an empty structure initially."""
@@ -620,10 +624,9 @@ class Structure(object):
         opt_path = os.path.join('faps_%s_%s' % (self.name, opt_code))
         info("Updating positions from %s" % opt_code)
         if opt_code == 'vasp':
-            self.from_vasp(os.path.join(opt_path, self.name + '.contcar'),
-                           update=True)
-        elif opt_code == 'cpmd':
-            self.from_cpmd(update=True)
+            self.from_vasp(os.path.join(opt_path, 'CONTCAR'), update=True)
+        elif opt_code == 'siesta':
+            self.from_siesta(os.path.join(opt_path, '%s.STRUCT_OUT' % self.name))
         else:
             err("Unknown positions to import %s" % opt_code)
 
@@ -633,11 +636,12 @@ class Structure(object):
         if charge_method == 'repeat':
             info("Updating charges from repeat")
             self.charges_from_repeat(
-                os.path.join(charge_path, self.name + '.esp_fit.out'))
+                os.path.join(charge_path, 'faps-%s.out' % self.name))
             # Cleanup of REPEAT files
             unneeded_files = ['ESP_real_coul.dat', 'fort.30', 'fort.40']
             remove_files(charge_path, unneeded_files)
-
+            keep_files = ['%s.cube' % self.name]
+            compress_files(charge_path, keep_files)
         else:
             err("Unknown charge method to import %s" % charge_method)
 
@@ -653,7 +657,6 @@ class Structure(object):
                 os.path.join(gcmc_path, tp_path, 'OUTPUT'), tp_point)
         else:
             err("Unknown gcmc method to import %s" % gcmc_code)
-
 
     def from_pdb(self, filename):
         """Read an initial structure from a pdb file."""
@@ -732,7 +735,6 @@ class Structure(object):
         else:
             err("No cell or incomplete cell found in cif file")
 
-        # TODO: symmetry
         # parse loop contents
         for heads, body in loops:
             if '_atom_site_fract_x' in heads:
@@ -753,6 +755,7 @@ class Structure(object):
                 newatom.from_cif(atom, self.cell.cell, sym_op)
                 newatoms.append(newatom)
 
+        #TODO(tdaff): overlapping atoms check
         self.atoms = newatoms
         self.order_by_types()
 
@@ -765,7 +768,7 @@ class Structure(object):
         filetemp.close()
         atom_list = []
         scale = float(contcar[1])
-        self.cell.from_vasp(contcar[2:5], scale)
+        self.cell.from_lines(contcar[2:5], scale)
         if contcar[5].split()[0].isalpha():
             # vasp 5 with atom names
             del contcar[5]
@@ -793,6 +796,16 @@ class Structure(object):
                 atom_list.append(this_atom)
             self.atoms = atom_list
 
+    def from_siesta(self, filename):
+        """Update the structure from the siesta output."""
+        info("Updating positions from file: %s" % filename)
+        filetemp = open(filename)
+        struct_out = filetemp.readlines()
+        filetemp.close()
+        self.cell.from_lines(struct_out[:3])
+        for atom, line in zip(self.atoms, struct_out[4:]):
+            atom.from_siesta(line, self.cell.cell)
+
     def charges_from_repeat(self, filename):
         """Parse charges and update structure."""
         info("Getting charges from file: %s" % filename)
@@ -807,7 +820,7 @@ class Structure(object):
                 if float(line.split()[-1]) > 0.6:
                     warn("Error in repeat charges is very high - check cube!")
         filetemp.close()
-        # TODO(tdaff): no symmetry here yet!
+        # TODO(tdaff): no symmetry yet
         if len(charges) != len(self.atoms):
             err("Incorrect number of charges; check REPEAT output")
             terminate(90)
@@ -855,10 +868,6 @@ class Structure(object):
                               "%4s%4s%4s\n" % (fix_all, fix_all, fix_all))
         return poscar
 
-    def to_cpmd(self, options):
-        """Return a cpmd input file as a list of lines."""
-        raise NotImplementedError
-
     def to_siesta(self, options):
         """Return a siesta input file as a list of lines."""
         job_name = options.get('job_name')
@@ -884,6 +893,7 @@ class Structure(object):
             "\n",
             "SaveElectrostaticPotential .true.\n",
             "WriteMullikenPop 1\n"
+            "WriteXML F\n",
             "\n",
             "# Accuracy bits\n",
             "\n",
@@ -914,7 +924,31 @@ class Structure(object):
             "%block AtomicCoordinatesAndAtomicSpecies\n"] + [
             "%12.8f %12.8f %12.8f" % tuple(atom.pos) + "%6i\n" %
                 (u_types.index(atom.type) + 1) for atom in self.atoms] + [
-            "%endblock AtomicCoordinatesAndAtomicSpecies"])
+            "%endblock AtomicCoordinatesAndAtomicSpecies\n"])
+        if "Br" in u_types:
+            fdf.extend(["%block PS.lmax\n",
+                        "   Br 2\n",
+                        "%endblock PS.lmax\n"])
+
+        optim_h = options.getbool('optim_h')
+        optim_all = options.getbool('optim_all')
+        optim_cell =  options.getbool('optim_cell')
+
+        if optim_h or optim_all or optim_cell:
+            info("Optimizing atom positons")
+            fdf.append("MD.TypeOfRun  CG\n")
+            fdf.append("MD.NumCGSteps %i\n" % 300)
+        if optim_cell:
+            info("Cell vectors will be optimized")
+            fdf.append("MD.VariableCell .true.\n")
+        if optim_h and not optim_all and "H" in self.types:
+            info("Optimizing only hydrogen positons")
+            fdf.extend([
+                "\n%block GeometryConstraints\n"
+                "position " + " ".join("%i" % (idx+1) for
+                                       idx, species in enumerate(self.types)
+                                       if species not in ["H"]) + "\n"
+                "%endblock GeometryConstraints\n"])
 
         return fdf
 
@@ -935,7 +969,6 @@ class Structure(object):
                            "%20.12f%20.12f%20.12f\n" % tuple(atom.pos)])
 
         # FIELD
-        # TODO(tdaff): ntypes = nguests + nummols
         ntypes = len(self.guests) + 1
         field = ["%s\n" % self.name[:80],
                  "UNITS   kcal\n",
@@ -966,7 +999,6 @@ class Structure(object):
         field.append("VDW %i\n" % ((len(atom_set) * (len(atom_set) + 1)) / 2))
 
         # modify local ff to deal with guests
-        # TODO(tdaff): extra ones from options?
         force_field = copy(UFF)
         for guest in self.guests:
             force_field.update(guest.potentials)
@@ -1041,7 +1073,6 @@ class Structure(object):
     def order_by_types(self):
         """Sort the atoms alphabetically and group them."""
         self.atoms.sort(key=lambda x: (x.type, x.site))
-        # TODO(tdaff): different for molecules
 
     @property
     def types(self):
@@ -1077,8 +1108,7 @@ class Structure(object):
         self.properties['supercell'] = value
 
     gcmc_supercell = property(get_gcmc_supercell, set_gcmc_supercell)
-    # TODO(tdaff): properties: volume, supercell, density, surface area
-    # dft_energy, absorbance
+    # TODO(tdaff): properties: density, surface area, dft_energy, absorbance
 
 
 class Cell(object):
@@ -1107,7 +1137,7 @@ class Cell(object):
                        float(line[40:47]),
                        float(line[47:54]))
 
-    def from_vasp(self, lines, scale=1.0):
+    def from_lines(self, lines, scale=1.0):
         """Extract cell from a 3-line POSCAR cell representation."""
         self.cell = array([[float(x) * scale for x in lines[0].split()],
                            [float(x) * scale for x in lines[1].split()],
@@ -1165,20 +1195,24 @@ class Cell(object):
     def get_cell(self):
         """Get the 3x3 vector cell representation."""
         return self._cell
+
     def set_cell(self, value):
         """Set cell and params from the cell representation."""
         self._cell = value
         self.__mkparam()
+
     # Property so that params are updated when cell is set
     cell = property(get_cell, set_cell)
 
     def get_params(self):
         """Get the six parameter cell representation."""
         return self._params
+
     def set_params(self, value):
         """Set cell and params from the cell parameters."""
         self._params = value
         self.__mkcell()
+
     # Property so that cell is updated when params are set
     params = property(get_params, set_params)
 
@@ -1261,6 +1295,11 @@ class Atom(object):
             self.type = at_type
             self.mass = WEIGHT[at_type]
 
+    def from_siesta(self, line, cell):
+        self.pos = dot([float(x) for x in line.split()[2:5]], cell)
+        self.atomic_number = int(line.split()[1])
+        self.mass = WEIGHT[self.type]
+
     def translate(self, vec):
         """Move the atom by the given vector."""
         self.pos = [x + y for x, y in zip(self.pos, vec)]
@@ -1282,6 +1321,7 @@ class Atom(object):
         self.type = ATOMIC_NUMBER[value]
 
     atomic_number = property(get_atomic_number, set_atomic_number)
+
 
 class Guest(object):
     """Guest molecule and properties."""
@@ -1364,7 +1404,6 @@ class Guest(object):
     def weight(self):
         """Unit cell weight."""
         return sum([atom.mass for atom in self.atoms])
-    #TODO(tdaff): density? specific volume?
 
 
 class Symmetry(object):
@@ -1384,7 +1423,6 @@ class Symmetry(object):
 
     def trans_frac(self, pos):
         """Apply symmetry operation to the supplied position."""
-        # TODO(tdaff): check for overlapping atoms?
         new_pos = [eval(sym_op.replace('x', str(pos[0]))
                         .replace('y', str(pos[1]))
                         .replace('z', str(pos[2]))) for sym_op in self.sym_ops]
@@ -1393,7 +1431,6 @@ class Symmetry(object):
 
 def mk_repeat(cube_name='REPEAT_ESP.cube', symmetry=False):
     """Standard REPEAT input file."""
-    # TODO(tdaff): charged systems?
     if symmetry:
         symmetry_flag = 1
         # TODO(tdaff): connectivity.ff
@@ -1451,7 +1488,7 @@ def mk_incar(options):
         info("Cell vectors will be optimized")
         incar.extend(["ENCUT = 520\n",
                       "IBRION  = 2\n",
-                      "NSW     = 300\n",
+                      "NSW     = 800\n",
                       "ISIF    = 3\n"])
     elif optim_all or optim_h:
         # Just move positions
@@ -1556,22 +1593,6 @@ def lorentz_berthelot(left, right):
     return sigma, epsilon
 
 
-def jobcheck(jobid):
-    """Get job status."""
-    jobid = "%s" % jobid
-    qstat = subprocess.Popen(['qstat', '%s' % jobid], stdout=subprocess.PIPE,
-                             stderr=subprocess.STDOUT)
-    for line in qstat.stdout.readlines():
-        debug(line)
-        if "Unknown Job Id" in line:
-            return False
-        elif line.startswith(jobid):
-            status = line[68:69]
-            return status
-    else:
-        print("Failed to get job information.")
-
-
 # Functions for logging
 def debug(msg):
     """Send DEBUGging to the logging handlers."""
@@ -1599,7 +1620,6 @@ def err(msg):
     msg = textwrap.wrap(msg)
     for line in msg:
         logging.error(line)
-    # TODO(tdaff): should we quit here?
 
 
 # General utility functions
@@ -1621,6 +1641,7 @@ def terminate(exit_code=0):
 
 def move_and_overwrite(src, dest):
     """Move src to dest and overwrite if it is an existing file."""
+    # As src and dest can be files or directories, do some checks.
     if os.path.exists(dest):
         if os.path.isdir(dest):
             dest_full = os.path.join(dest, os.path.basename(src))
@@ -1645,6 +1666,7 @@ def ufloat(text):
     """Convert string to float, ignoring the uncertainty part."""
     return float(re.sub('\(.*\)', '', text))
 
+
 def prod(seq):
     """Calculate the product of all members of a sequence."""
     # numpy.prod will silently overflow 32 bit integer values
@@ -1653,6 +1675,7 @@ def prod(seq):
     for item in seq:
         product *= item
     return product
+
 
 def remove_files(directory, files):
     """Delete any of the files if they exist, or ignore if not found."""
@@ -1663,6 +1686,7 @@ def remove_files(directory, files):
             os.remove(os.path.join(directory, file_name))
         else:
             debug("file not found %s" % file_name)
+
 
 def compress_files(directory, files):
     """Gzip any big files to keep."""
@@ -1675,9 +1699,11 @@ def compress_files(directory, files):
         else:
             debug("file not found %s" % file_name)
 
+
 def strip_blanks(lines):
     """Strip lines and remove blank lines."""
     return [line.strip() for line in lines if line.strip() != '']
+
 
 def subgroup(iterable, width, itype=None):
     """Split an iterable into nested sub-itypes of width members."""
@@ -1691,17 +1717,16 @@ def subgroup(iterable, width, itype=None):
     return itype([itype(iterable[x:x+width])
                   for x in range(0, len(iterable), width)])
 
+
 def welcome():
     """Print any important messages."""
-    print("FAPS version 0.0r%s" % __version__.strip('$Revision: '))
+    print("FAPS version 0.999-r%s" % __version__.strip('$Revision: '))
     print(LOGO)
-    print("\nFaps is under heavy development and will break without notice.")
-    print("\nThis version breaks backwards and forwards compatibility!")
+    print("\nFaps is in alpha testing phase for a version 1.0 milestone.")
+    print("\nBackwards and forwards compatibility are still likely to break.")
     print("EXISTING JOBS WILL NOT WORK [automatically], sorry :(")
-    print("\n * Jobs now run in subdirectories;")
-    print("   You need to manually move some files to --import existing jobs!")
-    print("\n * Internal structure of the .niss file has changed,")
-    print("   this should be deleted before '--import'ing.")
+    print("\n * You may need to manually move files to continue jobs!")
+    print(" * Or delete the .niss file before '--import'ing,")
     print("\n")
 
 
@@ -1709,7 +1734,7 @@ def main():
     """Do a standalone calculation when run as a script."""
     welcome()
     main_options = Options()
-    info("Starting FAPS version 0.0r%s" % __version__.strip('$Revision: '))
+    info("Starting FAPS version 0.999-r%s" % __version__.strip('$Revision: '))
     # try to unpickle the job or
     # fall back to starting a new simulation
     niss_name = main_options.get('job_name') + ".niss"

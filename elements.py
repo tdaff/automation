@@ -243,8 +243,7 @@ UFF = {
     "Lr": (2.8829, 0.0110)
 }
 
-VASP_PSEUDO_PREF= {
-    "Cu": "Cu_new",
+VASP_PSEUDO_PREF = {
     "Li": "Li_sv",
     "Na": "Na_pv",
     "K": "K_sv",

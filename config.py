@@ -252,6 +252,7 @@ class Options(object):
             if not '[job_config]' in job_ini.lower():
                 job_ini = '[job_config]\n' + job_ini
             job_ini = StringIO(job_ini)
+            debug("Job options read from %s" % job_ini_path)
         except IOError:
             # file does not exist so we just use a blank string
             debug("No job options found; using defaults")

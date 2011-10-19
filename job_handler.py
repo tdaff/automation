@@ -219,7 +219,7 @@ def _wooki_postrun(waitid):
     else:
         waitid = frozenset([("%s" % waitid).strip()])
     # No jobcheck here as we assume wooki works
-    pbs_script = ['#PBS -N fap-post-%s\n' % '-'.join(sorted(waitid)),
+    pbs_script = ['#PBS -N faps-post-%s\n' % '-'.join(sorted(waitid)),
                   '#PBS -m n\n',
                   '#PBS -o faps-post-%s.out\n' % '-'.join(sorted(waitid)),
                   '#PBS -j oe\n',

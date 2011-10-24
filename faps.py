@@ -330,6 +330,8 @@ class PyNiss(object):
         filetemp.writelines(self.structure.to_vasp(self.options))
         filetemp.close()
 
+        esp_grid = self.esp_grid
+
         filetemp = open("INCAR", "wb")
         filetemp.writelines(mk_incar(self.options))
         filetemp.close()
@@ -1463,7 +1465,7 @@ def mk_repeat(cube_name='REPEAT_ESP.cube', symmetry=False):
     filetemp.close()
 
 
-def mk_incar(options):
+def mk_incar(options, esp_grid=None):
     """Basic vasp INCAR; use defaults as much as possible."""
     # We need these options
     job_name = options.get('job_name')
@@ -1508,6 +1510,10 @@ def mk_incar(options):
     if dispersion:
         info("Dispersion correction will be used")
         incar.append("LVDW    = .TRUE.\n")
+
+    if esp_grid is not None:
+        info("Changing FFT grid to %ix%ix%i" % esp_grid)
+        incar.append("NGXF %i ; NGYF %i ; NGZF %i\n" % esp_grid)
 
     return incar
 

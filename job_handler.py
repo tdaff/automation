@@ -117,8 +117,8 @@ def _sharcnet_postrun(waitid):
         waitid = frozenset([("%s" % waitid).strip()])
     # Check that job appears in sqjobs before submitting next one
     for loop_num in range(10):
-        sqjobs = Popen('sqjobs', stdout=PIPE)
-        if waitid.issubset(sqjobs.stdout.read().split()):
+        qstat = Popen(['qstat', '-u', '$USER'], stdout=PIPE, shell=True)
+        if waitid.issubset(re.split('[\s.]', qstat.stdout.read())):
             # All jobs there
             break
         else:

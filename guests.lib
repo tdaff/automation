@@ -56,7 +56,7 @@ probability =
 
 [TIP5P-Ew]
 name = TIP5P-Ew Water for Ewald sums
-source = http://dx.doi.org/10.1063/1.16524345
+source = http://dx.doi.org/10.1063/1.1652434
 atoms = 
     Ow  15.9990  0.000 -0.84626011  1.34987746  0.00000000
     Hw   1.0079  0.241 -0.56648324  0.43447769  0.00000000

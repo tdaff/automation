@@ -928,7 +928,7 @@ class Structure(object):
                 (u_types.index(atom.type) + 1) for atom in self.atoms] + [
             "%endblock AtomicCoordinatesAndAtomicSpecies\n"])
         if "Br" in u_types:
-            fdf.extend(["%block PS.lmax\n",
+            fdf.extend(["\n%block PS.lmax\n",
                         "   Br 2\n",
                         "%endblock PS.lmax\n"])
 
@@ -938,18 +938,22 @@ class Structure(object):
 
         if optim_h or optim_all or optim_cell:
             info("Optimizing atom positons")
-            fdf.append("MD.TypeOfRun  CG\n")
-            fdf.append("MD.NumCGSteps %i\n" % 300)
+            fdf.append("\nMD.TypeOfRun  CG\n")
+            fdf.append("MD.NumCGSteps  %i\n" % 300)
         if optim_cell:
             info("Cell vectors will be optimized")
             fdf.append("MD.VariableCell .true.\n")
         if optim_h and not optim_all and "H" in self.types:
             info("Optimizing only hydrogen positons")
+            constraint = ["%i" % (idx+1)
+                          for idx, species in enumerate(self.types)
+                          if species not in ["H"]]
+            constraint = textwrap.fill(" ".join(constraint),
+                                       initial_indent='position ',
+                                       subsequent_indent='position ')
             fdf.extend([
-                "\n%block GeometryConstraints\n"
-                "position " + " ".join("%i" % (idx+1) for
-                                       idx, species in enumerate(self.types)
-                                       if species not in ["H"]) + "\n"
+                "\n%block GeometryConstraints\n",
+                constraint, "\n",
                 "%endblock GeometryConstraints\n"])
 
         return fdf

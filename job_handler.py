@@ -188,7 +188,8 @@ def _wooki_submit(job_type, options, *args, **kwargs):
         'vasp': 'vaspsubmit-faps',
         'repeat': 'repeatsubmit-faps',
         'siesta': 'siestasubmit-faps',
-        'fastmc': 'fastmcsubmit'
+        'fastmc': 'fastmcsubmit',
+        'gulp': 'gulpsubmit-faps'
     }
     job_name = options.get('job_name')
     try:

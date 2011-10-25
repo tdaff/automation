@@ -310,6 +310,8 @@ class PyNiss(object):
             # Get ESP
             self.esp_to_cube()
             self.run_repeat()
+        elif chg_method == 'gulp':
+            self.run_qeq_gulp()
         else:
             err("Unknown charge calculation method: %s" % chg_method)
 
@@ -412,6 +414,37 @@ class PyNiss(object):
                 debug('Postrun script not submitted')
         # Tidy up at the end
         os.chdir(self.options.get('job_dir'))
+
+    def run_qeq_gulp(self):
+        job_name = self.options.get('job_name')
+        qeq_code = 'gulp'
+        qeq_dir = os.path.join(self.options.get('job_dir'),
+                                  'faps_%s_%s' % (job_name, qeq_code))
+        mkdirs(qeq_dir)
+        os.chdir(qeq_dir)
+        debug("Running in %s" % qeq_dir)
+
+        filetemp = open('%s.gin' % job_name, 'wb')
+        filetemp.writelines(self.structure.to_gulp(self.options))
+        filetemp.close()
+
+        if self.options.getbool('no_submit'):
+            info("GULP input files generated; skipping job submission")
+            self.state['charges'] = (SKIPPED, False)
+        else:
+            jobid = self.job_handler.submit(qeq_code, self.options,
+                                            input_file='%s.gin' % job_name)
+            info("Running GULP job in queue. Jobid: %s" % jobid)
+            self.state['charges'] = (RUNNING, jobid)
+            if self.options.getbool('run_all'):
+                debug('Submitting postrun script')
+                os.chdir(self.options.get('job_dir'))
+                self.job_handler.postrun(jobid)
+            else:
+                debug('Postrun script not submitted')
+        # Tidy up at the end
+        os.chdir(self.options.get('job_dir'))
+
 
     def esp_to_cube(self):
         """Make the cube for repeat input."""
@@ -644,6 +677,10 @@ class Structure(object):
             remove_files(charge_path, unneeded_files)
             keep_files = ['%s.cube' % self.name]
             compress_files(charge_path, keep_files)
+        elif charge_method == 'gulp':
+            info("Updating charges from GULP QEq")
+            self.charges_from_gulp(
+                os.path.join(charge_path, 'faps-%s.out' % self.name))
         else:
             err("Unknown charge method to import %s" % charge_method)
 
@@ -829,6 +866,17 @@ class Structure(object):
         for atom, charge in zip(self.atoms, charges):
             atom.charge = charge[2]
 
+    def charges_from_gulp(self, filename):
+        """Parse QEq charges from GULP output."""
+        info("Getting charges from file: %s" % filename)
+        charges = []
+        filetemp = open(filename)
+        gout = filetemp.readlines()
+        filetemp.close()
+        start_line = gout.index('  Final charges from QEq :\n') + 7
+        for atom, chg_line in zip(self.atoms, gout[start_line:]):
+            atom.charge = float(chg_line.split()[2])
+
     def to_vasp(self, options):
         """Return a vasp5 poscar as a list of lines."""
         optim_h = options.getbool('optim_h')
@@ -958,8 +1006,21 @@ class Structure(object):
 
         return fdf
 
+    def to_gulp(self, options):
+        """Return a GULP file to use for the QEq charges."""
+        gin_file = [
+            "single conp qeq\n\n",
+            "name %s\n\n" % self.name,
+            "vectors\n"] + self.cell.to_vector_strings() + [
+            "cartesian\n"]
+        for atom in self.atoms:
+            gin_file.extend(["%s core " % atom.type,
+                             "%f %f %f\n" % tuple(atom.pos)])
+        gin_file.append("\n\nprint 1\n\n")
+        return gin_file
+
     def to_fastmc(self, options):
-        """Return the FIELD and CONFIG needed for a fastmc run"""
+        """Return the FIELD and CONFIG needed for a fastmc run."""
         # CONFIG
         self.gen_supercell(options)
         supercell = self.gcmc_supercell
@@ -987,7 +1048,7 @@ class Structure(object):
             for atom in guest.atoms:
                 field.append(("%-6s %12.6f %12.6f" %
                               tuple([atom.type, atom.mass, atom.charge])) +
-                             ("%12.6f %12.6f %12.6f\n" % atom.pos))
+                             ("%12.6f %12.6f %12.6f\n" % tuple(atom.pos)))
             field.append("finish\n")
         # Framework
         field.extend(["Framework\n",

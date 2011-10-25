@@ -801,6 +801,9 @@ class Structure(object):
 
         #TODO(tdaff): overlapping atoms check
         self.atoms = newatoms
+        if len(symmetry) > 1:
+            # can skip if just identity operation as slow for big system
+            self.remove_duplicates()
         self.order_by_types()
 
     def from_vasp(self, filename='CONTCAR', update=True):
@@ -1113,6 +1116,23 @@ class Structure(object):
                     float(output[idx + 7].split()[-1]),
                     float(output[idx + 8].split()[-1]))
 
+    def remove_duplicates(self, epsilon=0.02):
+        """Find overlapping atoms and remove them."""
+        uniq_atoms = []
+        found_atoms = []
+        cell = self.cell.cell
+        for atom in self.atoms:
+            ifpos = atom.ifpos(cell)
+            for found_atom in found_atoms:
+                if frac_near(ifpos, found_atom, epsilon=epsilon):
+                    break
+            # else excutes when not found here
+            else:
+                uniq_atoms.append(atom)
+                found_atoms.append(ifpos)
+        debug("Found %i unique atoms in %i" % (len(uniq_atoms), self.natoms))
+        self.atoms = uniq_atoms
+
     def gen_supercell(self, options):
         """Cacluate the smallest satisfactory supercell and set attribute."""
         config_supercell = options.gettuple('mc_supercell', int)
@@ -1336,6 +1356,27 @@ class Atom(object):
 
     def __repr__(self):
         return "Atom(%r,%r)" % (self.type, self.pos)
+
+    def fpos(self, cell):
+        """Fractional position within a given cell."""
+        return np.linalg.solve(cell.T, self.pos)
+
+    def ifpos(self, cell):
+        """In cell fractional position."""
+        return [i % 1 for i in self.fpos(cell)]
+
+    def ipos(self, cell):
+        """In cell cartesian position."""
+        return np.dot(self.ifpos(cell), cell)
+
+    def images(self, cell):
+        images = []
+        ifpos = self.ifpos(cell)
+        for x_img in [-1, 0, 1]:
+            for y_img in [-1, 0, 1]:
+                for z_img in [-1, 0, 1]:
+                    images.append(np.dot([ifpos[0]+x_img, ifpos[1]+y_img, ifpos[2]+z_img], cell))
+        return images
 
     def from_cif(self, at_dict, cell, symmetry=None):
         """Extract an atom description from dictionary of cif items."""
@@ -1751,6 +1792,18 @@ def prod(seq):
     for item in seq:
         product *= item
     return product
+
+
+def frac_near(pos_a, pos_b, epsilon=0.02):
+    """Return true if fractional points are close."""
+    if epsilon < abs(pos_a[0] - pos_b[0]) < (1 - epsilon):
+        return False
+    elif epsilon < abs(pos_a[1] - pos_b[1]) < (1 - epsilon):
+        return False
+    elif epsilon < abs(pos_a[2] - pos_b[2]) < (1 - epsilon):
+        return False
+    else:
+        return True
 
 
 def remove_files(directory, files):

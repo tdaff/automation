@@ -1,10 +1,5 @@
-TODO(tdaff):
+This project has no roadmap; features and issues are added as they 
+appear. The most important are tracked in the repository which can
+also be used for (anonymous) feature requests.
 
-Generic running, not just wooki
-Automatic continuation
-cpmd support (pseudopotentials)
-cif file input
-vdw custom potentials and choice
-directories; where do the jobs run?
-guest library and choice
-
+https://bitbucket.org/tdaff/automation/issues?status=new&status=open

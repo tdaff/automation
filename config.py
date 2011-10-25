@@ -1,8 +1,12 @@
-"""
-configuration for PyFaps
+#!/usr/bin/env python
 
-Provides the Options class that will set up directories, defaults, user options
-and job options.
+"""
+configuration for faps
+
+Provides the Options class that will transparently handle the different option
+sources through the .get() method. Pulls in defaults, site and job options plus
+command line customisation. Instantiating Options will set up the logging for
+the particular job.
 
 """
 
@@ -26,9 +30,9 @@ class Options(object):
 
     A single unified way of dealing with input files and command line options
     delivering sensible defaults for unspecified values. Access options with
-    the .get() method (or the method that defines the type). It is recommended
-    to create a new instance each time the script is run, otherwise commandline
-    options or changed input files will not be picked up.
+    the .get() method, or the method that specifies the expected type. It is
+    recommended to replace with a new instance each time the script is run,
+    otherwise commandline options or changed input files will not be picked up.
 
     """
     def __init__(self, job_name=None):
@@ -76,7 +80,7 @@ class Options(object):
             debug("a default: %s" % item)
             return self.defaults.get('defaults', item)
         else:
-            # Shouldn't get here; everything should have a default!
+            # Most things have a default, but not always. Error properly.
             debug("unspecified option: %s" % item)
             raise AttributeError(item)
 
@@ -114,6 +118,7 @@ class Options(object):
     def gettuple(self, item, dtype=None):
         """Return item's value interpreted as a tuple of dtype [strings]."""
         value = self.get(item)
+        # Regex strips bracketing so can't nest, but safer than eval
         value = [x for x in re.split('[\s,\(\)\[\]]*', value) if x]
         if dtype is not None:
             return tuple([dtype(x) for x in value])
@@ -210,7 +215,7 @@ class Options(object):
     def load_defaults(self):
         """Load program defaults."""
         # ConfigParser requires header sections so we add them to a StringIO
-        # of the file if they are missing. 2to3 should deal with the
+        # of the file if they are missing. 2to3 should also deal with the
         # renamed modules.
         default_ini_path = os.path.join(self.script_dir, 'defaults.ini')
         try:

@@ -1,9 +1,10 @@
 """
 Job handler
 
-Machine specific job submission and tracking routines. Implements the
-JobHandler class which will be initialized to the machine the calculations
-are running on from the provided options.
+Machine specific job submission and tracking routines. Provides a unified
+interface for all job handling. Implements the JobHandler class which will be
+initialized to the machine the calculations are running on from the provided
+options.
 
 """
 

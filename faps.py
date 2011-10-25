@@ -1,13 +1,18 @@
 #!/usr/bin/env python
 
 """
-PyFaps -- Fully Automated Pickles of Systems.
+faps -- Frontend for Automated Adsorption Analysis of Porous Solids.
 
-Strucutre adsorption property analysis for high throughput processing. When run
-as a script, will automatically run complete analysis on a structure. Provides
-classes and methods for adapting the simulation or only doing select parts.
-Use the job.ini file to specify job-specific options; run each job in it's own
-directory.
+aka
+
+shpes -- Sorption analysis with a High throughput Python
+         frontend to Examine binding in Structures
+
+Strucutre adsorption property analysis for high throughput processing. Run
+as a script, faps will automatically run complete analysis on a structure.
+Sensible defaults are implemented, but calculations can be easily customised.
+Faps also provides classes and methods for adapting the simulation or only
+doing select parts.
 
 """
 
@@ -1795,9 +1800,6 @@ def welcome():
     print(LOGO)
     print("\nFaps is in alpha testing phase for a version 1.0 milestone.")
     print("\nBackwards and forwards compatibility are still likely to break.")
-    print("EXISTING JOBS WILL NOT WORK [automatically], sorry :(")
-    print("\n * You may need to manually move files to continue jobs!")
-    print(" * Or delete the .niss file before '--import'ing,")
     print("\n")
 
 

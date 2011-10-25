@@ -1,10 +1,24 @@
+#!usr/bin/env python
+
 """
 Unit testing based on set of test cases.
 
 """
 
-from .. import faps
+import sys
+sys.path.append('..')
+
+import config
 import unittest
+
+class TestConfigReader(unittest.TestCase):
+
+    def setUp(self):
+        self.options = config.Options(job_name='test')
+
+    def test_options(self):
+        self.assertEqual(self.options.get('job_name'), 'test')
+
 
 class TestStructureReaders(unittest.TestCase):
 

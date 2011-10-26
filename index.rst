@@ -15,6 +15,7 @@ Contents:
    installation
    running
    options
+   guests
    examples
 
 ==================

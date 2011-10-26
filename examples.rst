@@ -23,8 +23,11 @@ and the GCMC uptake of |CO2| at 1 bar pressure in a ``structure-CO2.csv`` file.
 Isotherm calculation
 --------------------
 
+
+
 .. code-block:: ini
 
+   # structure.fap
    mc_pressure = 0.01 0.1 0.2 0.4 0.8 1.2
    mc_temperature = 263 273
 

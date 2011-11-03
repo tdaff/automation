@@ -531,16 +531,17 @@ class PyNiss(object):
         job_name = self.options.get('job_name')
         mc_code = self.options.get('mc_code')
 
+        # Set the guests before generating the files
+        # Load here as options may change in each run
+        # and before changing directory, or it will not find guests.lib
+        self.structure.guests = [Guest(x) for x in
+                                 self.options.gettuple('guests')]
+        guests = self.structure.guests
+
         gcmc_dir = os.path.join(self.options.get('job_dir'),
                                 'faps_%s_%s' % (job_name, mc_code))
         mkdirs(gcmc_dir)
         os.chdir(gcmc_dir)
-
-        # Set the guests before generating the files
-        # Load here as options may change in each run
-        self.structure.guests = [Guest(x) for x in
-                                 self.options.gettuple('guests')]
-        guests = self.structure.guests
 
         config, field = self.structure.to_fastmc(self.options)
 
@@ -1428,7 +1429,7 @@ class Atom(object):
 
 class Guest(object):
     """Guest molecule and properties."""
-    def __init__(self, ident=None):
+    def __init__(self, ident=None, path=None):
         """Populate an empty guest then load from library if required."""
         self.ident = ''
         self.name = "Unknown guest"
@@ -1440,14 +1441,17 @@ class Guest(object):
         self.hoa = {}
         # only load if asked, set the ident in the loader
         if ident:
-            self.load_guest(ident)
+            self.load_guest(ident, path=None)
 
-    def load_guest(self, ident):
+    def load_guest(self, ident, path=None):
         """Look in guests.lib in submit directory and default."""
         # Ident set here to keep consistent
         self.ident = ident
         # Need the different directories
-        job_dir = os.getcwd()
+        if path is None:
+            job_dir = os.getcwd()
+        else:
+            job_dir = path
         if __name__ != '__main__':
             script_dir = os.path.dirname(__file__)
         else:

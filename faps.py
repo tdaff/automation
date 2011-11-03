@@ -21,7 +21,6 @@ __version__ = "$Revision$"
 import code
 import ConfigParser
 import glob
-import logging
 import os
 import pickle
 import re
@@ -32,6 +31,7 @@ import sys
 import textwrap
 from copy import copy
 from math import ceil
+from logging import warning, debug, error, info
 
 import numpy as np
 from numpy import pi, cos, sin, sqrt, arccos
@@ -138,7 +138,7 @@ class PyNiss(object):
         if self.state['dft'][0] not in [UPDATED, SKIPPED]:
             if self.options.getbool('no_dft'):
                 info("Skipping DFT step completely")
-                warn("Job might fail if you need the ESP")
+                warning("Job might fail if you need the ESP")
                 self.state['dft'] = (SKIPPED, False)
             elif self.state['dft'][0] == RUNNING:
                 job_state = self.job_handler.jobcheck(self.state['dft'][1])
@@ -303,9 +303,9 @@ class PyNiss(object):
         elif dft_code == 'siesta':
             self.run_siesta()
         elif dft_code == 'cpmd':
-            err("CPMD calculation not yet implemented")
+            error("CPMD calculation not yet implemented")
         else:
-            err("Unknown dft method")
+            error("Unknown dft method")
 
     def run_charges(self):
         """Select correct charge processing methods."""
@@ -318,7 +318,7 @@ class PyNiss(object):
         elif chg_method == 'gulp':
             self.run_qeq_gulp()
         else:
-            err("Unknown charge calculation method: %s" % chg_method)
+            error("Unknown charge calculation method: %s" % chg_method)
 
     def run_vasp(self):
         """Make inputs and run vasp job."""
@@ -337,7 +337,7 @@ class PyNiss(object):
         filetemp.writelines(self.structure.to_vasp(self.options))
         filetemp.close()
 
-        esp_grid = self.esp_grid
+        #esp_grid = self.esp_grid
 
         filetemp = open("INCAR", "wb")
         filetemp.writelines(mk_incar(self.options))
@@ -421,6 +421,7 @@ class PyNiss(object):
         os.chdir(self.options.get('job_dir'))
 
     def run_qeq_gulp(self):
+        """Run GULP to calculate charge equilibration charges."""
         job_name = self.options.get('job_name')
         qeq_code = 'gulp'
         qeq_dir = os.path.join(self.options.get('job_dir'),
@@ -430,7 +431,7 @@ class PyNiss(object):
         debug("Running in %s" % qeq_dir)
 
         filetemp = open('%s.gin' % job_name, 'wb')
-        filetemp.writelines(self.structure.to_gulp(self.options))
+        filetemp.writelines(self.structure.to_gulp())
         filetemp.close()
 
         if self.options.getbool('no_submit'):
@@ -449,7 +450,6 @@ class PyNiss(object):
                 debug('Postrun script not submitted')
         # Tidy up at the end
         os.chdir(self.options.get('job_dir'))
-
 
     def esp_to_cube(self):
         """Make the cube for repeat input."""
@@ -473,9 +473,9 @@ class PyNiss(object):
                 cube_file = cube_file[0]
             elif len(cube_file) > 1:
                 cube_file = cube_file[0]
-                warn("More or than one .cube found; using %s" % cube_file)
+                warning("More or than one .cube found; using %s" % cube_file)
             else:
-                err("No cube files found; will break soon")
+                error("No cube files found; will break soon")
             # Move it to the repeat directory and give a proper name
             move_and_overwrite(cube_file,
                                os.path.join(repeat_dir, job_name + '.cube'))
@@ -609,13 +609,13 @@ class PyNiss(object):
                           for x in self.structure.cell.params[:3]])
         memory_guess = prod(esp_grid)*self.structure.natoms*repeat_prec/1e9
         if memory_guess > vmem:
-            warn("ESP at this resolution might need up to %.1f GB of memory "
-                 "but calculation will only request %.1f" %
+            warning("ESP at this resolution might need up to %.1f GB of memory"
+                 " but calculation will only request %.1f" %
                  (memory_guess, vmem))
             resolution = resolution/pow(vmem/memory_guess, 1.0/3)
             esp_grid = tuple([int(4*np.ceil(x/(4*resolution)))
                               for x in self.structure.cell.params[:3]])
-            warn("Reduced grid to %.2f A resolution to fit" % resolution)
+            warning("Reduced grid to %.2f A resolution to fit" % resolution)
 
         return esp_grid
 
@@ -657,7 +657,7 @@ class Structure(object):
         elif filetype.lower() in ['cif']:
             self.from_cif(basename + '.' + filetype)
         else:
-            err("Unknown filetype %s" % filetype)
+            error("Unknown filetype %s" % filetype)
 
     def update_pos(self, opt_code):
         """Select the method for updating atomic positions."""
@@ -668,7 +668,7 @@ class Structure(object):
         elif opt_code == 'siesta':
             self.from_siesta(os.path.join(opt_path, '%s.STRUCT_OUT' % self.name))
         else:
-            err("Unknown positions to import %s" % opt_code)
+            error("Unknown positions to import %s" % opt_code)
 
     def update_charges(self, charge_method):
         """Select the method for updating charges."""
@@ -687,7 +687,7 @@ class Structure(object):
             self.charges_from_gulp(
                 os.path.join(charge_path, 'faps-%s.out' % self.name))
         else:
-            err("Unknown charge method to import %s" % charge_method)
+            error("Unknown charge method to import %s" % charge_method)
 
     def update_gcmc(self, gcmc_code, tp_point):
         """Select the source for GCMC results and import."""
@@ -700,7 +700,7 @@ class Structure(object):
             self.fastmc_postproc(
                 os.path.join(gcmc_path, tp_path, 'OUTPUT'), tp_point)
         else:
-            err("Unknown gcmc method to import %s" % gcmc_code)
+            error("Unknown gcmc method to import %s" % gcmc_code)
 
     def from_pdb(self, filename):
         """Read an initial structure from a pdb file."""
@@ -777,7 +777,7 @@ class Structure(object):
         if np.all(params):
             self.cell.params = params
         else:
-            err("No cell or incomplete cell found in cif file")
+            error("No cell or incomplete cell found in cif file")
 
         # parse loop contents
         for heads, body in loops:
@@ -799,10 +799,9 @@ class Structure(object):
                 newatom.from_cif(atom, self.cell.cell, sym_op)
                 newatoms.append(newatom)
 
-        #TODO(tdaff): overlapping atoms check
         self.atoms = newatoms
         if len(symmetry) > 1:
-            # can skip if just identity operation as slow for big system
+            # can skip if just identity operation as it's slow for big systems
             self.remove_duplicates()
         self.order_by_types()
 
@@ -865,11 +864,11 @@ class Structure(object):
                 charges.append((int(line[1]), int(line[4]), float(line[6])))
             if "Error" in line:
                 if float(line.split()[-1]) > 0.6:
-                    warn("Error in repeat charges is very high - check cube!")
+                    warning("Error in repeat charges is very high - check cube!")
         filetemp.close()
         # TODO(tdaff): no symmetry yet
         if len(charges) != len(self.atoms):
-            err("Incorrect number of charges; check REPEAT output")
+            error("Incorrect number of charges; check REPEAT output")
             terminate(90)
         for atom, charge in zip(self.atoms, charges):
             atom.charge = charge[2]
@@ -877,7 +876,6 @@ class Structure(object):
     def charges_from_gulp(self, filename):
         """Parse QEq charges from GULP output."""
         info("Getting charges from file: %s" % filename)
-        charges = []
         filetemp = open(filename)
         gout = filetemp.readlines()
         filetemp.close()
@@ -990,7 +988,7 @@ class Structure(object):
 
         optim_h = options.getbool('optim_h')
         optim_all = options.getbool('optim_all')
-        optim_cell =  options.getbool('optim_cell')
+        optim_cell = options.getbool('optim_cell')
 
         if optim_h or optim_all or optim_cell:
             info("Optimizing atom positons")
@@ -1014,7 +1012,7 @@ class Structure(object):
 
         return fdf
 
-    def to_gulp(self, options):
+    def to_gulp(self):
         """Return a GULP file to use for the QEq charges."""
         gin_file = [
             "single conp qeq\n\n",
@@ -1087,7 +1085,7 @@ class Structure(object):
                                                        force_field[right])
                 except KeyError:
                     # catch this if not in the UFF -> zero
-                    warn("No potential defined for %s %s; defaulting to 0" %
+                    warning("No potential defined for %s %s; defaulting to 0" %
                          (left, right))
                     sigma, epsilon = 0.0, 0.0
                 field.append("%-6s %-6s lj %f %f\n" %
@@ -1138,7 +1136,7 @@ class Structure(object):
         config_supercell = options.gettuple('mc_supercell', int)
         config_cutoff = options.getfloat('mc_cutoff')
         if config_cutoff < 12:
-            warn("Simulation is using a very small cutoff! I hope you "
+            warning("Simulation is using a very small cutoff! I hope you "
                  "know, what you are doing!")
         minimum_supercell = self.cell.minimum_supercell(config_cutoff)
         supercell = tuple(max(i, j)
@@ -1369,15 +1367,6 @@ class Atom(object):
         """In cell cartesian position."""
         return np.dot(self.ifpos(cell), cell)
 
-    def images(self, cell):
-        images = []
-        ifpos = self.ifpos(cell)
-        for x_img in [-1, 0, 1]:
-            for y_img in [-1, 0, 1]:
-                for z_img in [-1, 0, 1]:
-                    images.append(np.dot([ifpos[0]+x_img, ifpos[1]+y_img, ifpos[2]+z_img], cell))
-        return images
-
     def from_cif(self, at_dict, cell, symmetry=None):
         """Extract an atom description from dictionary of cif items."""
         self.type = at_dict['_atom_site_type_symbol']
@@ -1409,6 +1398,7 @@ class Atom(object):
             self.mass = WEIGHT[at_type]
 
     def from_siesta(self, line, cell):
+        """Parse line from SIESTA.STRUCT_OUT file."""
         self.pos = dot([float(x) for x in line.split()[2:5]], cell)
         self.atomic_number = int(line.split()[1])
         self.mass = WEIGHT[self.type]
@@ -1474,7 +1464,7 @@ class Guest(object):
             debug("%s found in library" % ident)
             self._parse_guest(lib_guests.items(ident))
         else:
-            err("Guest not found: %s" % ident)
+            error("Guest not found: %s" % ident)
 
     def _parse_guest(self, raw_text):
         """Set attributes according to the raw input."""
@@ -1632,7 +1622,7 @@ def mk_incar(options, esp_grid=None):
 def mk_kpoints(kpoints):
     """Defaults to gamma point only, or specified number."""
     if len(kpoints) != 3:
-        err("kpoints specified incorectly; should be (i, i, i)")
+        error("kpoints specified incorectly; should be (i, i, i)")
     kpoints = [
         "Auto\n",
         "0\n",
@@ -1710,35 +1700,6 @@ def lorentz_berthelot(left, right):
     return sigma, epsilon
 
 
-# Functions for logging
-def debug(msg):
-    """Send DEBUGging to the logging handlers."""
-    msg = textwrap.wrap(msg)
-    for line in msg:
-        logging.debug(line)
-
-
-def info(msg):
-    """Send INFO to the logging handlers."""
-    msg = textwrap.wrap(msg)
-    for line in msg:
-        logging.info(line)
-
-
-def warn(msg):
-    """Send WARNings to the logging handlers."""
-    msg = textwrap.wrap(msg)
-    for line in msg:
-        logging.warning(line)
-
-
-def err(msg):
-    """Send ERRORs to the logging handlers."""
-    msg = textwrap.wrap(msg)
-    for line in msg:
-        logging.error(line)
-
-
 # General utility functions
 def mkdirs(directory):
     """Create a directory if it does not exist."""
@@ -1752,7 +1713,7 @@ def terminate(exit_code=0):
         info("Faps terminated normally")
         raise SystemExit
     else:
-        warn("Abnormal termination of faps; exit code %i" % exit_code)
+        warning("Abnormal termination of faps; exit code %i" % exit_code)
         raise SystemExit(exit_code)
 
 
@@ -1849,18 +1810,13 @@ def subgroup(iterable, width, itype=None):
 
 def welcome():
     """Print any important messages."""
-    print("FAPS version 0.999-r%s" % __version__.strip('$Revision: '))
     print(LOGO)
-    print("\nFaps is in alpha testing phase for a version 1.0 milestone.")
-    print("\nBackwards and forwards compatibility are still likely to break.")
-    print("\n")
-
+    print(("faps 0.999-r%s" % __version__.strip('$Revision: ')).rjust(79))
 
 def main():
     """Do a standalone calculation when run as a script."""
-    welcome()
     main_options = Options()
-    info("Starting FAPS version 0.999-r%s" % __version__.strip('$Revision: '))
+    info("Starting faps version 0.999-r%s" % __version__.strip('$Revision: '))
     # try to unpickle the job or
     # fall back to starting a new simulation
     niss_name = main_options.get('job_name') + ".niss"
@@ -1871,6 +1827,8 @@ def main():
         load_niss.close()
         my_simulation.re_init(main_options)
     else:
+        if not main_options.getbool('quiet'):
+            welcome()
         info("Starting a new simulation...")
         my_simulation = PyNiss(main_options)
 

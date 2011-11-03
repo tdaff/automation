@@ -13,6 +13,7 @@ the particular job.
 __all__ = ['Options']
 
 import ConfigParser
+import copy
 import logging
 import os
 import re
@@ -20,6 +21,7 @@ import sys
 import textwrap
 from StringIO import StringIO
 from optparse import OptionParser
+from logging import debug
 
 import __main__
 
@@ -116,7 +118,7 @@ class Options(object):
         return float(value)
 
     def gettuple(self, item, dtype=None):
-        """Return item's value interpreted as a tuple of dtype [strings]."""
+        """Return item's value interpreted as a tuple of 'dtype' [strings]."""
         value = self.get(item)
         # Regex strips bracketing so can't nest, but safer than eval
         value = [x for x in re.split('[\s,\(\)\[\]]*', value) if x]
@@ -154,15 +156,23 @@ class Options(object):
             stdout_level = logging.INFO
             file_level = logging.INFO
 
+        # Easier to do simple file configuration then add the stdout
         logging.basicConfig(level=file_level,
-                            format='%(asctime)s %(levelname)s: %(message)s',
+                            format='[%(asctime)s] %(levelname)s %(message)s',
                             datefmt='%Y%m%d %H:%M:%S',
                             filename=self.job_name + '.flog',
                             filemode='a')
 
-        console = logging.StreamHandler(sys.stdout)
+        # Make these uniform widths
+        logging.addLevelName(10, '--')
+        logging.addLevelName(20, '>>')
+        logging.addLevelName(30, '**')
+        logging.addLevelName(40, '!!')
+
+        # Use nice coloured console output
+        console = ColoredConsoleHandler(sys.stdout)
         console.setLevel(stdout_level)
-        formatter = logging.Formatter('%(levelname)s: %(message)s')
+        formatter = logging.Formatter('%(levelname)s %(message)s')
         console.setFormatter(formatter)
         # add the handler to the root logger
         logging.getLogger('').addHandler(console)
@@ -265,13 +275,6 @@ class Options(object):
         self.job_ini.readfp(job_ini)
 
 
-def debug(msg):
-    """Send DEBUGging to the logging handlers."""
-    msg = textwrap.wrap(msg)
-    for line in msg:
-        logging.debug(line)
-
-
 def options_test():
     """Try and read a few options from different sources."""
     testopts = Options()
@@ -300,6 +303,40 @@ def options_test():
         except ValueError:
             print('%s is not a tuple' % arg)
     print(testopts.get('not an option'))
+
+
+class ColoredConsoleHandler(logging.StreamHandler):
+    """Makes colourised and wrapped output for the console."""
+    def emit(self, record):
+        """Colourise and emit a record."""
+        # Need to make a actual copy of the record
+        # to prevent altering the message for other loggers
+        myrecord = copy.copy(record)
+        levelno = myrecord.levelno
+        if levelno >= 50:  # CRITICAL / FATAL
+            front = '\033[30;41m'  # black/red
+            text = '\033[1;31m'
+        elif levelno >= 40:  # ERROR
+            front = '\033[30;41m'  # black/red
+            text = '\033[1;31m'
+        elif levelno >= 30:  # WARNING
+            front = '\033[30;43m'  # black/yellow
+            text = '\033[1;33m'
+        elif levelno >= 20:  # INFO
+            front = '\033[30;42m'  # black/green
+            text = '\033[1;37m'
+        elif levelno >= 10:  # DEBUG
+            front = '\033[30;46m'  # black/cyan
+            text = '\033[0m'
+        else:  # NOTSET and anything else
+            front = '\033[0m'  # normal
+            text = '\033[0m'
+
+        myrecord.levelname = '%s%s\033[0m' % (front, myrecord.levelname)
+        myrecord.msg = textwrap.fill(
+            myrecord.msg, initial_indent=text, width=76,
+            subsequent_indent='\033[0m   %s' % text) + '\033[0m'
+        logging.StreamHandler.emit(self, myrecord)
 
 
 if __name__ == '__main__':

@@ -793,6 +793,10 @@ class Structure(object):
                         Symmetry(sym_dict['_symmetry_equiv_pos_as_xyz']))
                     body = body[len(heads):]
 
+        if not symmetry:
+            debug('No symmetry found; assuming identity')
+            symmetry = [Symmetry('x,y,z')]
+
         newatoms = []
         for atom in atoms:
             for sym_op in symmetry:
@@ -1370,8 +1374,9 @@ class Atom(object):
 
     def from_cif(self, at_dict, cell, symmetry=None):
         """Extract an atom description from dictionary of cif items."""
-        self.type = at_dict['_atom_site_type_symbol']
         self.site = at_dict['_atom_site_label']
+        # type_symbol takes precedence but need not be specified
+        self.type = at_dict.get('_atom_site_type_symbol', self.site)
         self.mass = WEIGHT[self.type]
         frac_pos = [ufloat(at_dict['_atom_site_fract_x']),
                     ufloat(at_dict['_atom_site_fract_y']),

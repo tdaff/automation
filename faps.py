@@ -31,7 +31,7 @@ import sys
 import textwrap
 from copy import copy
 from math import ceil
-from logging import warning, debug, error, info
+from logging import warning, debug, error, info, critical
 
 import numpy as np
 from numpy import pi, cos, sin, sqrt, arccos
@@ -138,7 +138,7 @@ class PyNiss(object):
         if self.state['dft'][0] not in [UPDATED, SKIPPED]:
             if self.options.getbool('no_dft'):
                 info("Skipping DFT step completely")
-                warning("Job might fail if you need the ESP")
+                warning("Job might fail later if you need the ESP")
                 self.state['dft'] = (SKIPPED, False)
             elif self.state['dft'][0] == RUNNING:
                 job_state = self.job_handler.jobcheck(self.state['dft'][1])
@@ -317,10 +317,9 @@ class PyNiss(object):
             self.run_vasp()
         elif dft_code == 'siesta':
             self.run_siesta()
-        elif dft_code == 'cpmd':
-            error("CPMD calculation not yet implemented")
         else:
-            error("Unknown dft method")
+            critical("Unknown dft method: %s" % dft_code)
+            terminate(92)
 
     def run_charges(self):
         """Select correct charge processing methods."""
@@ -333,7 +332,8 @@ class PyNiss(object):
         elif chg_method == 'gulp':
             self.run_qeq_gulp()
         else:
-            error("Unknown charge calculation method: %s" % chg_method)
+            critical("Unknown charge calculation method: %s" % chg_method)
+            terminate(93)
 
     def run_vasp(self):
         """Make inputs and run vasp job."""
@@ -490,7 +490,8 @@ class PyNiss(object):
                 cube_file = cube_file[0]
                 warning("More or than one .cube found; using %s" % cube_file)
             else:
-                error("No cube files found; will break soon")
+                critical("No cube files found; check vasp_to_cube output")
+                terminate(101)
             # Move it to the repeat directory and give a proper name
             move_and_overwrite(cube_file,
                                os.path.join(repeat_dir, job_name + '.cube'))
@@ -499,8 +500,6 @@ class PyNiss(object):
             keep_files = ['LOCPOT', 'CHGCAR', 'vasprun.xml', 'XDATCAR']
             compress_files('.', keep_files)
         elif esp_src == 'siesta':
-            if self.options.get('queue') == 'wooki':
-                os.chdir(job_name + ".restart_DIR")
             esp_to_cube_args = shlex.split(self.options.get('siesta_to_cube'))
             esp_grid = self.esp_grid
             info("Generating ESP grid of %ix%ix%i" % esp_grid)
@@ -626,9 +625,9 @@ class PyNiss(object):
                           for x in self.structure.cell.params[:3]])
         memory_guess = prod(esp_grid)*self.structure.natoms*repeat_prec/1e9
         if memory_guess > vmem:
-            warning("ESP at this resolution might need up to %.1f GB of memory"
-                 " but calculation will only request %.1f" %
-                 (memory_guess, vmem))
+            warning("ESP at this resolution might need up to %.1f GB of "
+                    "memory but calculation will only request %.1f" %
+                    (memory_guess, vmem))
             resolution = resolution/pow(vmem/memory_guess, 1.0/3)
             esp_grid = tuple([int(4*np.ceil(x/(4*resolution)))
                               for x in self.structure.cell.params[:3]])
@@ -670,7 +669,14 @@ class Structure(object):
         if filetype.lower() in ['pdb']:
             self.from_pdb(basename + '.' + filetype)
         elif filetype.lower() in ['vasp', 'poscar', 'contcar']:
-            self.from_vasp()
+            listdir = os.listdir('.')
+            test_files = [
+                basename + '.contcar', basename + '.CONTCAR', 'CONTCAR',
+                basename + '.poscar', basename + '.POSCAR', 'POSCAR']
+            for filename in test_files:
+                if filename in listdir:
+                    self.from_vasp(filename)
+                    break
         elif filetype.lower() in ['cif']:
             self.from_cif(basename + '.' + filetype)
         else:
@@ -822,7 +828,7 @@ class Structure(object):
             self.remove_duplicates()
         self.order_by_types()
 
-    def from_vasp(self, filename='CONTCAR', update=True):
+    def from_vasp(self, filename='CONTCAR', update=False):
         """Read a structure from a vasp [POS,CONT]CAR file."""
         #TODO(tdaff): difference between initial and update?
         info("Reading positions from vasp file: %s" % filename)
@@ -830,10 +836,12 @@ class Structure(object):
         contcar = filetemp.readlines()
         filetemp.close()
         atom_list = []
+        atom_types = []
         scale = float(contcar[1])
         self.cell.from_lines(contcar[2:5], scale)
         if contcar[5].split()[0].isalpha():
             # vasp 5 with atom names
+            atom_types = contcar[5].split()
             del contcar[5]
         poscar_counts = [int(x) for x in contcar[5].split()]
         natoms = sum(poscar_counts)
@@ -851,12 +859,16 @@ class Structure(object):
         if update:
             for atom, at_line in zip(self.atoms, contcar[7:7+natoms]):
                 atom.from_vasp(at_line, cell=mcell)
+        elif not atom_types:
+            critical("Will not extract structure from older vasp files")
         else:
-            # FIXME(tdaff): not working
-            for at_type, at_line in zip(self.types, contcar[7:7+natoms]):
-                this_atom = Atom()
-                this_atom.from_vasp(at_line, at_type, mcell)
-                atom_list.append(this_atom)
+            line_idx = 6
+            for at_type, at_count in zip(atom_types, poscar_counts):
+                for _atom_idx in range(at_count):
+                    line_idx += 1
+                    this_atom = Atom()
+                    this_atom.from_vasp(contcar[line_idx], at_type, mcell)
+                    atom_list.append(this_atom)
             self.atoms = atom_list
 
     def from_siesta(self, filename):
@@ -1605,7 +1617,8 @@ def mk_incar(options, esp_grid=None):
              "LVTOT   = .TRUE.\n",
              "LVHAR   = .TRUE.\n",
              "ISMEAR  = 0\n",
-             "SIGMA   = 0.05\n"]
+             "SIGMA   = 0.05\n",
+             "NWRITE  = 0\n"]
     if optim_cell:
         # Positions will be fixed by selective dynamics
         info("Cell vectors will be optimized")

@@ -168,6 +168,7 @@ class Options(object):
         logging.addLevelName(20, '>>')
         logging.addLevelName(30, '**')
         logging.addLevelName(40, '!!')
+        logging.addLevelName(50, 'XX')
 
         # Use nice coloured console output
         console = ColoredConsoleHandler(sys.stdout)

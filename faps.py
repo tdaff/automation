@@ -291,6 +291,21 @@ class PyNiss(object):
         # is based on the cell from dft, if changed
         self.structure.gen_supercell(self.options)
 
+        guests = [Guest(x) for x in self.options.gettuple('guests')]
+        if self.structure.guests != guests:
+            info("Replacing old guests")
+            self.structure.guests = guests
+        pressures = self.options.gettuple('mc_pressure', float)
+        pressures = subgroup(pressures, len(self.structure.guests))
+        temperatures = self.options.gettuple('mc_temperature', float)
+        for temp in temperatures:
+            for press in pressures:
+                try:
+                    self.structure.update_gcmc(self.options.get('mc_code'), (temp, press))
+                    self.state['gcmc'][(temp, press)] = (UPDATED, False)
+                except IOError:
+                    info("GCMC point %s not found" % str((temp, press)))
+
         # Reset directory at end
         os.chdir(job_dir)
 
@@ -587,7 +602,8 @@ class PyNiss(object):
         # Postrun after all submitted so don't have to deal with messy
         # directory switching
         os.chdir(self.options.get('job_dir'))
-        if self.options.getbool('run_all'):
+        # jobids will be empty if nothing has been submitted
+        if self.options.getbool('run_all') and jobids:
             debug('Submitting postrun script')
             self.job_handler.postrun(jobids)
         else:

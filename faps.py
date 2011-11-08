@@ -412,8 +412,15 @@ class PyNiss(object):
         psf_types = unique(self.structure.types)
         psf_dir = self.options.get('psf_dir')
         for at_type in psf_types:
-            psf_src = os.path.join(psf_dir, '%s.psf' % at_type)
-            shutil.copy(psf_src, siesta_dir)
+            psf_atm = '%s.psf' % at_type
+            psf_src = os.path.join(psf_dir, psf_atm)
+            psf_dest = os.path.join(siesta_dir, psf_atm)
+            try:
+                if not os.path.exists(psf_atm):
+                    os.symlink(psf_src, psf_dest)
+            # symlinks not available pre 3.2 on windows
+            except AttributeError:
+                shutil.copy(psf_src, siesta_dir)
         filetemp.close()
 
         if self.options.getbool('no_submit'):

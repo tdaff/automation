@@ -1030,25 +1030,34 @@ class Structure(object):
         optim_all = options.getbool('optim_all')
         optim_cell = options.getbool('optim_cell')
 
-        if optim_h or optim_all or optim_cell:
-            info("Optimizing atom positons")
+        constraint = []
+
+        if optim_all:
+            info("Optimizing all atom positions")
+            fdf.append("\nMD.TypeOfRun  CG\n")
+            fdf.append("MD.NumCGSteps  %i\n" % 800)
+        elif optim_h and "H" in self.types:
+            info("Optimizing hydrogen positions")
             fdf.append("\nMD.TypeOfRun  CG\n")
             fdf.append("MD.NumCGSteps  %i\n" % 300)
-        if optim_cell:
-            info("Cell vectors will be optimized")
-            fdf.append("MD.VariableCell .true.\n")
-        if optim_h and not optim_all and "H" in self.types:
-            info("Optimizing only hydrogen positons")
             constraint = ["%i" % (idx+1)
                           for idx, species in enumerate(self.types)
                           if species not in ["H"]]
+        elif optim_cell:
+            fdf.append("\nMD.TypeOfRun  CG\n")
+            fdf.append("MD.NumCGSteps  %i\n" % 300)
+            constraint = ["%i" % (idx+1) for idx in range(self.natoms)]
+
+        if optim_cell:
+            info("Cell vectors will be optimized")
+            fdf.append("MD.VariableCell .true.\n")
+        if constraint:
             constraint = textwrap.fill(" ".join(constraint),
                                        initial_indent='position ',
                                        subsequent_indent='position ')
-            fdf.extend([
-                "\n%block GeometryConstraints\n",
-                constraint, "\n",
-                "%endblock GeometryConstraints\n"])
+            fdf.extend(["\n%block GeometryConstraints\n",
+                        constraint, "\n",
+                        "%endblock GeometryConstraints\n"])
 
         return fdf
 
@@ -1154,7 +1163,7 @@ class Structure(object):
                     float(output[idx + 7].split()[-1]),
                     float(output[idx + 8].split()[-1]))
 
-    def remove_duplicates(self, epsilon=0.02):
+    def remove_duplicates(self, epsilon=0.0002):
         """Find overlapping atoms and remove them."""
         uniq_atoms = []
         found_atoms = []
@@ -1423,9 +1432,9 @@ class Atom(object):
     def from_pdb(self, line):
         """Parse the ATOM line from a pdb file."""
         # pdb is defined with fixed width fields rather than splitting
-        self.idx = int(line[6:11])
+        self.idx = try_int(line[6:11])
         self.site = line[12:16].strip()
-        self.molecule = int(line[22:26])
+        self.molecule = try_int(line[22:26])
         at_pos = float(line[30:38]), float(line[38:46]), float(line[47:54])
         self.pos = at_pos
         self.type = line[76:78].strip()
@@ -1790,6 +1799,14 @@ def ufloat(text):
     return float(re.sub('\(.*\)', '', text))
 
 
+def try_int(text, default=0):
+    """Try to parse an integer but return a default if it fails."""
+    try:
+        return int(text)
+    except ValueError:
+        return default
+
+
 def prod(seq):
     """Calculate the product of all members of a sequence."""
     # numpy.prod will silently overflow 32 bit integer values
@@ -1800,7 +1817,7 @@ def prod(seq):
     return product
 
 
-def frac_near(pos_a, pos_b, epsilon=0.02):
+def frac_near(pos_a, pos_b, epsilon=0.0002):
     """Return true if fractional points are close."""
     if epsilon < abs(pos_a[0] - pos_b[0]) < (1 - epsilon):
         return False

@@ -2,14 +2,15 @@
 Example calculations
 ====================
 
-For all the exmaple calculations it is assumed than :ref:`site.ini <site-ini>`
-has been correcty set up for the default paths but all other options are
-defaults.
+For all the exmaple calculations it is assumed that :ref:`site.ini <site-ini>`
+has been correcty set up for the default paths (executables; pseudopotentials)
+but all other options are defaults. These customised options can be combined in
+the ``structure.fap`` file to tune the calculation.
 
 
----------------------------
-Single point CO2 adsorption
----------------------------
+-----------------------------
+Single point |CO2| adsorption
+-----------------------------
 
 Assuming that the structure file ``structure.pdb`` running the command::
 
@@ -23,7 +24,8 @@ and the GCMC uptake of |CO2| at 1 bar pressure in a ``structure-CO2.csv`` file.
 Isotherm calculation
 --------------------
 
-
+Specify a number of pressures and temperatures and the uptake will be
+calcaulted for every combination.
 
 .. code-block:: ini
 
@@ -32,10 +34,82 @@ Isotherm calculation
    mc_temperature = 263 273
 
 
+---------------
+Uncharged guest
+---------------
 
+The single site methane model does not have any charged sites, so the charge
+calculation can be skipped altogether (any dft optimisation is also skipped).
+Charges are automatically initialsed to 0.
+
+
+.. code-block:: ini
+
+   # structure.fap
+   no_dft = true
+   no_charges = true
+   guests = CH4-TraPPE
+
+
+--------------
+Multiple guest
+--------------
+
+Mixtures can be run by specifying multiple guests. This calculation will run
+three simulations:
+
+=========== ===========
+p(|CO2|)    p(|CH4|)
+=========== ===========
+0.6         0.2
+0.5         0.3
+0.4         0.4
+=========== ===========
+
+.. code-block:: ini
+
+   # structure.fap
+   guests = CO2 CH4-TraPPE
+   mc_pressure = (0.6, 0.2), (0.5, 0.3), (0.4, 0.4)
+
+
+------------------
+Siesta calculation
+------------------
+
+The default dft package in faps is VASP. Siesta can be used to perform the DFT
+geometry optimization and to generate the ESP. Dispersion corrections have not
+been inplemented for Siesta.
+
+.. code-block:: ini
+
+   # structure.fap
+   dft_code = siesta
+   esp_src = siesta
+   siesta_accuracy = high
+   optim_all = True
+   optim_cell = True
+
+
+--------------------
+Charge equilibration
+--------------------
+
+For fast charge derivation faps can use the charge equilibration method in
+GULP, which requires no dft and completes within minutes even for 1000+ atom
+structures compared to hours or days of CPU time for DFT charges. Charges are
+likely to be less accurate and the structure cannot be optimised.
+
+.. code-block:: ini
+
+   # structure.fap
+   no_dft = True
+   charge_method = gulp
 
 
 
 .. |H2O| replace:: H\ :sub:`2`\ O
 
 .. |CO2| replace:: CO\ :sub:`2`
+
+.. |CH4| replace:: CH\ :sub:`4`

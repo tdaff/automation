@@ -2,22 +2,22 @@
 Customising faps
 ================
 
-Faps aims to provide sensible defaults for most options, however it also aims
+Sensible defaults are provided by faps for most options, however it also aims
 to offer many options for customising calculations. Defaults for all options
 can be found in the ``defaults.ini``; site-wide options such as the exe names
 and directories should be set in the :ref:`site.ini <site-ini>`.
 
 .. _config-files:
 
-------------
-Config files
-------------
+-------------------
+Configuration files
+-------------------
 
 Config files use a simple ini format of ``option = value``, or ``option:
 value``. Values will requre a spcific type:
 
  * ``str``
-      Any string value, such as a path or text.
+      Any string value, such as text or a path.
 
  * ``bool``
       A case-insensitive true/false value; ``1``, ``yes``, ``true``, and ``on``
@@ -38,7 +38,8 @@ examples, ``float``: ``0.1 0.2 0.3``; ``str``: ``(CO2, CH4)``; ``int``:
 
 Lines starting with ``#`` or ``;`` are comments and will be ignored.
 
-The following is a list of most options; for the most up-to-date list, see the
+The following is an auto-generated list of most options. The default value for
+each option is given here. For the most up-to-date list, see the
 ``defaults.ini`` file.
 
 .. program:: faps
@@ -46,7 +47,7 @@ The following is a list of most options; for the most up-to-date list, see the
 
 .. envvar:: charge_method = repeat
 
-   Method for calculating charge. [str] {repeat}
+   Method for calculating charge. [str] {repeat, gulp}
 
 .. envvar:: dft_code = vasp
 
@@ -57,7 +58,7 @@ The following is a list of most options; for the most up-to-date list, see the
    Turn on empirical dispersion corrections in dft codes that
    support it. [bool]
 
-.. envvar:: esp_resolution = 0.1
+.. envvar:: esp_resolution = 0.1889725989
 
    Resolution, in Angstrom, of the esp grid. [float]
 
@@ -79,6 +80,10 @@ The following is a list of most options; for the most up-to-date list, see the
 .. envvar:: guests = CO2
 
    Guest(s) to use in GCMC. [str, list] {see guests.lib}
+
+.. envvar:: gulp_exe = gulp
+
+   Location of GULP exe
 
 .. envvar:: import = False
 
@@ -280,12 +285,6 @@ flags are described here.
    Do not produce any terminal output. All normal output is still logged to the
    ``$JOBNAME.flog`` file.
 
-.. option:: -i, --interactive
-
-   After loading any previous simulation, faps will immediately enter the
-   *expert only* interactive mode. This is probably only for debugging and
-   fixing calculations. No support for this.
-
 .. option:: -m, --import
 
    Faps will try to import data from an old or broken simulation and continue
@@ -293,7 +292,8 @@ flags are described here.
 
 .. option:: -n, --no-submit
 
-   Faps will create input files but not submit any jobs.
+   Faps will create input files but not submit any jobs. As steps may depend on
+   each other, calculations may need to run to continue the simulations.
 
 .. option:: -o, --option
 
@@ -303,3 +303,9 @@ flags are described here.
    values are set to true when they appear on the commandline. For example
    ``faps -o vasp_ncpu=24 -o spin -o optim_h=false $JOBNAME``, will override
    the number of vasp CPUs, turn on spin and turn off hydrogen optimisation.
+
+.. option:: -i, --interactive
+
+   After loading any previous simulation, faps will immediately enter the
+   *expert only* interactive mode. This is probably only for debugging and
+   fixing calculations. No support for this.

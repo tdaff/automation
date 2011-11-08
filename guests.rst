@@ -1,13 +1,40 @@
-==================
-Customising guests
-==================
+======
+Guests
+======
 
-Faps is distributed with a number of standard guests available, the
-``guests.lib`` file in the faps directory has the standard guests, but
-it is possible to add custom guests for your simulation. Create a
-``guests.lib`` in the job working directory to add your own. The file
-follows standard ``.ini`` syntax. The following example is explained
-below.
+Faps is distributed with a number of standard guests available in the
+``guests.lib`` file in the faps directory. It is also possible to add
+custom guests for your simulation.
+
+----------------
+Available guests
+----------------
+
+These guests are available as standard with the identifier with the
+``guests`` option.
+
+============ ===========================================================
+Identifier   Guest
+============ ===========================================================
+CO2          Carbon Dioxide
+TIP5P        TIP5P Water
+TIP5P-Ew     TIP5P-Ew Water for Ewald sums
+TIP4P-Ew     TIP4P-Ew four-site water model for biomolecular simulations
+CH4-TraPPE   TraPPE Methane; Single Site
+CH4-5s       Methane 5 Site
+N2           Nitrogen based on Etters potential
+============ ===========================================================
+
+
+.. _custom-guests:
+
+------------------
+Customising guests
+------------------
+
+To use custom guests create a ``guests.lib`` in the job working
+directory to add your own. The file follows standard ``.ini`` syntax.
+The following example is explained below.
 
 
 .. code-block:: ini

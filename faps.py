@@ -167,7 +167,7 @@ class PyNiss(object):
                 if not job_state:
                     info("Queue reports charge calculation has finished")
                     self.structure.update_charges(
-                        self.options.get('charge_method'))
+                        self.options.get('charge_method'), self.options)
                     self.state['charges'] = (UPDATED, False)
                     self.dump_state()
                 else:
@@ -704,7 +704,7 @@ class Structure(object):
         else:
             error("Unknown positions to import %s" % opt_code)
 
-    def update_charges(self, charge_method):
+    def update_charges(self, charge_method, options=None):
         """Select the method for updating charges."""
         charge_path = os.path.join('faps_%s_%s' % (self.name, charge_method))
         if charge_method == 'repeat':
@@ -712,9 +712,9 @@ class Structure(object):
             self.charges_from_repeat(
                 os.path.join(charge_path, 'faps-%s.out' % self.name))
             # Cleanup of REPEAT files
-            unneeded_files = self.options.gettuple('repeat_delete_files')
+            unneeded_files = options.gettuple('repeat_delete_files')
             remove_files(unneeded_files, charge_path)
-            keep_files = self.options.gettuple('repeat_compress_files')
+            keep_files = options.gettuple('repeat_compress_files')
             compress_files(keep_files, charge_path)
         elif charge_method == 'gulp':
             info("Updating charges from GULP QEq")
@@ -1850,7 +1850,7 @@ def compress_files(files, directory='.'):
         zip_list.extend(glob.glob(os.path.join(directory, file_name)))
     for zip_name in zip_list:
         debug("compressing %s" % zip_name)
-        gzip_command = ['gzip', '-f', file_name]
+        gzip_command = ['gzip', '-f', zip_name]
         subprocess.call(gzip_command)
 
 

@@ -352,10 +352,10 @@ class PyNiss(object):
         filetemp.writelines(self.structure.to_vasp(self.options))
         filetemp.close()
 
-        #esp_grid = self.esp_grid
+        esp_grid = self.esp_grid
 
         filetemp = open("INCAR", "wb")
-        filetemp.writelines(mk_incar(self.options))
+        filetemp.writelines(mk_incar(self.options, esp_grid=esp_grid))
         filetemp.close()
 
         filetemp = open("KPOINTS", "wb")
@@ -1668,7 +1668,7 @@ def mk_incar(options, esp_grid=None):
 
     if esp_grid is not None:
         info("Changing FFT grid to %ix%ix%i" % esp_grid)
-        incar.append("NGXF %i ; NGYF %i ; NGZF %i\n" % esp_grid)
+        incar.append("NGXF = %i ; NGYF = %i ; NGZF = %i\n" % esp_grid)
 
     return incar
 

@@ -171,7 +171,7 @@ class Options(object):
         logging.addLevelName(50, 'XX')
 
         # Use nice coloured console output
-        console = ColoredConsoleHandler(sys.stdout)
+        console = ColouredConsoleHandler(sys.stdout)
         console.setLevel(stdout_level)
         formatter = logging.Formatter('%(levelname)s %(message)s')
         console.setFormatter(formatter)
@@ -306,7 +306,7 @@ def options_test():
     print(testopts.get('not an option'))
 
 
-class ColoredConsoleHandler(logging.StreamHandler):
+class ColouredConsoleHandler(logging.StreamHandler):
     """Makes colourised and wrapped output for the console."""
     def emit(self, record):
         """Colourise and emit a record."""

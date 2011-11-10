@@ -502,10 +502,10 @@ class PyNiss(object):
             # Move it to the repeat directory and give a proper name
             move_and_overwrite(cube_file,
                                os.path.join(repeat_dir, job_name + '.cube'))
-            unneeded_files = ['WAVECAR', 'CHG', 'DOSCAR', 'EIGENVAL', 'POTCAR']
-            remove_files('.', unneeded_files)
-            keep_files = ['LOCPOT', 'CHGCAR', 'vasprun.xml', 'XDATCAR']
-            compress_files('.', keep_files)
+            unneeded_files = self.options.gettuple('vasp_delete_files')
+            remove_files(unneeded_files)
+            keep_files = self.options.gettuple('vasp_compress_files')
+            compress_files(keep_files)
         elif esp_src == 'siesta':
             esp_to_cube_args = shlex.split(self.options.get('siesta_to_cube'))
             esp_grid = self.esp_grid
@@ -518,6 +518,10 @@ class PyNiss(object):
             submit = subprocess.Popen(esp_to_cube_args, stdin=subprocess.PIPE)
             submit.communicate(input=''.join(siesta_to_cube_input))
             move_and_overwrite(job_name + '.cube', repeat_dir)
+            unneeded_files = self.options.gettuple('siesta_delete_files')
+            remove_files(unneeded_files)
+            keep_files = self.options.gettuple('siesta_compress_files')
+            compress_files(keep_files)
 
         os.chdir(self.options.get('job_dir'))
 
@@ -708,10 +712,10 @@ class Structure(object):
             self.charges_from_repeat(
                 os.path.join(charge_path, 'faps-%s.out' % self.name))
             # Cleanup of REPEAT files
-            unneeded_files = ['ESP_real_coul.dat', 'fort.30', 'fort.40']
-            remove_files(charge_path, unneeded_files)
-            keep_files = ['%s.cube' % self.name]
-            compress_files(charge_path, keep_files)
+            unneeded_files = self.options.gettuple('repeat_delete_files')
+            remove_files(unneeded_files, charge_path)
+            keep_files = self.options.gettuple('repeat_compress_files')
+            compress_files(keep_files, charge_path)
         elif charge_method == 'gulp':
             info("Updating charges from GULP QEq")
             self.charges_from_gulp(
@@ -1829,27 +1833,25 @@ def frac_near(pos_a, pos_b, epsilon=0.0002):
         return True
 
 
-def remove_files(directory, files):
+def remove_files(files, directory='.'):
     """Delete any of the files if they exist, or ignore if not found."""
-    directory_contents = os.listdir(directory)
+    del_list = []
     for file_name in files:
-        if file_name in directory_contents:
-            debug("deleting %s" % file_name)
-            os.remove(os.path.join(directory, file_name))
-        else:
-            debug("file not found %s" % file_name)
+        del_list.extend(glob.glob(os.path.join(directory, file_name)))
+    for del_name in del_list:
+        debug("deleting %s" % del_name)
+        os.remove(del_name)
 
 
-def compress_files(directory, files):
+def compress_files(files, directory='.'):
     """Gzip any big files to keep."""
-    directory_contents = os.listdir(directory)
+    zip_list = []
     for file_name in files:
-        if file_name in directory_contents:
-            debug("compressing %s" % file_name)
-            gzip_command = ['gzip', '-f', os.path.join(directory, file_name)]
-            subprocess.call(gzip_command)
-        else:
-            debug("file not found %s" % file_name)
+        zip_list.extend(glob.glob(os.path.join(directory, file_name)))
+    for zip_name in zip_list:
+        debug("compressing %s" % zip_name)
+        gzip_command = ['gzip', '-f', file_name]
+        subprocess.call(gzip_command)
 
 
 def strip_blanks(lines):

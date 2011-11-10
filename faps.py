@@ -241,24 +241,30 @@ class PyNiss(object):
         info("Summary of GCMC results")
         nguests = len(self.structure.guests)
         for idx, guest in enumerate(self.structure.guests):
-            csv = ["#T/K,p/bar,mol/uc,mmol/g,stdev,hoa/kcal/mol,stdev,",
+            csv = ["#T/K,p/bar,mol/uc,mmol/g,stdev,v/v,hoa/kcal/mol,stdev,",
                    ",".join("p(g%i)" % gidx for gidx in range(nguests)), "\n"]
             info(guest.name)
-            info(" mol/uc  mmol/g     hoa     T_P")
+            info(" mol/uc  mmol/g  vstp/v     hoa     T_P")
             for tp_point in sorted(guest.uptake):
                 # <N>, sd, supercell
                 uptake = guest.uptake[tp_point]
                 hoa = guest.hoa[tp_point]
-                info("%7.2f %7.2f %7.2f %s" % (
+                vuptake = (guest.molar_volume*(uptake[0]/uptake[2])/
+                           (6.023E-4*self.structure.volume))
+                vuptake_stdev = (guest.molar_volume*(uptake[1]/uptake[2])/
+                                 (6.023E-4*self.structure.volume))
+                info("%7.2f %7.2f %7.2f %7.2f %s" % (
                     uptake[0]/uptake[2],
                     1000*uptake[0]/(uptake[2]*self.structure.weight),
+                    vuptake,
                     hoa[0],
                     ("T=%s" % tp_point[0] +
                      ''.join(['P=%s' % x for x in tp_point[1]]))))
-                csv.append("%f,%f,%f,%f,%f,%f,%f," % (
+                csv.append("%f,%f,%f,%f,%f,%f,%f,%f,%f," % (
                     tp_point[0], tp_point[1][idx], uptake[0]/uptake[2],
                     1000*uptake[0]/(uptake[2]*self.structure.weight),
                     1000*uptake[1]/(uptake[2]*self.structure.weight),
+                    vuptake, vuptake_stdev,
                     hoa[0], hoa[1]) +
                     ",".join("%f" % x for x in tp_point[1]) + "\n")
             csv_file = file('%s-%s.csv' %
@@ -1234,7 +1240,7 @@ class Structure(object):
 
     @property
     def volume(self):
-        """Unite cell volume."""
+        """Unit cell volume."""
         return self.cell.volume
 
     @property
@@ -1549,6 +1555,8 @@ class Guest(object):
                 prob = strip_blanks(val.splitlines())
                 self.probability = [tuple(int(y) for y in x.split())
                                     for x in prob]
+            elif key == 'molar volume':
+                self._molar_volume = val
             else:
                 # Arbitrary attributes can be set
                 # Might also enable breakage
@@ -1564,6 +1572,14 @@ class Guest(object):
     def weight(self):
         """Unit cell weight."""
         return sum([atom.mass for atom in self.atoms])
+
+    @property
+    def molar_volume(self):
+        """Molar volume at STP in dm3/mol"""
+        if hasattr(self, '_molar_volume'):
+            return self._molar_volume
+        else:
+            return 22.414
 
 
 class Symmetry(object):

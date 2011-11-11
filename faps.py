@@ -241,7 +241,8 @@ class PyNiss(object):
         info("Summary of GCMC results")
         nguests = len(self.structure.guests)
         for idx, guest in enumerate(self.structure.guests):
-            csv = ["#T/K,p/bar,mol/uc,mmol/g,stdev,v/v,hoa/kcal/mol,stdev,",
+            csv = ["#T/K,p/bar,mol/uc,mmol/g,stdev,",
+                   "v/v,stdev,hoa/kcal/mol,stdev,",
                    ",".join("p(g%i)" % gidx for gidx in range(nguests)), "\n"]
             info(guest.name)
             info(" mol/uc  mmol/g  vstp/v     hoa     T_P")

@@ -131,7 +131,8 @@ class PyNiss(object):
             # No structure, should get one
             self.structure.from_file(
                 self.options.get('job_name'),
-                self.options.get('initial_structure_format'))
+                self.options.get('initial_structure_format'),
+                self.options)
             self.state['init'] = (UPDATED, False)
             self.dump_state()
 
@@ -681,7 +682,7 @@ class Structure(object):
         self.guests = []
         self.properties = {}
 
-    def from_file(self, basename, filetype):
+    def from_file(self, basename, filetype, defaults):
         """Select the correct file parser."""
         filetype = filetype.lstrip('.')
         if filetype.lower() in ['pdb']:
@@ -697,6 +698,9 @@ class Structure(object):
                     break
         elif filetype.lower() in ['cif']:
             self.from_cif(basename + '.' + filetype)
+        elif filetype.lower() in ['xyz']:
+            cell = defaults.gettuple('default_cell', float)
+            self.from_xyz(basename + '.' + filetype, cell=cell)
         else:
             error("Unknown filetype %s" % filetype)
 
@@ -892,6 +896,7 @@ class Structure(object):
                     this_atom.from_vasp(contcar[line_idx], at_type, mcell)
                     atom_list.append(this_atom)
             self.atoms = atom_list
+            self.order_by_types()
 
     def from_siesta(self, filename):
         """Update the structure from the siesta output."""
@@ -902,6 +907,39 @@ class Structure(object):
         self.cell.from_lines(struct_out[:3])
         for atom, line in zip(self.atoms, struct_out[4:]):
             atom.from_siesta(line, self.cell.cell)
+
+    def from_xyz(self, filename, update=False, cell=None):
+        """Read a structure from an file."""
+        info("Reading positions from xyz file: %s" % filename)
+        filetemp = open(filename)
+        xyz_file = filetemp.readlines()
+        filetemp.close()
+        # Setting the cell
+        if len(cell) == 6:
+            self.cell.params = cell
+        elif len(cell) == 9:
+            self.cell.cell = array(cell).reshape((3, 3))
+        elif cell is not None:
+            error("Invalid cell specification %s" % str(cell))
+        # Build a local list before setting attribute
+        newatoms = []
+        natoms = int(xyz_file[0])
+        self.properties['header'] = xyz_file[1].strip()
+        for line in xyz_file[2:2+natoms]:
+            newatom = Atom()
+            newatom.from_xyz(line)
+            newatoms.append(newatom)
+        if update:
+            if natoms != self.natoms:
+                critical("Incorrect number of atoms to update")
+                terminate(96)
+            for atom, newatom in zip(self.atoms, newatoms):
+                if atom.type != newatom.type:
+                    error("Atom order may have changed")
+                atom.pos = newatom.pos
+        else:
+            self.atoms = newatoms
+            self.order_by_types()
 
     def charges_from_repeat(self, filename):
         """Parse charges and update structure."""
@@ -1462,6 +1500,12 @@ class Atom(object):
         """Parse line from SIESTA.STRUCT_OUT file."""
         self.pos = dot([float(x) for x in line.split()[2:5]], cell)
         self.atomic_number = int(line.split()[1])
+        self.mass = WEIGHT[self.type]
+
+    def from_xyz(self, line):
+        """Parse line from generic xyz file."""
+        self.pos = [float(x) for x in line.split()[1:4]]
+        self.type = line.split()[0]
         self.mass = WEIGHT[self.type]
 
     def translate(self, vec):

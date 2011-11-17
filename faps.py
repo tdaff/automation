@@ -301,16 +301,15 @@ class PyNiss(object):
         if self.structure.guests != guests:
             info("Replacing old guests")
             self.structure.guests = guests
-        pressures = self.options.gettuple('mc_pressure', float)
-        pressures = subgroup(pressures, len(self.structure.guests))
-        temperatures = self.options.gettuple('mc_temperature', float)
-        for temp in temperatures:
-            for press in pressures:
-                try:
-                    self.structure.update_gcmc(self.options.get('mc_code'), (temp, press))
-                    self.state['gcmc'][(temp, press)] = (UPDATED, False)
-                except IOError:
-                    info("GCMC point %s not found" % str((temp, press)))
+        temps = self.options.gettuple('mc_temperature', float)
+        presses = self.options.gettuple('mc_pressure', float)
+        indivs = self.options.gettuple('mc_state_points', float)
+        for tp_point in state_points(temps, presses, indivs, len(guests)):
+            try:
+                self.structure.update_gcmc(self.options.get('mc_code'), tp_point)
+                self.state['gcmc'][tp_point] = (UPDATED, False)
+            except IOError:
+                info("GCMC point %s not found" % str(tp_point))
 
         # Reset directory at end
         os.chdir(job_dir)
@@ -584,36 +583,42 @@ class PyNiss(object):
         filetemp.writelines(field)
         filetemp.close()
 
-        pressures = self.options.gettuple('mc_pressure', float)
-        pressures = subgroup(pressures, len(guests))
-        temperatures = self.options.gettuple('mc_temperature', float)
+        temps = self.options.gettuple('mc_temperature', float)
+        presses = self.options.gettuple('mc_pressure', float)
+        indivs = self.options.gettuple('mc_state_points', float)
+#        pressures = self.options.gettuple('mc_pressure', float)
+#        pressures = subgroup(pressures, len(guests))
+#        temperatures = self.options.gettuple('mc_temperature', float)
         jobids = []
-        for temp in temperatures:
-            for press in pressures:
+#        for temp in temperatures:
+#            for press in pressures:
                 # press is always a list
-                info("Running GCMC: T=%.1f " % temp +
-                     " ".join(["P=%.2f" % x for x in press]))
-                tp_path = ('T%s' % temp +
-                           ''.join(['P%.2f' % x for x in press]))
-                mkdirs(tp_path)
-                shutil.copy('CONFIG', tp_path)
-                shutil.copy('FIELD', tp_path)
-                os.chdir(tp_path)
-                filetemp = open("CONTROL", "wb")
-                filetemp.writelines(mk_gcmc_control(temp, press, self.options,
-                                                    guests))
-                filetemp.close()
+        for tp_point in state_points(temps, presses, indivs, len(guests)):
+            temp = tp_point[0]
+            press = tp_point[1]
+            info("Running GCMC: T=%.1f " % temp +
+                 " ".join(["P=%.2f" % x for x in press]))
+            tp_path = ('T%s' % temp +
+                       ''.join(['P%.2f' % x for x in press]))
+            mkdirs(tp_path)
+            shutil.copy('CONFIG', tp_path)
+            shutil.copy('FIELD', tp_path)
+            os.chdir(tp_path)
+            filetemp = open("CONTROL", "wb")
+            filetemp.writelines(mk_gcmc_control(temp, press, self.options,
+                                                guests))
+            filetemp.close()
 
-                if self.options.getbool('no_submit'):
-                    info("FastMC input files generated; "
-                         "skipping job submission")
-                    self.state['gcmc'][(temp, press)] = (SKIPPED, False)
-                else:
-                    jobid = self.job_handler.submit(mc_code, self.options)
-                    info("Running FastMC in queue: Jobid %s" % jobid)
-                    self.state['gcmc'][(temp, press)] = (RUNNING, jobid)
-                    jobids.append(jobid)
-                os.chdir('..')
+            if self.options.getbool('no_submit'):
+                info("FastMC input files generated; "
+                     "skipping job submission")
+                self.state['gcmc'][(temp, press)] = (SKIPPED, False)
+            else:
+                jobid = self.job_handler.submit(mc_code, self.options)
+                info("Running FastMC in queue: Jobid %s" % jobid)
+                self.state['gcmc'][(temp, press)] = (RUNNING, jobid)
+                jobids.append(jobid)
+            os.chdir('..')
 
         # Postrun after all submitted so don't have to deal with messy
         # directory switching
@@ -1886,6 +1891,16 @@ def subgroup(iterable, width, itype=None):
     # Will leave short groups if not enough members
     return itype([itype(iterable[x:x+width])
                   for x in range(0, len(iterable), width)])
+
+
+def state_points(temperatures, pressures, individual, nguests):
+    """Group temperatures and pressures and append given state point tuples."""
+    # No error checking done, assume know what they are doing
+    for index in range(0, len(individual), nguests+1):
+        yield (individual[index], tuple(individual[index+1:index+nguests+1]))
+    for temp in temperatures:
+        for pressure in subgroup(pressures, nguests):
+            yield (temp, pressure)
 
 
 def welcome():

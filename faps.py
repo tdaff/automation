@@ -586,13 +586,7 @@ class PyNiss(object):
         temps = self.options.gettuple('mc_temperature', float)
         presses = self.options.gettuple('mc_pressure', float)
         indivs = self.options.gettuple('mc_state_points', float)
-#        pressures = self.options.gettuple('mc_pressure', float)
-#        pressures = subgroup(pressures, len(guests))
-#        temperatures = self.options.gettuple('mc_temperature', float)
         jobids = []
-#        for temp in temperatures:
-#            for press in pressures:
-                # press is always a list
         for tp_point in state_points(temps, presses, indivs, len(guests)):
             temp = tp_point[0]
             press = tp_point[1]
@@ -601,8 +595,10 @@ class PyNiss(object):
             tp_path = ('T%s' % temp +
                        ''.join(['P%.2f' % x for x in press]))
             mkdirs(tp_path)
-            shutil.copy('CONFIG', tp_path)
-            shutil.copy('FIELD', tp_path)
+            try_symlink(os.path.join(gcmc_dir, 'CONFIG'),
+                        os.path.join(tp_path, 'CONFIG'))
+            try_symlink(os.path.join(gcmc_dir, 'FIELD'),
+                        os.path.join(tp_path, 'FIELD'))
             os.chdir(tp_path)
             filetemp = open("CONTROL", "wb")
             filetemp.writelines(mk_gcmc_control(temp, press, self.options,
@@ -1817,6 +1813,15 @@ def move_and_overwrite(src, dest):
             raise OSError("%s is not a folder or file" % dest)
     else:
         shutil.move(src, dest)
+
+def try_symlink(src, dest):
+    """Delete an existing dest file, symlink a new one if possible."""
+    if os.path.lexists(dest):
+        os.remove(dest)
+    try:
+        os.symlink(src, dest)
+    except AttributeError:
+        shutil.copy(src, dest)
 
 
 def ufloat(text):

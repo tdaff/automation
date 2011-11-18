@@ -10,6 +10,7 @@ options.
 
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -35,6 +36,11 @@ class JobHandler(object):
             self.postrun = _sharcnet_postrun
             self.jobcheck = _sharcnet_jobcheck
             self.env = _sharcnet_env
+        elif self.queue == 'local':
+            self.submit = _local_run
+            self.postrun = _pass
+            self.jobcheck = _pass
+            self.env = _pass
         else:
             print("ERROR unknown queue %s. Using null handler" % self.queue)
             self.submit = _pass
@@ -264,9 +270,38 @@ def _wooki_env(code, *args, **kwargs):
     pass
 
 
+def _local_run(job_type, options, input_file=None):
+    """Run the exe in a subprocess."""
+    # Threaded codes have different behaviour
+#    openmp_codes = options.gettuple('threaded_codes')
+
+    # Bind some things locally, so we know what's going on
+    job_name = options.get('job_name')
+    exe = options.get('%s_exe' % job_type)
+    try:
+        nodes = options.getint('%s_ncpu' % job_type)
+    except AttributeError:
+        nodes = 1
+
+    # Some codes need the input file name
+    if input_file is not None:
+        sqsub_args.extend(['-i', '%s' % input_file])
+    # Output
+    out_file = open('faps-%s.out' % job_name, 'wb')
+
+    run_args = shlex.split(exe)
+
+    submit = Popen(sqsub_args, stdout=out_file)
+    submit.wait()
+    finished = submit.returncode
+
+    return None
+
+
 def _pass(*args, **kwargs):
     """Sometimes we want to do nothing."""
     pass
+
 
 def _argstrip(arglist):
     """Some options might be best removed before resubmission."""

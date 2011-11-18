@@ -133,7 +133,7 @@ def _sharcnet_postrun(waitid):
         '-o', 'faps-post-%s.out' % '-'.join(sorted(waitid)),
         '--mpp=2g',
         '--waitfor=%s' % ','.join(waitid),
-        ] + sys.argv
+        ] + _argstrip(sys.argv)
     # We can just call this as we don't care about the jobid
     subprocess.call(sqsub_args)
 
@@ -189,7 +189,7 @@ def _wooki_submit(job_type, options, *args, **kwargs):
         'vasp': 'vaspsubmit-faps',
         'repeat': 'repeatsubmit-faps',
         'siesta': 'siestasubmit-faps',
-        'fastmc': 'fastmcsubmit',
+        'fastmc': 'fastmcsubmit-faps',
         'gulp': 'gulpsubmit-faps'
     }
     job_name = options.get('job_name')
@@ -228,7 +228,7 @@ def _wooki_postrun(waitid):
                   '#PBS -W depend=afterok:%s\n' % ':'.join(waitid),
                   'cd $PBS_O_WORKDIR\n',
                   'python ',
-                  ' '.join(sys.argv)]
+                  ' '.join(_argstrip(sys.argv))]
 
     pbs_script = ''.join(pbs_script)
     submit = Popen("/usr/local/bin/qsub", shell=False, stdin=PIPE)
@@ -267,3 +267,12 @@ def _wooki_env(code, *args, **kwargs):
 def _pass(*args, **kwargs):
     """Sometimes we want to do nothing."""
     pass
+
+def _argstrip(arglist):
+    """Some options might be best removed before resubmission."""
+    to_remove = ['-i', '--import', 'dft', 'gcmc', 'charges']
+    newargs = list(arglist)
+    for item in to_remove:
+        while item in newargs:
+            newargs.remove(item)
+    return newargs

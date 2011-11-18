@@ -300,9 +300,13 @@ class PyNiss(object):
         self.structure.gen_supercell(self.options)
 
         guests = [Guest(x) for x in self.options.gettuple('guests')]
-        if self.structure.guests != guests:
+        if not same_guests(self.structure.guests, guests):
             info("Replacing old guests")
             self.structure.guests = guests
+        else:
+            # use existing guests that may have data
+            debug("Retaining previous guests")
+            guests = self.structure.guests
         temps = self.options.gettuple('mc_temperature', float)
         presses = self.options.gettuple('mc_pressure', float)
         indivs = self.options.gettuple('mc_state_points', float)
@@ -566,9 +570,14 @@ class PyNiss(object):
         # Set the guests before generating the files
         # Load here as options may change in each run
         # and before changing directory, or it will not find guests.lib
-        self.structure.guests = [Guest(x) for x in
-                                 self.options.gettuple('guests')]
-        guests = self.structure.guests
+        guests = [Guest(x) for x in self.options.gettuple('guests')]
+        if not same_guests(self.structure.guests, guests):
+            info("Replacing old guests")
+            self.structure.guests = guests
+        else:
+            # use existing guests that may have data
+            debug("Retaining previous guests")
+            guests = self.structure.guests
 
         gcmc_dir = os.path.join(self.options.get('job_dir'),
                                 'faps_%s_%s' % (job_name, mc_code))
@@ -1859,6 +1868,7 @@ def move_and_overwrite(src, dest):
     else:
         shutil.move(src, dest)
 
+
 def try_symlink(src, dest):
     """Delete an existing dest file, symlink a new one if possible."""
     if os.path.lexists(dest):
@@ -1867,6 +1877,11 @@ def try_symlink(src, dest):
         os.symlink(src, dest)
     except AttributeError:
         shutil.copy(src, dest)
+
+
+def same_guests(base, other):
+    """Test if the guests are the same index and order."""
+    return [item.ident for item in base] == [item.ident for item in other]
 
 
 def ufloat(text):

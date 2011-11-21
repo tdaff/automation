@@ -86,7 +86,7 @@ def _sharcnet_submit(job_type, options, input_file=None):
             sqsub_args.extend(['-f', 'mpi'])
             sqsub_args.extend(['--mpp=1.33g'])
             # be nice and use whole nodes if possible
-            if nodes % 24 == 0:
+            if nodes % 24 == 0 or nodes < 24:
                 sqsub_args.extend(['--pack'])
     else:
         sqsub_args.extend(['--mpp=%fg' % options.getfloat('threaded_memory')])

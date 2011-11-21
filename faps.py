@@ -281,7 +281,8 @@ class PyNiss(object):
         try:
             self.structure.from_file(
                 job_name,
-                self.options.get('initial_structure_format'))
+                self.options.get('initial_structure_format'),
+                self.options)
             self.state['init'] = (UPDATED, False)
         except IOError:
             info("No initial structure found to import")
@@ -1221,6 +1222,11 @@ class Structure(object):
                 self.guests[guest_id].hoa[tp_point] = (
                     float(output[idx + 7].split()[-1]),
                     float(output[idx + 8].split()[-1]))
+            elif line.startswith('       total accepted steps'):
+                counted_steps = int(line.split()[-1])
+                if counted_steps < 10000:
+                    warning("Number of accepted GCMC steps is very low; "
+                            "only %i counted!" % counted_steps)
 
     def remove_duplicates(self, epsilon=0.0002):
         """Find overlapping atoms and remove them."""

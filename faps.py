@@ -546,7 +546,11 @@ class PyNiss(object):
         mkdirs(repeat_dir)
         os.chdir(repeat_dir)
 
-        mk_repeat(cube_name=job_name + '.cube')
+        if self.options.getbool('symmetry'):
+            mk_repeat(cube_name=job_name + '.cube', symmetry=True)
+            mk_connectivity_ff(self.structure.symmetry_tree)
+        else:
+            mk_repeat(cube_name=job_name + '.cube', symmetry=False)
         if self.options.getbool('no_submit'):
             info("REPEAT input files generated; skipping job submission")
             self.state['charges'] = (SKIPPED, False)
@@ -692,6 +696,7 @@ class Structure(object):
         self.dft_energy = 0.0
         self.guests = []
         self.properties = {}
+        self.space_group = None
 
     def from_file(self, basename, filetype, defaults):
         """Select the correct file parser."""
@@ -732,7 +737,8 @@ class Structure(object):
         if charge_method == 'repeat':
             info("Updating charges from repeat")
             self.charges_from_repeat(
-                os.path.join(charge_path, 'faps-%s.out' % self.name))
+                os.path.join(charge_path, 'faps-%s.out' % self.name),
+                options.getbool('symmetry'))
             # Cleanup of REPEAT files
             unneeded_files = options.gettuple('repeat_delete_files')
             remove_files(unneeded_files, charge_path)
@@ -769,6 +775,7 @@ class Structure(object):
         for line in pdb_file:
             if line.lower().startswith('cryst1'):
                 self.cell.from_pdb(line)
+                self.space_group = line[55:56]
             elif line.lower().startswith('atom'):
                 newatom = Atom()
                 newatom.from_pdb(line)
@@ -807,6 +814,8 @@ class Structure(object):
                 params[4] = ufloat(line.split()[1])
             elif '_cell_angle_gamma' in line:
                 params[5] = ufloat(line.split()[1])
+            elif '_symmetry_space_group_name_h-m' in line:
+                self.space_group = line.split()[1]
             elif 'loop_' in line:
                 # loops for _atom_site and _symmetry
                 heads = []
@@ -853,10 +862,10 @@ class Structure(object):
             symmetry = [Symmetry('x,y,z')]
 
         newatoms = []
-        for atom in atoms:
+        for site_idx, atom in enumerate(atoms):
             for sym_op in symmetry:
                 newatom = Atom()
-                newatom.from_cif(atom, self.cell.cell, sym_op)
+                newatom.from_cif(atom, self.cell.cell, sym_op, site_idx)
                 newatoms.append(newatom)
 
         self.atoms = newatoms
@@ -867,7 +876,6 @@ class Structure(object):
 
     def from_vasp(self, filename='CONTCAR', update=False):
         """Read a structure from a vasp [POS,CONT]CAR file."""
-        #TODO(tdaff): difference between initial and update?
         info("Reading positions from vasp file: %s" % filename)
         filetemp = open(filename)
         contcar = filetemp.readlines()
@@ -952,7 +960,7 @@ class Structure(object):
             self.atoms = newatoms
             self.order_by_types()
 
-    def charges_from_repeat(self, filename):
+    def charges_from_repeat(self, filename, symmetry=False):
         """Parse charges and update structure."""
         info("Getting charges from file: %s" % filename)
         charges = []
@@ -966,12 +974,20 @@ class Structure(object):
                 if float(line.split()[-1]) > 0.6:
                     warning("Error in repeat charges is very high - check cube!")
         filetemp.close()
-        # TODO(tdaff): no symmetry yet
-        if len(charges) != len(self.atoms):
-            error("Incorrect number of charges; check REPEAT output")
-            terminate(90)
-        for atom, charge in zip(self.atoms, charges):
-            atom.charge = charge[2]
+        if symmetry:
+            tree = self.symmetry_tree
+            if len(charges) != len(tree):
+                error("Incorrect number of charge sets; check REPEAT output")
+                terminate(97)
+                for symm, charge in zip(sorted(tree.iteritems()), charges):
+                    for at_idx in symm[1]:
+                        self.atoms[at_idx].charge = charge[2]
+        else:
+            if len(charges) != len(self.atoms):
+                error("Incorrect number of charges; check REPEAT output")
+                terminate(90)
+            for atom, charge in zip(self.atoms, charges):
+                atom.charge = charge[2]
 
     def charges_from_gulp(self, filename):
         """Parse QEq charges from GULP output."""
@@ -1303,6 +1319,17 @@ class Structure(object):
         """Number of atoms in the unit cell."""
         return len(self.atoms)
 
+    @property
+    def symmetry_tree(self):
+        """Tree of atoms that are symmetrically equivalent."""
+        tree = {}
+        for atom_id, atom in enumerate(self.atoms):
+            if atom.site in tree:
+                tree[atom.site].append(atom_id)
+            else:
+                tree[atom.site] = [atom_id]
+        return tree
+
     def get_gcmc_supercell(self):
         """Supercell used for gcmc."""
         return self.properties.get('supercell', (1, 1, 1))
@@ -1481,7 +1508,7 @@ class Atom(object):
         """In cell cartesian position."""
         return np.dot(self.ifpos(cell), cell)
 
-    def from_cif(self, at_dict, cell, symmetry=None):
+    def from_cif(self, at_dict, cell, symmetry=None, idx=None):
         """Extract an atom description from dictionary of cif items."""
         self.site = at_dict['_atom_site_label']
         # type_symbol takes precedence but need not be specified
@@ -1493,6 +1520,8 @@ class Atom(object):
         if symmetry is not None:
             frac_pos = symmetry.trans_frac(frac_pos)
         self.pos = dot(frac_pos, cell)
+        if idx is not None:
+            self.site = (self.type, idx)
 
     def from_pdb(self, line):
         """Parse the ATOM line from a pdb file."""
@@ -1697,6 +1726,23 @@ def mk_repeat(cube_name='REPEAT_ESP.cube', symmetry=False):
 
     filetemp = open('REPEAT_param.inp', 'w')
     filetemp.writelines(repeat_input)
+    filetemp.close()
+
+
+def mk_connectivity_ff(sym_tree):
+    """Write connectivity.ff for input tree."""
+    out_tree = ["%i\n" % len(sym_tree)]
+    # Always sort to get consistent order
+    for idx in sorted(sym_tree):
+        out_tree.extend([
+            "# %s tree\n" % str(idx),
+            "%i\n" % len(sym_tree[idx]),
+            " ".join(["%i" % (i+1) for i in sym_tree[idx]]),
+            "\n"
+        ])
+
+    filetemp = open('connectivity.ff', 'w')
+    filetemp.writelines(out_tree)
     filetemp.close()
 
 

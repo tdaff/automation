@@ -979,9 +979,9 @@ class Structure(object):
             if len(charges) != len(tree):
                 error("Incorrect number of charge sets; check REPEAT output")
                 terminate(97)
-                for symm, charge in zip(sorted(tree.iteritems()), charges):
-                    for at_idx in symm[1]:
-                        self.atoms[at_idx].charge = charge[2]
+            for symm, charge in zip(sorted(tree.iteritems()), charges):
+                for at_idx in symm[1]:
+                    self.atoms[at_idx].charge = charge[2]
         else:
             if len(charges) != len(self.atoms):
                 error("Incorrect number of charges; check REPEAT output")
@@ -1328,7 +1328,10 @@ class Structure(object):
                 tree[atom.site].append(atom_id)
             else:
                 tree[atom.site] = [atom_id]
-        return tree
+        if len(tree) == 1 and None in tree:
+            return dict((i, [i]) for i in range(self.natoms))
+        else:
+            return tree
 
     def get_gcmc_supercell(self):
         """Supercell used for gcmc."""
@@ -1520,8 +1523,9 @@ class Atom(object):
         if symmetry is not None:
             frac_pos = symmetry.trans_frac(frac_pos)
         self.pos = dot(frac_pos, cell)
-        if idx is not None:
-            self.site = (self.type, idx)
+        if re.match('[0-9]', self.site) and idx is not None:
+             debug("Site label may not be unique; appending index")
+             self.site = "%s%i" % (self.site, idx)
 
     def from_pdb(self, line):
         """Parse the ATOM line from a pdb file."""

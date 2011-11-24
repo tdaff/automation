@@ -139,7 +139,7 @@ class PyNiss(object):
         if self.state['dft'][0] not in [UPDATED, SKIPPED]:
             if self.options.getbool('no_dft'):
                 info("Skipping DFT step completely")
-                warning("Job might fail later if you need the ESP")
+                info("Job might fail later if you need the ESP")
                 self.state['dft'] = (SKIPPED, False)
             elif self.state['dft'][0] == RUNNING:
                 job_state = self.job_handler.jobcheck(self.state['dft'][1])
@@ -180,6 +180,12 @@ class PyNiss(object):
             info("Running charge calculation")
             self.dump_state()
             terminate(0)
+
+        if self.options.getbool('qeq_fit'):
+            if not 'qeq_fit' in self.state and self.state['charges'][0] == UPDATED:
+                info("QEq parameter fit requested")
+                self.run_qeq_gulp(fitting=True)
+                self.dump_state()
 
         if self.options.getbool('no_gcmc'):
             info("Skipping GCMC simulation")
@@ -454,23 +460,32 @@ class PyNiss(object):
         # Tidy up at the end
         os.chdir(self.options.get('job_dir'))
 
-    def run_qeq_gulp(self):
+    def run_qeq_gulp(self, fitting=False):
         """Run GULP to calculate charge equilibration charges."""
         job_name = self.options.get('job_name')
         qeq_code = 'gulp'
-        qeq_dir = os.path.join(self.options.get('job_dir'),
-                                  'faps_%s_%s' % (job_name, qeq_code))
+        if fitting:
+            qeq_dir = os.path.join(self.options.get('job_dir'),
+                                   'faps_%s_%s_fit' % (job_name, qeq_code))
+        else:
+            qeq_dir = os.path.join(self.options.get('job_dir'),
+                                   'faps_%s_%s' % (job_name, qeq_code))
         mkdirs(qeq_dir)
         os.chdir(qeq_dir)
         debug("Running in %s" % qeq_dir)
 
         filetemp = open('%s.gin' % job_name, 'wb')
-        filetemp.writelines(self.structure.to_gulp())
+        filetemp.writelines(self.structure.to_gulp(fitting))
         filetemp.close()
 
         if self.options.getbool('no_submit'):
             info("GULP input files generated; skipping job submission")
             self.state['charges'] = (SKIPPED, False)
+        elif fitting:
+            jobid = self.job_handler.submit(qeq_code, self.options,
+                                            input_file='%s.gin' % job_name)
+            info("Running GULP fitting job in queue. Jobid: %s" % jobid)
+            self.state['qeq_fit'] = (RUNNING, jobid)
         else:
             jobid = self.job_handler.submit(qeq_code, self.options,
                                             input_file='%s.gin' % job_name)
@@ -1137,17 +1152,39 @@ class Structure(object):
 
         return fdf
 
-    def to_gulp(self):
+    def to_gulp(self, qeq_fit=True):
         """Return a GULP file to use for the QEq charges."""
+        if qeq_fit:
+            from elements import QEQ_PARAMS
+            keywords = "fitting bulk_noopt qeq\n"
+        else:
+            keywords = "single conp qeq\n"
         gin_file = [
-            "single conp qeq\n\n",
-            "name %s\n\n" % self.name,
+            "# \n# Keywords:\n# \n",
+            keywords,
+            "# \n# Options:\n# \n",
+            "# Initial file written by faps\n"
+            "name %s\n" % self.name,
             "vectors\n"] + self.cell.to_vector_strings() + [
             "cartesian\n"]
-        for atom in self.atoms:
-            gin_file.extend(["%s core " % atom.type,
-                             "%f %f %f\n" % tuple(atom.pos)])
-        gin_file.append("\n\nprint 1\n\n")
+        if qeq_fit:
+            for atom in self.atoms:
+                gin_file.extend(["%-5s core " % atom.type,
+                                 "%14.7f %14.7f %14.7f " % tuple(atom.pos),
+                                 "%14.7f\n" % atom.charge])
+            gin_file.append("\n# \n# Fitting variables:\n# \nobservables\n")
+            for idx, atom in enumerate(self.atoms):
+                gin_file.append("monopoleq\n%5s%11.6f\n" % (idx+1, atom.charge))
+            gin_file.append("end\nqelectronegativity\n")
+            for at_type in unique(self.types):
+                gin_file.extend(
+                    ["%-5s" % at_type,
+                     "%9.5f %9.5f %9.5f 1 1 1\n" % QEQ_PARAMS[at_type]])
+        else:
+            for atom in self.atoms:
+                gin_file.extend(["%-5s core " % atom.type,
+                                 "%14.7f %14.7f %14.7f\n" % tuple(atom.pos)])
+        gin_file.append("\ndump every %s.grs\nprint 1\n" % self.name)
         return gin_file
 
     def to_fastmc(self, options):

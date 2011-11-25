@@ -23,6 +23,7 @@ import ConfigParser
 import glob
 import os
 import pickle
+import random
 import re
 import shlex
 import shutil
@@ -684,6 +685,55 @@ class PyNiss(object):
 
         return esp_grid
 
+    @property
+    def surface_area(self):
+        """Monte Carlo surface area."""
+#       Main sampling cycle
+        nsamples = 5000
+        stotal = 0.0
+        cell = self.structure.cell.cell
+        inv_cell = np.linalg.inv(cell)
+        atoms = [copy(x) for x in self.structure.atoms]
+        atoms = [(atom.ipos(cell).tolist(), atom.vdw_radius) for atom in atoms]
+
+        for atom, vdw_radius in atoms:
+            print atom
+            ncount = 0
+
+            phi = np.random.random(nsamples)*np.pi
+            costheta = np.random.random(nsamples)*2 - 1
+            theta = np.arccos(costheta)
+            # uniform sample and add the location of atom
+            points = np.array([np.sin(theta)*np.cos(phi),
+                               np.sin(theta)*np.sin(phi),
+                               np.cos(theta)]).transpose()*vdw_radius + atom
+
+            points = [np.dot(inv_cell, x) for x in points]
+            np.mod(points, 1)
+            points = [np.dot(cell, x) for x in points]
+
+            for point in points:
+
+# Now we check for overlap
+                for atom2, vdw_radius2 in atoms:
+                    if atom2 == atom:
+                        continue
+                    if vecdist(point, atom2) < vdw_radius2:
+                        break
+                else:
+                    # Loop over all atoms finished; none are too close
+                    ncount += 1
+
+# Fraction of the accessible surface area for sphere i
+            sfrac = float(ncount)/nsamples
+            print sfrac
+
+# Surface area for sphere i in real units (A^2)
+            sjreal = pi*(vdw_radius**2)*sfrac
+            stotal = stotal + sjreal
+
+        s_total_reduced = stotal/self.structure.volume*1.E4
+        return s_total_reduced
 
 class Structure(object):
     """
@@ -1616,6 +1666,11 @@ class Atom(object):
 
     atomic_number = property(get_atomic_number, set_atomic_number)
 
+    @property
+    def vdw_radius(self):
+        """Get the vdw radius from the UFF parameters."""
+        return UFF[self.type][0]/2.0
+
 
 class Guest(object):
     """Guest molecule and properties."""
@@ -2010,6 +2065,17 @@ def frac_near(pos_a, pos_b, epsilon=0.0002):
         return False
     else:
         return True
+
+
+def vecdist(coord1, coord2):
+    """Calculate vector between two 3d points."""
+    #return [i - j for i, j in zip(coord1, coord2)]
+    # Twice as fast for fixed 3d vectors
+    vec = [coord2[0] - coord1[0],
+           coord2[1] - coord1[1],
+           coord2[2] - coord1[2]]
+
+    return (vec[0]*vec[0] + vec[1]*vec[1] + vec[2]*vec[2])**0.5
 
 
 def remove_files(files, directory='.'):

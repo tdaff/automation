@@ -687,26 +687,28 @@ class PyNiss(object):
         return esp_grid
 
     @property
-    def surface_area(self, dprobe=0.0):
-        """Monte Carlo surface area."""
+    def surface_area(self, rprobe=None):
+        """Accessible surface area by uniform or Monte Carlo sampling."""
         self.structure.gen_neighbour_list()
         xyz = []
-        nsamples = 1000
-        sample_area = 0.1
+        resolution = self.options.getfloat('surface_area_resolution')
+        if rprobe is None:
+            rprobe = self.options.getfloat('surface_area_probe')
         stotal = 0.0
-        offset = 0
         cell = self.structure.cell.cell
         inv_cell = np.linalg.inv(cell.T)
-#        atoms = [copy(x) for x in self.structure.atoms]
+        # Pre-calculate and organise the in-cell atoms
         atoms = [(atom.ipos(cell).tolist(),
                   atom.ifpos(cell),
-                  atom.vdw_radius+dprobe,
+                  atom.vdw_radius+rprobe,
                   atom.neighbours) for atom in self.structure.atoms]
 
-        # sigma is the vdw_radius plus distance to center of probe
+        # sigma is the vdw_radius plus distance to center of probe, which
         # gives accessible surface area;
         for a1_pos, a1_fpos, a1_sigma, neighbours in atoms:
-            print a1_pos
+            surface_area = 4*pi*(a1_sigma**2)
+            nsamples = int(surface_area/resolution)
+            debug("generating %i samples" % nsamples)
             ncount = 0
 
 #            phi = 2*np.random.random(nsamples)*np.pi
@@ -720,44 +722,48 @@ class PyNiss(object):
             # uniform spiral sample of surface
             z_vals = np.linspace(1, -1, nsamples, endpoint=True)
             r_vals = np.sqrt(1-z_vals**2)
-            t_vals = np.linspace(offset, offset+np.pi*(3-np.sqrt(5))*nsamples, nsamples, endpoint=False)
+            t_vals = np.linspace(0, pi*(3-(5**0.5))*nsamples, nsamples, endpoint=False)
             points = np.array([r_vals*np.cos(t_vals),
                                r_vals*np.sin(t_vals),
                                z_vals]).transpose()*a1_sigma + a1_pos
 
+            # All points are brought into the cell
             points = [dot(inv_cell, x) for x in points]
             fpoints = np.mod(points, 1.0)
             points = [list(dot(x, cell)) for x in fpoints]
 
             for point, fpoint in zip(points, fpoints):
-# Now we check for overlap
+            # Check for overlap
                 for a2_dist, a2_idx in neighbours:
                     a2_pos = atoms[a2_idx][0]
                     a2_fpos = atoms[a2_idx][1]
                     a2_sigma = atoms[a2_idx][2]
                     if a2_dist > a1_sigma + a2_sigma:
+                        # No more atoms within the radius, point valid
                         ncount += 1
                         xyz.append(point)
                         break
                     elif vecdist3(point, a2_pos) < a2_sigma:
+                        # Point collision
                         break
                     elif min_dist(point, fpoint, a2_pos, a2_fpos, cell) < a2_sigma:
+                        # Periodic collision
                         break
                 else:
-                    # Loop over all atoms finished; none are too close
+                    # Loop over all atoms finished; point valid
                     ncount += 1
                     xyz.append(point)
 
-# Fraction of the accessible surface area for sphere i
-            sfrac = float(ncount)/nsamples
+            # Fraction of the accessible surface area for sphere to real area
+            sfrac = (surface_area*ncount)/nsamples
             print sfrac
 
-# Surface area for sphere i in real units (A^2)
+            # Surface area for sphere i in real units (A^2)
             sjreal = pi*(a1_sigma**2)*sfrac
-            stotal = stotal + sjreal
+            stotal += sfrac
 
-        xyz_out = open('vdw.xyz', 'w')
-        xyz_out.write('%i\n\n' % len(xyz))
+        xyz_out = open('VdWsurface-%f.xyz' % rprobe, 'w')
+        xyz_out.write('%i\nRes: %f\n' % (len(xyz), resolution))
         for ppt in xyz:
             xyz_out.write('Xx %f %f %f\n' % tuple(ppt))
         s_total_reduced = stotal/self.structure.volume*1.E4

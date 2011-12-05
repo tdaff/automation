@@ -687,60 +687,79 @@ class PyNiss(object):
         return esp_grid
 
     @property
-    def surface_area(self):
+    def surface_area(self, dprobe=0.0):
         """Monte Carlo surface area."""
-#       Main sampling cycle
-        nsamples = 5000
+        self.structure.gen_neighbour_list()
+        xyz = []
+        nsamples = 1000
+        sample_area = 0.1
         stotal = 0.0
+        offset = 0
         cell = self.structure.cell.cell
-        inv_cell = np.linalg.inv(cell)
-        atoms = [copy(x) for x in self.structure.atoms]
-        atoms = [(atom.ipos(cell).tolist(), atom.vdw_radius) for atom in atoms]
+        inv_cell = np.linalg.inv(cell.T)
+#        atoms = [copy(x) for x in self.structure.atoms]
+        atoms = [(atom.ipos(cell).tolist(),
+                  atom.ifpos(cell),
+                  atom.vdw_radius+dprobe,
+                  atom.neighbours) for atom in self.structure.atoms]
 
-        for atom, vdw_radius in atoms:
-            print atom
+        # sigma is the vdw_radius plus distance to center of probe
+        # gives accessible surface area;
+        for a1_pos, a1_fpos, a1_sigma, neighbours in atoms:
+            print a1_pos
             ncount = 0
 
-            phi = 2*np.random.random(nsamples)*np.pi
-            costheta = np.random.random(nsamples)*2 - 1
-            theta = np.arccos(costheta)
+#            phi = 2*np.random.random(nsamples)*np.pi
+#            costheta = np.random.random(nsamples)*2 - 1
+#            theta = np.arccos(costheta)
             # uniform random sample and add the location of atom
-            points = np.array([np.sin(theta)*np.cos(phi),
-                               np.sin(theta)*np.sin(phi),
-                               np.cos(theta)]).transpose()*vdw_radius + atom
+#            points = np.array([np.sin(theta)*np.cos(phi),
+#                               np.sin(theta)*np.sin(phi),
+#                               np.cos(theta)]).transpose()*sigma + atom
 
             # uniform spiral sample of surface
             z_vals = np.linspace(1, -1, nsamples, endpoint=True)
             r_vals = np.sqrt(1-z_vals**2)
             t_vals = np.linspace(offset, offset+np.pi*(3-np.sqrt(5))*nsamples, nsamples, endpoint=False)
             points = np.array([r_vals*np.cos(t_vals),
-                        r_vals*np.sin(t_vals),
-                        z_vals]).transpose()*vdw_radius
+                               r_vals*np.sin(t_vals),
+                               z_vals]).transpose()*a1_sigma + a1_pos
 
-            points = [np.dot(inv_cell, x) for x in points]
-            np.mod(points, 1)
-            points = [np.dot(cell, x) for x in points]
+            points = [dot(inv_cell, x) for x in points]
+            fpoints = np.mod(points, 1.0)
+            points = [list(dot(x, cell)) for x in fpoints]
 
-            for point in points:
-
+            for point, fpoint in zip(points, fpoints):
 # Now we check for overlap
-                for atom2, vdw_radius2 in atoms:
-                    if atom2 == atom:
-                        continue
-                    if vecdist3(point, atom2) < vdw_radius2:
+                for a2_dist, a2_idx in neighbours:
+                    a2_pos = atoms[a2_idx][0]
+                    a2_fpos = atoms[a2_idx][1]
+                    a2_sigma = atoms[a2_idx][2]
+                    if a2_dist > a1_sigma + a2_sigma:
+                        ncount += 1
+                        xyz.append(point)
+                        break
+                    elif vecdist3(point, a2_pos) < a2_sigma:
+                        break
+                    elif min_dist(point, fpoint, a2_pos, a2_fpos, cell) < a2_sigma:
                         break
                 else:
                     # Loop over all atoms finished; none are too close
                     ncount += 1
+                    xyz.append(point)
 
 # Fraction of the accessible surface area for sphere i
             sfrac = float(ncount)/nsamples
             print sfrac
 
 # Surface area for sphere i in real units (A^2)
-            sjreal = pi*(vdw_radius**2)*sfrac
+            sjreal = pi*(a1_sigma**2)*sfrac
             stotal = stotal + sjreal
 
+        xyz_out = open('vdw.xyz', 'w')
+        xyz_out.write('%i\n\n' % len(xyz))
+        for ppt in xyz:
+            xyz_out.write('Xx %f %f %f\n' % tuple(ppt))
         s_total_reduced = stotal/self.structure.volume*1.E4
         return s_total_reduced
 
@@ -1399,9 +1418,6 @@ class Structure(object):
 
         for atom, a_cpos, a_fpos in zip(self.atoms, cpositions, fpositions):
             neighbours = []
-#            for other_idx, other_pos in enumerate(positions):
-#                sep = min(vecdist3(x, atom_pos) for x in images(other_pos, cell, rcell))
-#                neighbours.append((sep, other_idx))
             for o_idx, o_cpos, o_fpos in zip(count(), cpositions, fpositions):
                 sep = min_dist(a_cpos, a_fpos, o_cpos, o_fpos, cell)
                 neighbours.append((sep, o_idx))

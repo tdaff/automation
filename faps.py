@@ -31,6 +31,7 @@ import subprocess
 import sys
 import textwrap
 from copy import copy
+from itertools import count
 from math import ceil
 from logging import warning, debug, error, info, critical
 
@@ -700,13 +701,21 @@ class PyNiss(object):
             print atom
             ncount = 0
 
-            phi = np.random.random(nsamples)*np.pi
+            phi = 2*np.random.random(nsamples)*np.pi
             costheta = np.random.random(nsamples)*2 - 1
             theta = np.arccos(costheta)
-            # uniform sample and add the location of atom
+            # uniform random sample and add the location of atom
             points = np.array([np.sin(theta)*np.cos(phi),
                                np.sin(theta)*np.sin(phi),
                                np.cos(theta)]).transpose()*vdw_radius + atom
+
+            # uniform spiral sample of surface
+            z_vals = np.linspace(1, -1, nsamples, endpoint=True)
+            r_vals = np.sqrt(1-z_vals**2)
+            t_vals = np.linspace(offset, offset+np.pi*(3-np.sqrt(5))*nsamples, nsamples, endpoint=False)
+            points = np.array([r_vals*np.cos(t_vals),
+                        r_vals*np.sin(t_vals),
+                        z_vals]).transpose()*vdw_radius
 
             points = [np.dot(inv_cell, x) for x in points]
             np.mod(points, 1)
@@ -718,7 +727,7 @@ class PyNiss(object):
                 for atom2, vdw_radius2 in atoms:
                     if atom2 == atom:
                         continue
-                    if vecdist(point, atom2) < vdw_radius2:
+                    if vecdist3(point, atom2) < vdw_radius2:
                         break
                 else:
                     # Loop over all atoms finished; none are too close
@@ -1381,6 +1390,25 @@ class Structure(object):
         """Sort the atoms alphabetically and group them."""
         self.atoms.sort(key=lambda x: (x.type, x.site))
 
+    def gen_neighbour_list(self):
+        """All atom pair distances."""
+        cell = self.cell.cell
+        cpositions = [list(atom.pos) for atom in self.atoms]
+        fpositions = [atom.ifpos(cell) for atom in self.atoms]
+        cell = cell.tolist()
+
+        for atom, a_cpos, a_fpos in zip(self.atoms, cpositions, fpositions):
+            neighbours = []
+#            for other_idx, other_pos in enumerate(positions):
+#                sep = min(vecdist3(x, atom_pos) for x in images(other_pos, cell, rcell))
+#                neighbours.append((sep, other_idx))
+            for o_idx, o_cpos, o_fpos in zip(count(), cpositions, fpositions):
+                sep = min_dist(a_cpos, a_fpos, o_cpos, o_fpos, cell)
+                neighbours.append((sep, o_idx))
+            # First one is self == 0
+            # save in incresaing distance order
+            atom.neighbours = sorted(neighbours)[1:]
+
     @property
     def types(self):
         """Ordered list of atom types."""
@@ -1596,7 +1624,7 @@ class Atom(object):
 
     def ipos(self, cell):
         """In cell cartesian position."""
-        return np.dot(self.ifpos(cell), cell)
+        return dot(self.ifpos(cell), cell)
 
     def from_cif(self, at_dict, cell, symmetry=None, idx=None):
         """Extract an atom description from dictionary of cif items."""
@@ -1611,8 +1639,8 @@ class Atom(object):
             frac_pos = symmetry.trans_frac(frac_pos)
         self.pos = dot(frac_pos, cell)
         if re.match('[0-9]', self.site) and idx is not None:
-             debug("Site label may not be unique; appending index")
-             self.site = "%s%i" % (self.site, idx)
+            debug("Site label may not be unique; appending index")
+            self.site = "%s%i" % (self.site, idx)
 
     def from_pdb(self, line):
         """Parse the ATOM line from a pdb file."""
@@ -2067,7 +2095,40 @@ def frac_near(pos_a, pos_b, epsilon=0.0002):
         return True
 
 
-def vecdist(coord1, coord2):
+def dot3(vec1, vec2):
+    """Calculate dot product for two 3d vectors."""
+    return vec1[0]*vec2[0] + vec1[1]*vec2[1] + vec1[2]*vec2[2]
+
+
+def min_dist(c_coa, f_coa, c_cob, f_cob_in, box):
+    """Calculate the closest distance assuming fractional, in-cell coords."""
+    f_cob = f_cob_in[:]
+    fdx = f_coa[0] - f_cob[0]
+    if fdx < -0.5:
+        f_cob[0] -= 1
+    elif fdx > 0.5:
+        f_cob[0] += 1
+    fdy = f_coa[1] - f_cob[1]
+    if fdy < -0.5:
+        f_cob[1] -= 1
+    elif fdy > 0.5:
+        f_cob[1] += 1
+    fdz = f_coa[2] - f_cob[2]
+    if fdz < -0.5:
+        f_cob[2] -= 1
+    elif fdz > 0.5:
+        f_cob[2] += 1
+    if f_cob == f_cob_in:
+        # if nothing has changed, use initial values
+        return vecdist3(c_coa, c_cob)
+    else:
+        new_b = [f_cob[0]*box[0][0] + f_cob[1]*box[1][0] + f_cob[2]*box[2][0],
+                 f_cob[0]*box[0][1] + f_cob[1]*box[1][1] + f_cob[2]*box[2][1],
+                 f_cob[0]*box[0][2] + f_cob[1]*box[1][2] + f_cob[2]*box[2][2]]
+        return vecdist3(c_coa, new_b)
+
+
+def vecdist3(coord1, coord2):
     """Calculate vector between two 3d points."""
     #return [i - j for i, j in zip(coord1, coord2)]
     # Twice as fast for fixed 3d vectors

@@ -660,7 +660,12 @@ class PyNiss(object):
             debug('Postrun script not submitted')
 
     def calculate_properties(self):
-        pass
+        """Calculate general structural properties."""
+        self.structure.gen_neighbour_list()
+        surf_probes = self.options.gettuple('surface_area_probe', dtype=float)
+        for probe in surf_probes:
+            surface_area(probe)
+
 
     @property
     def esp_grid(self):
@@ -689,13 +694,13 @@ class PyNiss(object):
 
         return esp_grid
 
-    def surface_area(self, rprobe=None):
+    def surface_area(self, rprobe=0.0):
         """Accessible surface area by uniform or Monte Carlo sampling."""
         self.structure.gen_neighbour_list()
         xyz = []
         resolution = self.options.getfloat('surface_area_resolution')
-        if rprobe is None:
-            rprobe = self.options.getfloat('surface_area_probe')
+        uniform = self.options.getbool('surface_area_uniform_sample')
+        # default to VdW surface
         stotal = 0.0
         cell = self.structure.cell.cell
         inv_cell = np.linalg.inv(cell.T)
@@ -713,21 +718,23 @@ class PyNiss(object):
             debug("generating %i samples" % nsamples)
             ncount = 0
 
-#            phi = 2*np.random.random(nsamples)*np.pi
-#            costheta = np.random.random(nsamples)*2 - 1
-#            theta = np.arccos(costheta)
-            # uniform random sample and add the location of atom
-#            points = np.array([np.sin(theta)*np.cos(phi),
-#                               np.sin(theta)*np.sin(phi),
-#                               np.cos(theta)]).transpose()*sigma + atom
-
-            # uniform spiral sample of surface
-            z_vals = np.linspace(1, -1, nsamples, endpoint=True)
-            r_vals = np.sqrt(1-z_vals**2)
-            t_vals = np.linspace(0, pi*(3-(5**0.5))*nsamples, nsamples, endpoint=False)
-            points = np.array([r_vals*np.cos(t_vals),
-                               r_vals*np.sin(t_vals),
-                               z_vals]).transpose()*a1_sigma + a1_pos
+            if uniform:
+                # uniform spiral sample of surface
+                z_vals = np.linspace(1, -1, nsamples, endpoint=True)
+                r_vals = sqrt(1-z_vals**2)
+                t_vals = np.linspace(0, pi*(3-(5**0.5))*nsamples,
+                                     nsamples, endpoint=False)
+                points = array([r_vals*cos(t_vals),
+                                r_vals*sin(t_vals),
+                                z_vals]).transpose()*a1_sigma + a1_pos
+            else:
+                # random MC sampling
+                phi = 2*np.random.random(nsamples)*pi
+                costheta = np.random.random(nsamples)*2 - 1
+                theta = arccos(costheta)
+                points = array([sin(theta)*cos(phi),
+                                sin(theta)*sin(phi),
+                                cos(theta)]).transpose()*a1_sigma + a1_pos
 
             # All points are brought into the cell
             points = [dot(inv_cell, x) for x in points]
@@ -764,12 +771,13 @@ class PyNiss(object):
             sjreal = pi*(a1_sigma**2)*sfrac
             stotal += sfrac
 
-        xyz_out = open('VdWsurface-%f.xyz' % rprobe, 'w')
-        xyz_out.write('%i\nRes: %f\n' % (len(xyz), resolution))
+        job_name = self.options.get('job_name')
+        xyz_out = open('%s-surf-%.2f.xyz' % (job_name, rprobe), 'w')
+        xyz_out.write('%i\nResolution: %f Area: %f\n' % (len(xyz), resolution, stotal))
         for ppt in xyz:
             xyz_out.write('Xx %f %f %f\n' % tuple(ppt))
-        s_total_reduced = stotal/self.structure.volume*1.E4
-        return s_total_reduced
+#        s_total_reduced = stotal/self.structure.volume*1.E4
+        return stotal
 
 class Structure(object):
     """

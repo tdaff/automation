@@ -659,6 +659,9 @@ class PyNiss(object):
         else:
             debug('Postrun script not submitted')
 
+    def calculate_properties(self):
+        pass
+
     @property
     def esp_grid(self):
         """Estimate the esp grid based on resolution and memory."""
@@ -686,7 +689,6 @@ class PyNiss(object):
 
         return esp_grid
 
-    @property
     def surface_area(self, rprobe=None):
         """Accessible surface area by uniform or Monte Carlo sampling."""
         self.structure.gen_neighbour_list()
@@ -1415,13 +1417,25 @@ class Structure(object):
         """Sort the atoms alphabetically and group them."""
         self.atoms.sort(key=lambda x: (x.type, x.site))
 
-    def gen_neighbour_list(self):
+    def gen_neighbour_list(self, force=False):
         """All atom pair distances."""
+        # This can be expensive so skip if already calcualted
+        if not force:
+            try:
+                np.all(atom.neighbours for atom in self.atoms)
+                debug("Neighbour list already calculated")
+                return
+            except AttributeError:
+                pass
+
+        debug("Calculating neighbour list.")
+
         cell = self.cell.cell
         cpositions = [list(atom.pos) for atom in self.atoms]
         fpositions = [atom.ifpos(cell) for atom in self.atoms]
         cell = cell.tolist()
 
+        # loop over all pairs to find minimum periodic distances
         for atom, a_cpos, a_fpos in zip(self.atoms, cpositions, fpositions):
             neighbours = []
             for o_idx, o_cpos, o_fpos in zip(count(), cpositions, fpositions):

@@ -49,6 +49,7 @@ from logo import LOGO
 DEG2RAD = pi / 180.0
 BOHR2ANG = 0.52917720859
 EV2KCAL = 23.060542301389
+NAVOGADRO = 6.02214129E23
 
 # ID values for system state
 NOT_RUN = 0
@@ -80,6 +81,7 @@ class PyNiss(object):
                       'dft': (NOT_RUN, False),
                       'esp': (NOT_RUN, False),
                       'charges': (NOT_RUN, False),
+                      'properties': (NOT_RUN, False),
                       'gcmc': {}}
         self.job_handler = JobHandler(options)
 
@@ -137,6 +139,8 @@ class PyNiss(object):
                 self.options)
             self.state['init'] = (UPDATED, False)
             self.dump_state()
+
+        self.calculate_properties()
 
         if self.state['dft'][0] not in [UPDATED, SKIPPED]:
             if self.options.getbool('no_dft'):
@@ -248,13 +252,16 @@ class PyNiss(object):
     def post_summary(self):
         """Summarise any GCMC results."""
         info("Summary of GCMC results")
+        info("======= ======= ======= ======= =======")
         nguests = len(self.structure.guests)
         for idx, guest in enumerate(self.structure.guests):
             csv = ["#T/K,p/bar,mol/uc,mmol/g,stdev,",
                    "v/v,stdev,hoa/kcal/mol,stdev,",
                    ",".join("p(g%i)" % gidx for gidx in range(nguests)), "\n"]
             info(guest.name)
+            info("---------------------------------------")
             info(" mol/uc  mmol/g  vstp/v     hoa     T_P")
+            info("======= ======= ======= ======= =======")
             for tp_point in sorted(guest.uptake):
                 # <N>, sd, supercell
                 uptake = guest.uptake[tp_point]
@@ -281,6 +288,8 @@ class PyNiss(object):
                             (self.options.get('job_name'), guest.ident), 'wb')
             csv_file.writelines(csv)
             csv_file.close()
+        info("======= ======= ======= ======= =======")
+
 
     def import_old(self):
         """Try and import any data from previous stopped simulation."""
@@ -662,10 +671,24 @@ class PyNiss(object):
     def calculate_properties(self):
         """Calculate general structural properties."""
         self.structure.gen_neighbour_list()
+
+        ##
+        # Surface area calculations
+        ##
         surf_probes = self.options.gettuple('surface_area_probe', dtype=float)
         for probe in surf_probes:
-            surface_area(probe)
+            if self.structure.surface_area(probe) is None:
+                self.structure.surface_area(probe, value=self.calc_surface_area(probe))
 
+        info("Summary of surface areas")
+        info("========= ========= ========= =========")
+        info(" radius/A total/A^2  m^2/cm^3     m^2/g")
+        info("========= ========= ========= =========")
+        for probe, area in self.structure.surface_area().iteritems():
+            vol_area = 1E4*area/self.structure.volume
+            specific_area = NAVOGADRO*area/(1E20*self.structure.weight)
+            info("%9.3f %9.2f %9.2f %9.2f" % (probe, area, vol_area, specific_area))
+        info("========= ========= ========= =========")
 
     @property
     def esp_grid(self):
@@ -694,14 +717,15 @@ class PyNiss(object):
 
         return esp_grid
 
-    def surface_area(self, rprobe=0.0):
+    def calc_surface_area(self, rprobe=0.0):
         """Accessible surface area by uniform or Monte Carlo sampling."""
         self.structure.gen_neighbour_list()
         xyz = []
         resolution = self.options.getfloat('surface_area_resolution')
         uniform = self.options.getbool('surface_area_uniform_sample')
-        # default to VdW surface
-        stotal = 0.0
+        info("Calculating surface area: %.3f probe, %s points, %.3f res" %
+             (rprobe, ("random","uniform")[uniform], resolution))
+        total_area = 0.0
         cell = self.structure.cell.cell
         inv_cell = np.linalg.inv(cell.T)
         # Pre-calculate and organise the in-cell atoms
@@ -712,10 +736,13 @@ class PyNiss(object):
 
         # sigma is the vdw_radius plus distance to center of probe, which
         # gives accessible surface area;
+        all_samples = []
         for a1_pos, a1_fpos, a1_sigma, neighbours in atoms:
             surface_area = 4*pi*(a1_sigma**2)
             nsamples = int(surface_area/resolution)
-            debug("generating %i samples" % nsamples)
+            if not nsamples in all_samples:
+                debug("Atom type with %i samples" % nsamples)
+                all_samples.append(nsamples)
             ncount = 0
 
             if uniform:
@@ -764,20 +791,15 @@ class PyNiss(object):
                     xyz.append(point)
 
             # Fraction of the accessible surface area for sphere to real area
-            sfrac = (surface_area*ncount)/nsamples
-            print sfrac
-
-            # Surface area for sphere i in real units (A^2)
-            sjreal = pi*(a1_sigma**2)*sfrac
-            stotal += sfrac
-
-        job_name = self.options.get('job_name')
-        xyz_out = open('%s-surf-%.2f.xyz' % (job_name, rprobe), 'w')
-        xyz_out.write('%i\nResolution: %f Area: %f\n' % (len(xyz), resolution, stotal))
-        for ppt in xyz:
-            xyz_out.write('Xx %f %f %f\n' % tuple(ppt))
-#        s_total_reduced = stotal/self.structure.volume*1.E4
-        return stotal
+            total_area += (surface_area*ncount)/nsamples
+        if self.options.getbool('surface_area_save'):
+            job_name = self.options.get('job_name')
+            xyz_out = open('%s-surf-%.2f.xyz' % (job_name, rprobe), 'w')
+            xyz_out.write('%i\nResolution: %f Area: %f\n' %
+                          (len(xyz), resolution, total_area))
+            for ppt in xyz:
+                xyz_out.write('Xx %f %f %f\n' % tuple(ppt))
+        return total_area
 
 class Structure(object):
     """
@@ -1429,17 +1451,18 @@ class Structure(object):
         """All atom pair distances."""
         # This can be expensive so skip if already calcualted
         if not force:
-            try:
-                np.all(atom.neighbours for atom in self.atoms)
+            for atom in self.atoms:
+                if not hasattr(atom, 'neighbours'):
+                    break
+            else:
+                # finished loop over all atoms
                 debug("Neighbour list already calculated")
                 return
-            except AttributeError:
-                pass
 
         debug("Calculating neighbour list.")
 
         cell = self.cell.cell
-        cpositions = [list(atom.pos) for atom in self.atoms]
+        cpositions = [atom.ipos(cell) for atom in self.atoms]
         fpositions = [atom.ifpos(cell) for atom in self.atoms]
         cell = cell.tolist()
 
@@ -1452,6 +1475,36 @@ class Structure(object):
             # First one is self == 0
             # save in incresaing distance order
             atom.neighbours = sorted(neighbours)[1:]
+
+        ## Neighbourlist printed in VASP style
+        #for idx, atom in enumerate(self.atoms):
+        #    print("%4i" % (idx+1) +
+        #          "%7.3f%7.3f%7.3f" % tuple(atom.ifpos(self.cell.cell)) +
+        #          "-" +
+        #          "".join("%4i%5.2f" % (y+1, x) for x, y in atom.neighbours if x<2.5))
+
+    def surface_area(self, probe=None, value=None, delete=False):
+        """
+        Helper:
+          Return all {probe:area} if no arguments given
+          Return the area or None for a given probe
+          Set area if value given
+          Delete value if delete is True
+        Areas in A^2
+        """
+        surface_areas = self.properties.get('surface_area', {})
+        if value is not None:
+            surface_areas[probe] = value
+            self.properties['surface_area'] = surface_areas
+        elif delete:
+            # Set it to None to avoid KeyErrors
+            surface_areas[probe] = None
+            del surface_areas[probe]
+            self.properties['surface_area'] = surface_areas
+        elif probe is not None:
+            return surface_areas.get(probe, None)
+        else:
+            return surface_areas
 
     @property
     def types(self):
@@ -1660,7 +1713,7 @@ class Atom(object):
 
     def fpos(self, cell):
         """Fractional position within a given cell."""
-        return np.linalg.solve(cell.T, self.pos)
+        return np.linalg.solve(cell.T, self.pos).tolist()
 
     def ifpos(self, cell):
         """In cell fractional position."""

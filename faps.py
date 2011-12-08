@@ -121,9 +121,24 @@ class PyNiss(object):
             self.status(initial=True)
 
         if self.options.getbool('interactive'):
-            console = code.InteractiveConsole(locals())
-            console.interact(
-                banner="""See manual for instructions on interactive use.""")
+            code_locals = locals()
+            code_locals.update(globals())
+            console = code.InteractiveConsole(code_locals)
+            console.push('import rlcompleter, readline')
+            console.push('readline.parse_and_bind("tab: complete")')
+            banner = ("((-----------------------------------------------))\n"
+                      "((             Interactive faps mode             ))\n"
+                      "((             =====================             ))\n"
+                      "((                                               ))\n"
+                      "(( WARNING: mode is designed for devs and        ))\n"
+                      "(( experts only!                                 ))\n"
+                      "(( Current simulation is accessed as 'self' and  ))\n"
+                      "(( associated methods. Type 'dir()' to see the   ))\n"
+                      "(( methods in the local namespace and 'help(x)'  ))\n"
+                      "(( for help on any object.                       ))\n"
+                      "(( Use 'self.dump_state()' to save any changes.  ))\n"
+                      "((-----------------------------------------------))")
+            console.interact(banner=banner)
 
         if self.options.getbool('import'):
             info("Importing results from a previous simulation")
@@ -251,6 +266,7 @@ class PyNiss(object):
 
     def post_summary(self):
         """Summarise any GCMC results."""
+        job_name = self.options.get('job_name')
         info("Summary of GCMC results")
         info("======= ======= ======= ======= =======")
         nguests = len(self.structure.guests)
@@ -284,8 +300,7 @@ class PyNiss(object):
                     vuptake, vuptake_stdev,
                     hoa[0], hoa[1]) +
                     ",".join("%f" % x for x in tp_point[1]) + "\n")
-            csv_file = file('%s-%s.csv' %
-                            (self.options.get('job_name'), guest.ident), 'wb')
+            csv_file = file('%s-%s.csv' % (job_name, guest.ident), 'wb')
             csv_file.writelines(csv)
             csv_file.close()
         info("======= ======= ======= ======= =======")
@@ -309,7 +324,8 @@ class PyNiss(object):
         except IOError:
             info("No optimized structure found to import")
         try:
-            self.structure.update_charges(self.options.get('charge_method'))
+            self.structure.update_charges(self.options.get('charge_method'),
+                                          self.options)
             self.state['charges'] = (UPDATED, False)
         except IOError:
             info("No charges found to import")

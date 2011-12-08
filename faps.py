@@ -155,8 +155,6 @@ class PyNiss(object):
             self.state['init'] = (UPDATED, False)
             self.dump_state()
 
-        self.calculate_properties()
-
         if self.state['dft'][0] not in [UPDATED, SKIPPED]:
             if self.options.getbool('no_dft'):
                 info("Skipping DFT step completely")
@@ -231,8 +229,14 @@ class PyNiss(object):
                         unfinished_gcmc = True
             if not unfinished_gcmc:
                 info("GCMC run has finished")
-                self.post_summary()
-                terminate(0)
+                #terminate(0)
+
+        if not self.options.getbool('no_properties'):
+            self.calculate_properties()
+            self.dump_state()
+
+        self.post_summary()
+
 
     def status(self, initial=False):
         """Print the current status to the terminal."""
@@ -265,7 +269,7 @@ class PyNiss(object):
                 info(" * State of %s: %s" % (step, valid_states[state[0]]))
 
     def post_summary(self):
-        """Summarise any GCMC results."""
+        """Summarise any results for GCMC, properties..."""
         job_name = self.options.get('job_name')
         info("Summary of GCMC results")
         info("======= ======= ======= ======= =======")
@@ -305,6 +309,18 @@ class PyNiss(object):
             csv_file.close()
         info("======= ======= ======= ======= =======")
 
+        surf_area_results = self.structure.surface_area()
+        if surf_area_results:
+            info("Summary of surface areas")
+            info("========= ========= ========= =========")
+            info(" radius/A total/A^2  m^2/cm^3     m^2/g")
+            info("========= ========= ========= =========")
+            for probe, area in surf_area_results.iteritems():
+                vol_area = 1E4*area/self.structure.volume
+                specific_area = NAVOGADRO*area/(1E20*self.structure.weight)
+                info("%9.3f %9.2f %9.2f %9.2f" %
+                     (probe, area, vol_area, specific_area))
+            info("========= ========= ========= =========")
 
     def import_old(self):
         """Try and import any data from previous stopped simulation."""
@@ -686,6 +702,13 @@ class PyNiss(object):
 
     def calculate_properties(self):
         """Calculate general structural properties."""
+
+        job_name = self.options.get('job_name')
+        job_dir = self.options.get('job_dir')
+        props_dir = os.path.join(job_dir, 'faps_%s_properties' % job_name)
+        mkdirs(props_dir)
+        os.chdir(props_dir)
+
         self.structure.gen_neighbour_list()
 
         ##
@@ -696,15 +719,12 @@ class PyNiss(object):
             if self.structure.surface_area(probe) is None:
                 self.structure.surface_area(probe, value=self.calc_surface_area(probe))
 
-        info("Summary of surface areas")
-        info("========= ========= ========= =========")
-        info(" radius/A total/A^2  m^2/cm^3     m^2/g")
-        info("========= ========= ========= =========")
-        for probe, area in self.structure.surface_area().iteritems():
-            vol_area = 1E4*area/self.structure.volume
-            specific_area = NAVOGADRO*area/(1E20*self.structure.weight)
-            info("%9.3f %9.2f %9.2f %9.2f" % (probe, area, vol_area, specific_area))
-        info("========= ========= ========= =========")
+        # Neighbour list makes .niss too big; remove them
+        for atom in self.structure.atoms:
+            atom.neighbours = None
+            del atom.neighbours
+
+        os.chdir(job_dir)
 
     @property
     def esp_grid(self):

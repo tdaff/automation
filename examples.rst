@@ -107,6 +107,32 @@ likely to be less accurate and the structure cannot be optimised.
    charge_method = gulp
 
 
+-----------------------
+Accessible surface maps
+-----------------------
+
+By default faps will not calculate the structure properties, such as the
+surface area. To skip straight to the surface area step set the following
+options:
+
+.. code-block:: ini
+
+   # structure.fap
+   # Skip all the calculations
+   no_dft = True
+   no_charges = True
+   no_gcmc = True
+   # Parameters for surface calcaultions
+   # probes for VdW surface, H2, CO2, and N2
+   surface_area_probe = 0.0, 1.42, 1.72, 1.82
+   # approximate area per point on the surface
+   surface_area_resolution = 0.03
+   # write out all the points on the surface (off by default)
+   surface_area_save = True
+   # Use a spiral point generation algorithm rather than random points (MC)
+   surface_area_uniform_sample = True
+
+
 
 .. |H2O| replace:: H\ :sub:`2`\ O
 

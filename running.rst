@@ -14,9 +14,10 @@ produced.
 Structure files
 ---------------
 
-Structures can be read from ``CIF``, ``PDB`` or ``VASP`` files. One file from
-this list is **required**. By default the code will use a ``$JOBNAME.pdb``,
-other file formats may be set in the config files or on the commandline.
+Structures can be read from ``CIF``, ``PDB``, ``VASP`` or ``xyz`` files. One
+file from this list is **required**. By default the code will look for
+``$JOBNAME.pdb``, other file formats may be set in the config files or on the
+commandline.
 
 .. object:: $JOBNAME.pdb
 
@@ -52,6 +53,15 @@ other file formats may be set in the config files or on the commandline.
    Structures that are compatible with VASP 5 can be read by faps. The code
    will read a standard POSCAR type file provided the line with atom types is
    given (i.e. files written by VASP 4 will not work)
+
+
+.. object:: $JOBNAME.xyz
+
+   Initial coordinates may be given to faps in plain xyz format. The file
+   should be structured as one line containing only the number of atoms, a
+   comment line (ignored), followed by ``atom_type x.x y.y z.z`` cartesian
+   coordinates for each atom. As faps requires periodicity the structure is
+   placed in the box defined by the ``default_cell`` option.
 
 
 ------------

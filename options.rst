@@ -45,9 +45,19 @@ each option is given here. For the most up-to-date list, see the
 .. program:: faps
 
 
+
 .. envvar:: charge_method = repeat
 
    Method for calculating charge. [str] {repeat, gulp}
+
+.. envvar:: default_cell = (10.0, 10.0, 10.0, 90, 90, 90)
+
+   Cell parameters to use only when they are not specified in the input
+   structure. Use either (a, b, c, alpha, beta, gamma) or
+   ax, ay, az,
+   bx, by, bz,
+   cx, cy, cz
+   notation. [float, list]
 
 .. envvar:: dft_code = vasp
 
@@ -58,7 +68,7 @@ each option is given here. For the most up-to-date list, see the
    Turn on empirical dispersion corrections in dft codes that
    support it. [bool]
 
-.. envvar:: esp_resolution = 0.1889725989
+.. envvar:: esp_resolution = 0.1
 
    Resolution, in Angstrom, of the esp grid. [float]
 
@@ -91,7 +101,7 @@ each option is given here. For the most up-to-date list, see the
 
 .. envvar:: initial_structure_format = pdb
 
-   Filetype for input structure file. [str] {pdb, cif}
+   Filetype for input structure file. [str] {pdb, cif, vasp, xyz}
 
 .. envvar:: interactive = False
 
@@ -131,7 +141,8 @@ each option is given here. For the most up-to-date list, see the
 .. envvar:: mc_pressure = 1.0
 
    GCMC pressure(s) (bar). For multiple pressure points and guests use
-   nested lists ((g1p1, g2p1, ...), (g1p2, g2p2, ...), ...) [float, list]
+   nested lists ((g1p1, g2p1, ...), (g1p2, g2p2, ...), ...), these are
+   all run at every temperature to generate isotherms [float, list]
 
 .. envvar:: mc_probability_plot = True
 
@@ -141,6 +152,12 @@ each option is given here. For the most up-to-date list, see the
 
    GCMC production steps. [int]
 
+.. envvar:: mc_state_points =
+
+   Individual state points to run gcmc simulations; not combined with
+   temperature/pressure isotherms. Specify points (bar/Kelvin) as:
+   (T1, (g1p1, g2p1, ...)), (T2, (g1p2, g2p2, ...), ... [float, list]
+
 .. envvar:: mc_supercell = (1, 1, 1)
 
    Supercell to use for GCMC. These values will only be used if the
@@ -149,7 +166,8 @@ each option is given here. For the most up-to-date list, see the
 
 .. envvar:: mc_temperature = 273
 
-   Temperature(s) to use in GCMC (Kelvin). [float, list]
+   Temperature(s) to use in GCMC (Kelvin) combined with pressures to
+   collect isotherms. [float, list]
 
 .. envvar:: no_charges = False
 
@@ -163,6 +181,10 @@ each option is given here. For the most up-to-date list, see the
 .. envvar:: no_gcmc = False
 
    Skip the gcmc step. [bool]
+
+.. envvar:: no_properties = False
+
+   Skip the property calculations. [bool]
 
 .. envvar:: no_submit = False
 
@@ -188,6 +210,10 @@ each option is given here. For the most up-to-date list, see the
 
    Location of siesta psf pseudopotentials. [str]
 
+.. envvar:: qeq_fit = False
+
+   Fit charge equilibration parameters to calculated charges. [bool]
+
 .. envvar:: queue = wooki
 
    Queuing system to use. [str] {wooki, sharcnet}
@@ -195,6 +221,14 @@ each option is given here. For the most up-to-date list, see the
 .. envvar:: quiet = False
 
    Silence stdout. This will be ignored here; set on commandline. [bool]
+
+.. envvar:: repeat_compress_files = \*.cube
+
+   files to keep and compress after a successful REPEAT job [str, list]
+
+.. envvar:: repeat_delete_files = ESP_real_coul.dat fort.30 fort.40
+
+   files to delete after a successful REPEAT job [str, list]
 
 .. envvar:: repeat_exe = repeat.x
 
@@ -217,6 +251,14 @@ each option is given here. For the most up-to-date list, see the
 
    General acucracy setting for siesta calcualtions. [str] {low, med, high}
 
+.. envvar:: siesta_compress_files =
+
+   Files to keep and compress after a successful SIESTA job [str, list]
+
+.. envvar:: siesta_delete_files = \*.ion \*.xml INPUT_TMP\* \*.DM
+
+   Files to delete after a successful SIESTA job [str, list]
+
 .. envvar:: siesta_exe = siesta
 
    Location of siesta executable. [str]
@@ -233,6 +275,28 @@ each option is given here. For the most up-to-date list, see the
 
    Turn on spin polarization in dft. [bool]
 
+.. envvar:: surface_area_probe =
+
+   Radius of probe for calculating surface areas. A probe of radius 0.0 will
+   generate the VdW surface typical values for probe molecules are 1.42 (H2),
+   1.72 (CO2) or 1.82 (N2) (Å). [float, list]
+
+.. envvar:: surface_area_resolution = 0.03
+
+   Approximate area per point when subdividing accessible surface areas (Å²).
+
+.. envvar:: surface_area_save = False
+
+   Save the valid points on the surface to a file. [bool]
+
+.. envvar:: surface_area_uniform_sample = False
+
+   Use points with a uniform spacing? (or do Monte Carlo sampling) [bool]
+
+.. envvar:: symmetry = False
+
+   Treat symmetrical atoms as equivalent for charges. [bool]
+
 .. envvar:: threaded_codes = repeat
 
    Codes that run with openmp threads, not mpi. [str, list]
@@ -245,6 +309,14 @@ each option is given here. For the most up-to-date list, see the
 
    Re-read options on restart. [bool]
 
+.. envvar:: vasp_compress_files = LOCPOT CHGCAR vasprun.xml XDATCAR
+
+   files to keep and compress after a successful VASP job [str, list]
+
+.. envvar:: vasp_delete_files = WAVECAR CHG DOSCAR EIGENVAL POTCAR
+
+   files to delete after a successful VASP job [str, list]
+
 .. envvar:: vasp_exe = vasp
 
    Name (location) of vasp executable. [str]
@@ -253,7 +325,7 @@ each option is given here. For the most up-to-date list, see the
 
    Number of cpus to run vasp on. [int]
 
-.. envvar:: vasp_to_cube = vasp2cube 2
+.. envvar:: vasp_to_cube = vasp_to_cube
 
    Command to convert LOCPOT to .cube for REPEAT [str]
 

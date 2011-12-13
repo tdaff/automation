@@ -1,30 +1,22 @@
-#!/usr/bin/env python
-
 """
-Use the translational symmtry of a supercell to average a cube file into a
-smaller subsection, eg the unit cell. The number of grid points must be
-exactly divisible by the folding factors, FX FY FZ.
+cube.py
+
+Read a cube file to an array for manipulation. Use the translational symmtry of
+a supercell to average a cube file into a smaller subsection, eg the unit cell.
+The number of grid points must be exactly divisible by the folding factors, FX
+FY FZ.
 
 Modified version for faps, provides Cube object.
 
 """
 
-# TD 2011-05
-# Bugs aplenty
-
-import re
-import numpy as np
-from numpy import array, zeros, matrix
-from optparse import OptionParser
 import bz2
 import gzip
+from glob import glob
 
+import numpy as np
+from numpy import array, zeros, matrix
 
-GO = "\033[1;32m>> \033[0m\033[1m"
-OK = "\033[1;32m * \033[0m"
-WARN = "\033[1;33m * \033[0m"
-ERR = "\033[1;31m * \033[0m\033[1m"
-RESET = "\033[0m"
 
 class Cube(object):
     """Container for a .cube file. Very specific for folding symmetry."""
@@ -51,6 +43,7 @@ class Cube(object):
             self.fold = fold
         elif self.fold is None:
             self.fold = (1, 1, 1)
+        fold = self.fold
         cube_temp = compressed_open(self.filename)
         top_bit = cube_temp.readlines(1024)
         cube_temp.seek(0)
@@ -95,19 +88,28 @@ class Cube(object):
         # read the rest of the file
         xidx, yidx, zidx = 0, 0, 0
 
-        for line in cube_temp:
-            for point in line.split():
-                point = float(point)
-                localdata[xidx % self.rgrid[0],
-                          yidx % self.rgrid[1],
-                          zidx % self.rgrid[2]] += point
-                zidx += 1
-                if zidx == self.grid[2]:
-                    zidx = 0
-                    yidx += 1
-                    if yidx == self.grid[1]:
-                        yidx = 0
-                        xidx += 1
+#        for line in cube_temp:
+#            for point in line.split():
+#                point = float(point)
+#                localdata[xidx % self.rgrid[0],
+#                          yidx % self.rgrid[1],
+#                          zidx % self.rgrid[2]] += point
+#                zidx += 1
+#                if zidx == self.grid[2]:
+#                    zidx = 0
+#                    yidx += 1
+#                    if yidx == self.grid[1]:
+#                        yidx = 0
+#                        xidx += 1
+
+        cube_data = np.fromfile(cube_temp, sep=' ').reshape(self.grid)
+        for xidx in range(fold[0]):
+            for yidx in range(fold[1]):
+                for zidx in range(fold[2]):
+                    localdata += cube_data[
+                        (xidx*self.grid[0])/fold[0]:((xidx+1)*self.grid[0])/fold[0],
+                        (yidx*self.grid[1])/fold[1]:((yidx+1)*self.grid[1])/fold[1],
+                        (zidx*self.grid[2])/fold[2]:((zidx+1)*self.grid[2])/fold[2]]
 
         cube_temp.close()
         self.datapoints = localdata/float(fold[0]*fold[1]*fold[2])
@@ -145,11 +147,9 @@ class Cube(object):
 
         temp_data = median_filter(temp_data, 4, mode='wrap')
         temp_data = gaussian_filter(temp_data, 4, mode="wrap")
-        temp_data = median_filter(temp_data, 4, mode='wrap')
-        temp_data = gaussian_filter(temp_data, 4, mode="wrap")
 
         # define a connectivity neighborhood
-        neighborhood = generate_binary_structure(np.ndim(temp_data), 3)
+        neighborhood = generate_binary_structure(np.ndim(temp_data), 2)
 
         #apply the local maximum filter; all pixel of maximal value
         #in their neighborhood are set to 1
@@ -176,13 +176,11 @@ class Cube(object):
              [float(x) for x in self.header_block[5].split()[1:]]])*0.529177249
 
         peaks = np.where(detected_peaks)
-        max_file = open("maxima.xyz", "wb")
-        max_file.write(" %i\nMaxima\n" % len(peaks[0]))
-        print(" %i\nMaxima" % len(peaks[0]))
+        cartesian_peaks = []
         for point in zip(peaks[0], peaks[1], peaks[2]):
-            print("Xx    %12.8f %12.8f %12.8f" % tuple(np.dot(point, cell)))
-            max_file.write("Xx    %12.8f %12.8f %12.8f\n" % tuple(np.dot(point, cell)))
+            cartesian_peaks.append(np.dot(point, cell).tolist())
 
+        return cartesian_peaks
 
 def in_cell(header_block, grid):
     """Cut any atoms that are not in the box from the header block"""

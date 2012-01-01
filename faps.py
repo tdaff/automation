@@ -1433,6 +1433,38 @@ class Structure(object):
                     warning("Number of accepted GCMC steps is very low; "
                             "only %i counted!" % counted_steps)
 
+    def fold_and_maxima(self, fold=True, maxima=True):
+        """Determine the positions of maxima and produce an xyz xyz file."""
+        from cube import Cube
+        if fold:
+            fold = self.gcmc_supercell
+        else:
+            fold = None
+        for guest_idx, guest in enumerate(self.guests):
+            guest_locations = {}
+            for site_idx, site in enumerate(guest.probability):
+                guest_cube = Cube("prob_guest_%2i_prob_%2i.cube" % (guest_idx, site_idx), fold=fold)
+                if fold is not None:
+                    Cube.write_cube()
+                if maxima:
+                    site_types = set(["COM" if x is 0 else guest.atoms[x-1] for x in site])
+                    if len(site_types) > 1:
+                        site_name = "".join(site_types)
+                    else:
+                        site_name = site_types[0]
+                    guest_locations[site_name] = Cube.maxima()
+            if maxima:
+                maxima_out = []
+                for atom_name in sorted(guest_locations):
+                    for atom in guest_locations[atom_name]:
+                        maxima_out.append("%6s" % atom_name
+                                          "%10.6f %10.6f %10.6f\n" % tuple(atom))
+                location_xyz = open("%s-%s.xyz" % (self.name, guest.ident))
+                location_xyz.write(" %i\nEstimated guest maxima\n")
+                location_xyz.writelines(maxima_out)
+                locetion_xyz.close()
+
+
     def remove_duplicates(self, epsilon=0.0002):
         """Find overlapping atoms and remove them."""
         uniq_atoms = []

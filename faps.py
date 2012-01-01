@@ -221,7 +221,7 @@ class PyNiss(object):
                     new_state = self.job_handler.jobcheck(tp_state[1])
                     if not new_state:
                         info("Queue reports GCMC %s finished" % (tp_point,))
-                        self.structure.update_gcmc(self.options.get('mc_code'), tp_point)
+                        self.structure.update_gcmc(self.options.get('mc_code'), tp_point, self.options.getbool('fold'), self.options.getbool('find_maxima'))
                         self.state['gcmc'][tp_point] = (UPDATED, False)
                         self.dump_state()
                     else:
@@ -362,7 +362,7 @@ class PyNiss(object):
         indivs = self.options.gettuple('mc_state_points', float)
         for tp_point in state_points(temps, presses, indivs, len(guests)):
             try:
-                self.structure.update_gcmc(self.options.get('mc_code'), tp_point)
+                self.structure.update_gcmc(self.options.get('mc_code'), tp_point, self.options.getbool('fold'), self.options.getbool('find_maxima'))
                 self.state['gcmc'][tp_point] = (UPDATED, False)
             except IOError:
                 info("GCMC point %s not found" % str(tp_point))
@@ -918,7 +918,7 @@ class Structure(object):
         else:
             error("Unknown charge method to import %s" % charge_method)
 
-    def update_gcmc(self, gcmc_code, tp_point):
+    def update_gcmc(self, gcmc_code, tp_point, fold, maxima):
         """Select the source for GCMC results and import."""
         gcmc_path = os.path.join('faps_%s_%s' % (self.name, gcmc_code))
         # Runs in subdirectories
@@ -927,7 +927,7 @@ class Structure(object):
         if gcmc_code == 'fastmc':
             info("Importing results from FastGCMC")
             self.fastmc_postproc(
-                os.path.join(gcmc_path, tp_path, 'OUTPUT'), tp_point)
+                os.path.join(gcmc_path, tp_path, 'OUTPUT'), tp_point, fold, maxima)
         else:
             error("Unknown gcmc method to import %s" % gcmc_code)
 
@@ -1409,7 +1409,7 @@ class Structure(object):
 
         return config, field
 
-    def fastmc_postproc(self, filename, tp_point):
+    def fastmc_postproc(self, filename, tp_point, fold=True, maxima=True):
         """Update structure properties from gcmc OUTPUT."""
         filetemp = open(filename)
         output = filetemp.readlines()
@@ -1432,8 +1432,11 @@ class Structure(object):
                 if counted_steps < 10000:
                     warning("Number of accepted GCMC steps is very low; "
                             "only %i counted!" % counted_steps)
+        if fold or maxima:
+            self.fold_and_maxima(fold, maxima, tp_point)
 
-    def fold_and_maxima(self, fold=True, maxima=True):
+
+    def fold_and_maxima(self, fold=True, maxima=True, tp_point=None):
         """Determine the positions of maxima and produce an xyz xyz file."""
         from cube import Cube
         if fold:
@@ -1453,14 +1456,19 @@ class Structure(object):
                     else:
                         site_name = site_types[0]
                     guest_locations[site_name] = Cube.maxima()
-            if maxima:
+            if guest_locations:
+                if tp_point:
+                    if not hasattr(guest, 'guest_locations'):
+                        guest.guest_locations = {tp_point, guest_locations}
+                    else:
+                        guest.guest_locations[tp_point] = guest_locations
                 maxima_out = []
                 for atom_name in sorted(guest_locations):
                     for atom in guest_locations[atom_name]:
                         maxima_out.append("%6s" % atom_name
                                           "%10.6f %10.6f %10.6f\n" % tuple(atom))
                 location_xyz = open("%s-%s.xyz" % (self.name, guest.ident))
-                location_xyz.write(" %i\nEstimated guest maxima\n")
+                location_xyz.write(" %i\nEstimated guest maxima at %r\n" % (len(maxima_out, tp_point))
                 location_xyz.writelines(maxima_out)
                 locetion_xyz.close()
 

@@ -676,7 +676,7 @@ class PyNiss(object):
             os.chdir(tp_path)
             filetemp = open("CONTROL", "wb")
             filetemp.writelines(mk_gcmc_control(temp, press, self.options,
-                                                guests))
+                                                guests, self.structure.gcmc_supercell))
             filetemp.close()
 
             if self.options.getbool('no_submit'):
@@ -1465,10 +1465,10 @@ class Structure(object):
                 maxima_out = []
                 for atom_name in sorted(guest_locations):
                     for atom in guest_locations[atom_name]:
-                        maxima_out.append("%6s" % atom_name
-                                          "%10.6f %10.6f %10.6f\n" % tuple(atom))
+                        maxima_out.append(("%6s" % atom_name) +
+                                          ("%10.6f %10.6f %10.6f\n" % tuple(atom)))
                 location_xyz = open("%s-%s.xyz" % (self.name, guest.ident))
-                location_xyz.write(" %i\nEstimated guest maxima at %r\n" % (len(maxima_out, tp_point))
+                location_xyz.write(" %i\nEstimated guest maxima at %r\n" % (len(maxima_out, tp_point)))
                 location_xyz.writelines(maxima_out)
                 locetion_xyz.close()
 
@@ -2110,7 +2110,7 @@ def mk_kpoints(kpoints):
     return kpoints
 
 
-def mk_gcmc_control(temperature, pressures, options, guests):
+def mk_gcmc_control(temperature, pressures, options, guests, supercell=None):
     """Standard GCMC CONTROL file."""
     control = [
         "GCMC Run\n"
@@ -2147,6 +2147,11 @@ def mk_gcmc_control(temperature, pressures, options, guests):
             control.append("%s  %i  " % (prob_on, len(prob)) +
                            "  ".join(["%i" % x for x in prob]) + "\n")
         control.append("&end\n")
+
+    if options.getbool('fold') and supercell is not None:
+        control.append('\ngrid factors %i %i %i\n' % supercell)
+    elif supercell is not None:
+        control.append('\n# grid factors %i %i %i\n' % supercell)
 
     control.append("finish\n")
     return control

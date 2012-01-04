@@ -118,10 +118,7 @@ class Cube(object):
         """Write out the data, already folded"""
 
         if outname is None:
-            if ".cube" in self.filename:
-                outname = self.filename.replace(".cube", "_folded.cube")
-            else:
-                outname = self.filename + "_folded.cube"
+            outname = self.folded_name
 
         outfile = open(outname, "w")
         outfile.writelines(self.header_block)
@@ -181,6 +178,15 @@ class Cube(object):
             cartesian_peaks.append(np.dot(point, cell).tolist())
 
         return cartesian_peaks
+
+    @property
+    def folded_name(self):
+        """File name with _folded inserted for output."""
+        if ".cube" in self.filename:
+            return self.filename.replace(".cube", "_folded.cube")
+        else:
+            return self.filename + "_folded.cube"
+
 
 def in_cell(header_block, grid):
     """Cut any atoms that are not in the box from the header block"""

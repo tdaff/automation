@@ -1437,15 +1437,15 @@ class Structure(object):
                             "only %i counted!" % counted_steps)
 
         fold = options.getbool('fold')
-        maxima = options.getbool('find_maxima')
+        find_maxima = options.getbool('find_maxima')
         prob_plot = options.getbool('mc_probability_plot')
-        if prob_plot and (fold or maxima):
-            self.fold_and_maxima(fold, maxima, tp_point)
+        if prob_plot and (fold or find_maxima):
+            self.fold_and_maxima(fold, find_maxima, tp_point)
 
         os.chdir(startdir)
 
 
-    def fold_and_maxima(self, fold=True, maxima=True, tp_point=None):
+    def fold_and_maxima(self, fold=True, find_maxima=True, tp_point=None):
         """Determine the positions of maxima and produce an xyz xyz file."""
         from cube import Cube
         if fold:
@@ -1454,32 +1454,33 @@ class Structure(object):
             fold = None
         for guest_idx, guest in enumerate(self.guests):
             guest_locations = {}
-            for site_idx, site in enumerate(guest.probability):
-                guest_cube = Cube("prob_guest%02i_prob_%02i.cube" % (guest_idx+1, site_idx+1), fold=fold)
+            for site_idx, sites in enumerate(guest.probability):
+                guest_cube = Cube("prob_guest%02i_prob_%02i.cube" %
+                                  (guest_idx+1, site_idx+1), fold=fold)
                 if fold is not None:
+                    debug("Folded cube file: %s" % guest_cube.folded_name)
                     guest_cube.write_cube()
-                if maxima:
-                    site_types = unique(["COM" if x is 0 else guest.atoms[x-1].element for x in site])
-                    if len(site_types) > 1:
-                        site_name = "".join(site_types)
-                    else:
-                        site_name = site_types[0]
-                    guest_locations[site_name] = guest_cube.maxima()
+                if find_maxima:
+                    guest_locations[sites] = guest_cube.maxima()
             if guest_locations:
                 if tp_point:
+                    # We can keep them for later too, must create dict
+                    # since it might not exist in old calculations
                     if not hasattr(guest, 'guest_locations'):
                         guest.guest_locations = {tp_point: guest_locations}
                     else:
                         guest.guest_locations[tp_point] = guest_locations
-                maxima_out = []
-                for atom_name in sorted(guest_locations):
-                    for atom in guest_locations[atom_name]:
-                        maxima_out.append(("%-6s" % atom_name) +
-                                          ("%10.6f %10.6f %10.6f\n" % tuple(atom)))
-                location_xyz = open("%s-%s.xyz" % (self.name, guest.ident), 'w')
-                location_xyz.write(" %i\nEstimated guest maxima at %r\n" % (len(maxima_out), tp_point))
-                location_xyz.writelines(maxima_out)
-                location_xyz.close()
+                maxima = []
+                for sites in guest_locations:
+                    atom_name = name_from_types(sites, guest)
+                    for atom in guest_locations[sites]:
+                        maxima.append("%-6s" % atom_name +
+                                      "%10.6f %10.6f %10.6f\n" % tuple(atom))
+                locations = open("%s-%s.xyz" % (self.name, guest.ident), 'w')
+                locations.write(" %i\nBinding sites at %r\n" %
+                                (len(maxima), tp_point))
+                locations.writelines(maxima)
+                locations.close()
 
 
     def remove_duplicates(self, epsilon=0.0002):
@@ -2384,6 +2385,22 @@ def state_points(temperatures, pressures, individual, nguests):
     for temp in temperatures:
         for pressure in subgroup(pressures, nguests):
             yield (temp, pressure)
+
+
+def name_from_types(sites, guest):
+    """Generate a string that gives the atoms represented in sites."""
+    stypes = []
+    for site_ident in sites:
+        if site_ident is 0:
+            stypes.append('COM')
+        else:
+            stypes.append(guest.atoms[site_ident-1].element)
+    stypes = unique(stypes)
+    if len(stypes) > 1:
+        site_name = "-".join(stypes)
+    else:
+        site_name = stypes[0]
+    return site_name
 
 
 def welcome():

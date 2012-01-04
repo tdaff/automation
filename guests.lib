@@ -33,7 +33,7 @@ potentials =
     Cx  2.745  0.05948
     Ox  3.017  0.17023
 probability =
-    0
+    1
     2  3
 
 [TIP5P]

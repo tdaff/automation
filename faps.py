@@ -221,7 +221,7 @@ class PyNiss(object):
                     new_state = self.job_handler.jobcheck(tp_state[1])
                     if not new_state:
                         info("Queue reports GCMC %s finished" % (tp_point,))
-                        self.structure.update_gcmc(self.options.get('mc_code'), tp_point, self.options.getbool('fold'), self.options.getbool('find_maxima'))
+                        self.structure.update_gcmc(tp_point, self.options)
                         self.state['gcmc'][tp_point] = (UPDATED, False)
                         self.dump_state()
                     else:
@@ -362,7 +362,7 @@ class PyNiss(object):
         indivs = self.options.gettuple('mc_state_points', float)
         for tp_point in state_points(temps, presses, indivs, len(guests)):
             try:
-                self.structure.update_gcmc(self.options.get('mc_code'), tp_point, self.options.getbool('fold'), self.options.getbool('find_maxima'))
+                self.structure.update_gcmc(tp_point, self.options)
                 self.state['gcmc'][tp_point] = (UPDATED, False)
             except IOError:
                 info("GCMC point %s not found" % str(tp_point))
@@ -918,16 +918,16 @@ class Structure(object):
         else:
             error("Unknown charge method to import %s" % charge_method)
 
-    def update_gcmc(self, gcmc_code, tp_point, fold, maxima):
+    def update_gcmc(self, tp_point, options):
         """Select the source for GCMC results and import."""
+        gcmc_code = options.get('mc_code')
         gcmc_path = os.path.join('faps_%s_%s' % (self.name, gcmc_code))
         # Runs in subdirectories
-        tp_path = ('T%s' % tp_point[0] +
-                   ''.join(['P%.2f' % x for x in tp_point[1]]))
+        tp_path = os.path.join(gcmc_path, 'T%s' % tp_point[0] +
+                               ''.join(['P%.2f' % x for x in tp_point[1]]))
         if gcmc_code == 'fastmc':
             info("Importing results from FastGCMC")
-            self.fastmc_postproc(
-                os.path.join(gcmc_path, tp_path, 'OUTPUT'), tp_point, fold, maxima)
+            self.fastmc_postproc(tp_path, tp_point, options)
         else:
             error("Unknown gcmc method to import %s" % gcmc_code)
 
@@ -1409,9 +1409,12 @@ class Structure(object):
 
         return config, field
 
-    def fastmc_postproc(self, filename, tp_point, fold=True, maxima=True):
+    def fastmc_postproc(self, filepath, tp_point, options):
         """Update structure properties from gcmc OUTPUT."""
-        filetemp = open(filename)
+        startdir = os.getcwd()
+        os.chdir(filepath)
+
+        filetemp = open('OUTPUT')
         output = filetemp.readlines()
         filetemp.close()
 
@@ -1432,8 +1435,14 @@ class Structure(object):
                 if counted_steps < 10000:
                     warning("Number of accepted GCMC steps is very low; "
                             "only %i counted!" % counted_steps)
-        if fold or maxima:
+
+        fold = options.getbool('fold')
+        maxima = options.getbool('find_maxima')
+        prob_plot = options.getbool('mc_probability_plot')
+        if prob_plot and (fold or maxima):
             self.fold_and_maxima(fold, maxima, tp_point)
+
+        os.chdir(startdir)
 
 
     def fold_and_maxima(self, fold=True, maxima=True, tp_point=None):
@@ -1448,14 +1457,14 @@ class Structure(object):
             for site_idx, site in enumerate(guest.probability):
                 guest_cube = Cube("prob_guest%02i_prob_%02i.cube" % (guest_idx+1, site_idx+1), fold=fold)
                 if fold is not None:
-                    Cube.write_cube()
+                    guest_cube.write_cube()
                 if maxima:
-                    site_types = set(["COM" if x is 0 else guest.atoms[x-1] for x in site])
+                    site_types = unique(["COM" if x is 0 else guest.atoms[x-1].element for x in site])
                     if len(site_types) > 1:
                         site_name = "".join(site_types)
                     else:
                         site_name = site_types[0]
-                    guest_locations[site_name] = Cube.maxima()
+                    guest_locations[site_name] = guest_cube.maxima()
             if guest_locations:
                 if tp_point:
                     if not hasattr(guest, 'guest_locations'):
@@ -1465,12 +1474,12 @@ class Structure(object):
                 maxima_out = []
                 for atom_name in sorted(guest_locations):
                     for atom in guest_locations[atom_name]:
-                        maxima_out.append(("%6s" % atom_name) +
+                        maxima_out.append(("%-6s" % atom_name) +
                                           ("%10.6f %10.6f %10.6f\n" % tuple(atom)))
-                location_xyz = open("%s-%s.xyz" % (self.name, guest.ident))
-                location_xyz.write(" %i\nEstimated guest maxima at %r\n" % (len(maxima_out, tp_point)))
+                location_xyz = open("%s-%s.xyz" % (self.name, guest.ident), 'w')
+                location_xyz.write(" %i\nEstimated guest maxima at %r\n" % (len(maxima_out), tp_point))
                 location_xyz.writelines(maxima_out)
-                locetion_xyz.close()
+                location_xyz.close()
 
 
     def remove_duplicates(self, epsilon=0.0002):
@@ -1858,7 +1867,7 @@ class Atom(object):
                 atomic_number = ATOMIC_NUMBER.index(name)
                 break
             except ValueError:
-                name = name[-1]
+                name = name[:-1]
         return atomic_number
 
     def set_atomic_number(self, value):
@@ -1866,6 +1875,17 @@ class Atom(object):
         self.type = ATOMIC_NUMBER[value]
 
     atomic_number = property(get_atomic_number, set_atomic_number)
+
+    @property
+    def element(self):
+        """Guess the element from the type, fall back to type."""
+        name = self.type
+        while name:
+            if name in ATOMIC_NUMBER:
+                return name
+            else:
+                name = name[:-1]
+        return self.type
 
     @property
     def vdw_radius(self):

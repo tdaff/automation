@@ -1446,7 +1446,7 @@ class Structure(object):
         for guest_idx, guest in enumerate(self.guests):
             guest_locations = {}
             for site_idx, site in enumerate(guest.probability):
-                guest_cube = Cube("prob_guest_%2i_prob_%2i.cube" % (guest_idx, site_idx), fold=fold)
+                guest_cube = Cube("prob_guest%02i_prob_%02i.cube" % (guest_idx+1, site_idx+1), fold=fold)
                 if fold is not None:
                     Cube.write_cube()
                 if maxima:
@@ -1459,7 +1459,7 @@ class Structure(object):
             if guest_locations:
                 if tp_point:
                     if not hasattr(guest, 'guest_locations'):
-                        guest.guest_locations = {tp_point, guest_locations}
+                        guest.guest_locations = {tp_point: guest_locations}
                     else:
                         guest.guest_locations[tp_point] = guest_locations
                 maxima_out = []

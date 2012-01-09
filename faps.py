@@ -567,8 +567,7 @@ class PyNiss(object):
                 cube_file = cube_file[0]
                 warning("More or than one .cube found; using %s" % cube_file)
             else:
-                critical("No cube files found; check vasp_to_cube output")
-                terminate(101)
+                error("No cube files found; check vasp_to_cube output")
             # Move it to the repeat directory and give a proper name
             move_and_overwrite(cube_file,
                                os.path.join(repeat_dir, job_name + '.cube'))

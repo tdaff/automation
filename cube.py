@@ -101,8 +101,7 @@ class Cube(object):
 #                    if yidx == self.grid[1]:
 #                        yidx = 0
 #                        xidx += 1
-
-        cube_data = np.fromfile(cube_temp, sep=' ').reshape(self.grid)
+        cube_data = np.fromstring(cube_temp.read(), sep=' ').reshape(self.grid)
         for xidx in range(fold[0]):
             for yidx in range(fold[1]):
                 for zidx in range(fold[2]):

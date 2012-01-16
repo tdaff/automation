@@ -68,7 +68,7 @@ def _sharcnet_submit(job_type, options, input_file=None):
 
     sqsub_args = ['sqsub']
     # Always use the dedicated queue; faster
-    sqsub_args.extend(['-q', 'DR_20293'])
+    sqsub_args.extend(['-q', 'NRAP_20405'])
     # job_name
     sqsub_args.extend(['-j', 'faps-%s-%s' % (job_name, job_type)])
     # Is it a multiple CPU job?
@@ -134,7 +134,7 @@ def _sharcnet_postrun(waitid):
     # Sumbit here, even if jobs never found in queue
     sqsub_args = [
         'sqsub',
-        '-q', 'DR_20293',
+        '-q', 'NRAP_20405',
         '-r', '10m',
         '-o', 'faps-post-%s.out' % '-'.join(sorted(waitid)),
         '--mpp=2g',

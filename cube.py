@@ -13,6 +13,7 @@ Modified version for faps, provides Cube object.
 import bz2
 import gzip
 from glob import glob
+from logging import info, debug
 
 import numpy as np
 from numpy import array, zeros, matrix
@@ -20,11 +21,13 @@ from numpy import array, zeros, matrix
 
 class Cube(object):
     """Container for a .cube file. Very specific for folding symmetry."""
-    def __init__(self, filename=None, fold=None):
+    def __init__(self, filename=None, fold=None, debug=False):
         # User defined params
         self.filename = filename
         self.fold = fold
+        self.debug = debug
         # Attributes for internal use
+        self.error = 0.0
         self.header_block = []
         self.natoms = 0
         self.grid = [0, 0, 0]
@@ -71,7 +74,7 @@ class Cube(object):
         self.rgrid[1] = self.grid[1]/fold[1]
         self.rgrid[2] = self.grid[2]/fold[2]
 
-        localdata = zeros(self.rgrid)
+        localdata = zeros([np.prod(fold)] + self.rgrid)
         # read in the top bits -- don't change for now
         for _lineno in range(self.natoms+6):
             self.header_block.append(cube_temp.readline())
@@ -102,16 +105,25 @@ class Cube(object):
 #                        yidx = 0
 #                        xidx += 1
         cube_data = np.fromstring(cube_temp.read(), sep=' ').reshape(self.grid)
+        cube_temp.close()
+
         for xidx in range(fold[0]):
             for yidx in range(fold[1]):
                 for zidx in range(fold[2]):
-                    localdata += cube_data[
+                    grid_idx = zidx+yidx*fold[2]+xidx*fold[2]*fold[1]
+                    localdata[grid_idx] = cube_data[
                         (xidx*self.grid[0])/fold[0]:((xidx+1)*self.grid[0])/fold[0],
                         (yidx*self.grid[1])/fold[1]:((yidx+1)*self.grid[1])/fold[1],
                         (zidx*self.grid[2])/fold[2]:((zidx+1)*self.grid[2])/fold[2]]
 
-        cube_temp.close()
-        self.datapoints = localdata/float(fold[0]*fold[1]*fold[2])
+        del cube_data
+        self.datapoints = np.mean(localdata, axis=0)
+        rstdev = np.std(localdata, axis=0)/self.datapoints
+        rstdev[np.isnan(rstdev)] = 0
+        self.error = np.mean(rstdev)
+        debug("Estimated error in cube file: %f" % self.error)
+        if self.debug:
+            self.write_generic(rstdev, self.error_name)
 
     def write_cube(self, outname=None):
         """Write out the data, already folded"""
@@ -132,10 +144,26 @@ class Cube(object):
         outfile.flush()
         outfile.close()
 
+    def write_generic(self, data, outname):
+        """Write data to a Gaussian '.cube' file."""
+
+        outfile = open(outname, "w")
+        outfile.writelines(self.header_block)
+        for xidx in range(self.rgrid[0]):
+            for yidx in range(self.rgrid[1]):
+                for zidx in range(self.rgrid[2]):
+                    outfile.write("%13.5E" % data[xidx, yidx, zidx])
+                    if zidx % 6 == 5:
+                        outfile.write("\n")
+                outfile.write("\n")
+
+        outfile.flush()
+        outfile.close()
+
     def maxima(self):
         """Estimate positions of maxima."""
         from scipy.ndimage.filters import gaussian_filter, maximum_filter, median_filter
-        from scipy.ndimage.morphology import generate_binary_structure, binary_erosion
+        from scipy.ndimage.morphology import generate_binary_structure, binary_erosion, iterate_structure
 
         temp_data = self.datapoints
 
@@ -145,7 +173,8 @@ class Cube(object):
         temp_data = gaussian_filter(temp_data, 4, mode="wrap")
 
         # define a connectivity neighborhood
-        neighborhood = generate_binary_structure(np.ndim(temp_data), 2)
+        neighborhood = generate_binary_structure(np.ndim(temp_data), 3)
+        neighborhood = iterate_structure(neighborhood, 2)
 
         #apply the local maximum filter; all pixel of maximal value
         #in their neighborhood are set to 1
@@ -186,6 +215,13 @@ class Cube(object):
         else:
             return self.filename + "_folded.cube"
 
+    @property
+    def error_name(self):
+        """File name with _folded inserted for output."""
+        if ".cube" in self.filename:
+            return self.filename.replace(".cube", "_error.cube")
+        else:
+            return self.filename + "_error.cube"
 
 def in_cell(header_block, grid):
     """Cut any atoms that are not in the box from the header block"""

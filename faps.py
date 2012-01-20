@@ -884,6 +884,13 @@ class Structure(object):
         filetype = filetype.lstrip('.')
         if filetype.lower() in ['pdb']:
             self.from_pdb(basename + '.' + filetype)
+        elif filetype.lower() in ['pqr']:
+            # Look for a pqr or just a pdb wih charges
+            listdir = os.listdir('.')
+            if (basename + '.pqr') in listdir:
+                self.from_pdb(basename + '.pqr', charges=True)
+            else:
+                self.from_pdb(basename + '.pdb', charges=True)
         elif filetype.lower() in ['vasp', 'poscar', 'contcar']:
             listdir = os.listdir('.')
             test_files = [
@@ -945,7 +952,7 @@ class Structure(object):
         else:
             error("Unknown gcmc method to import %s" % gcmc_code)
 
-    def from_pdb(self, filename):
+    def from_pdb(self, filename, charges=False):
         """Read an initial structure from a pdb file."""
         info("Reading positions from pdb file: %s" % filename)
         filetemp = open(filename)
@@ -954,16 +961,13 @@ class Structure(object):
         # Build a local list before setting attribute
         newatoms = []
         for line in pdb_file:
-            if line.lower().startswith('cryst1'):
+            lline = line.lower()
+            if lline.startswith('cryst1'):
                 self.cell.from_pdb(line)
                 self.space_group = line[55:56]
-            elif line.lower().startswith('atom'):
+            elif lline.startswith('atom') or lline.startswith('hetatm'):
                 newatom = Atom()
-                newatom.from_pdb(line)
-                newatoms.append(newatom)
-            elif line.lower().startswith('hetatm'):
-                newatom = Atom()
-                newatom.from_pdb(line)
+                newatom.from_pdb(line, charges=charges)
                 newatoms.append(newatom)
 
         self.atoms = newatoms
@@ -1877,8 +1881,11 @@ class Atom(object):
             debug("Site label may not be unique; appending index")
             self.site = "%s%i" % (self.site, idx)
 
-    def from_pdb(self, line):
-        """Parse the ATOM line from a pdb file."""
+    def from_pdb(self, line, charges=False):
+        """
+        Parse the ATOM line from a pdb file.
+        Occupancy field may be used to specify the charge as in a '.pqr' file.
+        """
         # pdb is defined with fixed width fields rather than splitting
         self.idx = try_int(line[6:11])
         self.site = line[12:16].strip()
@@ -1887,6 +1894,8 @@ class Atom(object):
         self.pos = at_pos
         self.type = line[76:78].strip()
         self.mass = WEIGHT[self.type]
+        if charges:
+            self.charge = float(line[54:60])
 
     def from_vasp(self, line, at_type=None, cell=identity(3)):
         """Set the atom data from vasp input. Only pass cell if fractional."""

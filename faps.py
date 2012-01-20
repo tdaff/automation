@@ -1912,7 +1912,14 @@ class Atom(object):
 
     def from_xyz(self, line):
         """Parse line from generic xyz file."""
-        self.pos = [float(x) for x in line.split()[1:4]]
+        split_line = line.split()
+        self.pos = [float(x) for x in split_line[1:4]]
+        if len(split_line) > 4:
+            try:
+                self.charge = float(split_line[4])
+            except ValueError:
+                # Assume a comment so skip it
+                pass
         self.type = line.split()[0]
         self.mass = WEIGHT[self.type]
 

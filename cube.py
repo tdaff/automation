@@ -121,7 +121,7 @@ class Cube(object):
         rstdev = np.std(localdata, axis=0)/self.datapoints
         rstdev[np.isnan(rstdev)] = 0
         self.error = np.mean(rstdev)
-        debug("Estimated error in cube file: %f" % self.error)
+        info("Estimated error in cube file: %f" % self.error)
         if self.debug:
             self.write_generic(rstdev, self.error_name)
 

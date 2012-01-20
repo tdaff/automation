@@ -32,7 +32,7 @@ import sys
 import textwrap
 from copy import copy
 from itertools import count
-from math import ceil
+from math import ceil, floor
 from logging import warning, debug, error, info, critical
 
 import numpy as np
@@ -761,18 +761,21 @@ class PyNiss(object):
         info("Calculating surface area: %.3f probe, %s points, %.3f res" %
              (rprobe, ("random","uniform")[uniform], resolution))
         total_area = 0.0
+        negative_charge = 0.0
+        positive_charge = 0.0
         cell = self.structure.cell.cell
         inv_cell = np.linalg.inv(cell.T)
         # Pre-calculate and organise the in-cell atoms
         atoms = [(atom.ipos(cell).tolist(),
                   atom.ifpos(cell),
                   atom.vdw_radius+rprobe,
-                  atom.neighbours) for atom in self.structure.atoms]
+                  atom.neighbours,
+                  atom) for atom in self.structure.atoms]
 
         # sigma is the vdw_radius plus distance to center of probe, which
         # gives accessible surface area;
         all_samples = []
-        for a1_pos, a1_fpos, a1_sigma, neighbours in atoms:
+        for a1_pos, a1_fpos, a1_sigma, neighbours, atom in atoms:
             surface_area = 4*pi*(a1_sigma**2)
             nsamples = int(surface_area/resolution)
             if not nsamples in all_samples:
@@ -812,7 +815,11 @@ class PyNiss(object):
                     if a2_dist > a1_sigma + a2_sigma:
                         # No more atoms within the radius, point valid
                         ncount += 1
-                        xyz.append(point)
+                        xyz.append((atom.type, point, atom.charge))
+                        if atom.charge < 0:
+                            negative_charge += atom.charge
+                        else:
+                            positive_charge += atom.charge
                         break
                     elif vecdist3(point, a2_pos) < a2_sigma:
                         # Point collision
@@ -823,7 +830,11 @@ class PyNiss(object):
                 else:
                     # Loop over all atoms finished; point valid
                     ncount += 1
-                    xyz.append(point)
+                    xyz.append((atom.type, point, atom.charge))
+                    if atom.charge < 0:
+                        negative_charge += atom.charge
+                    else:
+                        positive_charge += atom.charge
 
             # Fraction of the accessible surface area for sphere to real area
             total_area += (surface_area*ncount)/nsamples
@@ -833,7 +844,11 @@ class PyNiss(object):
             xyz_out.write('%i\nResolution: %f Area: %f\n' %
                           (len(xyz), resolution, total_area))
             for ppt in xyz:
-                xyz_out.write('Xx %f %f %f\n' % tuple(ppt))
+                xyz_out.write(('%-6s' % ppt[0]) +
+                              ('%10.6f %10.6f %10.6f' % tuple(ppt[1])) +
+                              ('%10.6f\n' % ppt[2]))
+        info("Total positive charge: %f" % positive_charge)
+        info("Total negative charge: %f" % negative_charge)
         return total_area
 
 class Structure(object):
@@ -1590,6 +1605,44 @@ class Structure(object):
             return surface_areas.get(probe, None)
         else:
             return surface_areas
+
+    def void_volume(self):
+        """Estimate the void volume based on VdW radii."""
+        initial_resolution = 0.2
+        params = self.cell.params
+        cell = self.cell.cell
+        inv_cell = np.linalg.inv(cell.T)
+
+        grid_size = [int(ceil(x/initial_resolution)) for x in params[:3]]
+        print grid_size
+        grid_resolution = [params[0]/grid_size[0],
+                           params[1]/grid_size[1],
+                           params[2]/grid_size[2]]
+        print grid_resolution
+        grid = np.zeros(grid_size, dtype=bool)
+        atoms = [(atom.ipos(cell).tolist(),
+                  atom.ifpos(cell),
+                  atom.vdw_radius) for atom in self.atoms]
+
+        for x_idx in range(grid_size[0]):
+            print x_idx
+            for y_idx in range(grid_size[1]):
+                print y_idx
+                print grid.sum()
+                for z_idx in range(grid_size[2]):
+                    grid_pos = [x_idx*grid_resolution[0],
+                                y_idx*grid_resolution[1],
+                                z_idx*grid_resolution[2]]
+                    grid_fpos = [float(x_idx)/grid_size[0],
+                                 float(y_idx)/grid_size[1],
+                                 float(z_idx)/grid_size[2]]
+                    for pos, fpos, radius in atoms:
+                        dist = min_dist(pos, fpos, grid_pos, grid_fpos, cell)
+                        if dist < radius:
+                            grid[x_idx, y_idx, z_idx] = 1
+                            break
+
+        print grid.sum()
 
     @property
     def types(self):

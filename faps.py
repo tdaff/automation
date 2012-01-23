@@ -364,7 +364,7 @@ class PyNiss(object):
             try:
                 self.structure.update_gcmc(tp_point, self.options)
                 self.state['gcmc'][tp_point] = (UPDATED, False)
-            except IOError:
+            except (IOError, OSError):
                 info("GCMC point %s not found" % str(tp_point))
 
         # Reset directory at end

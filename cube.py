@@ -203,7 +203,9 @@ class Cube(object):
         peaks = np.where(detected_peaks)
         cartesian_peaks = []
         for point in zip(peaks[0], peaks[1], peaks[2]):
-            cartesian_peaks.append(np.dot(point, cell).tolist())
+            # Some random peaks with no magnitude were showing up at the PBCs
+            if temp_data[point] > 0.0:
+                cartesian_peaks.append(np.dot(point, cell).tolist())
 
         return cartesian_peaks
 

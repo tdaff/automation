@@ -121,7 +121,7 @@ class Cube(object):
         stdev = np.std(localdata, axis=0)
         self.error = ((np.sum(stdev)/np.sum(self.datapoints))/
                       np.flatnonzero(self.datapoints).size)
-        info("Estimated error in cube file: %f" % self.error)
+        info("Estimated error in cube file: %g" % self.error)
         if self.debug:
             self.write_generic(rstdev, self.error_name)
 
@@ -161,19 +161,23 @@ class Cube(object):
         outfile.close()
 
     def maxima(self):
-        """Estimate positions of maxima."""
+        """
+        Use a median filter to reduce noise, smooth with gaussian blur
+        then use the 124 nearest neighbours to estimate positions of maxima.
+        Return the cartesian positions of maxima in a tuple with their
+        magnitudes from the smoothed data.
+        """
         from scipy.ndimage.filters import gaussian_filter, maximum_filter, median_filter
         from scipy.ndimage.morphology import generate_binary_structure, binary_erosion, iterate_structure
 
         temp_data = self.datapoints
-
-        #temp_data = np.where(temp_data > 0.1*temp_data.max(), temp_data, 0)
 
         temp_data = median_filter(temp_data, 4, mode='wrap')
         temp_data = gaussian_filter(temp_data, 4, mode="wrap")
 
         # define a connectivity neighborhood
         neighborhood = generate_binary_structure(np.ndim(temp_data), 3)
+        # expand it to a 5x5x5 grid
         neighborhood = iterate_structure(neighborhood, 2)
 
         #apply the local maximum filter; all pixel of maximal value
@@ -205,7 +209,8 @@ class Cube(object):
         for point in zip(peaks[0], peaks[1], peaks[2]):
             # Some random peaks with no magnitude were showing up at the PBCs
             if temp_data[point] > 0.0:
-                cartesian_peaks.append(np.dot(point, cell).tolist())
+                cartesian_peaks.append((np.dot(point, cell).tolist(),
+                                        temp_data[point]))
 
         return cartesian_peaks
 

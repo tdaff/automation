@@ -1493,9 +1493,10 @@ class Structure(object):
                 maxima = []
                 for sites in guest_locations:
                     atom_name = name_from_types(sites, guest)
-                    for atom in guest_locations[sites]:
+                    for atom, magnitude in guest_locations[sites]:
                         maxima.append("%-6s" % atom_name +
-                                      "%10.6f %10.6f %10.6f\n" % tuple(atom))
+                                      "%10.6f %10.6f %10.6f " % tuple(atom) +
+                                      "%g\n" % magnitude)
                 locations = open("%s-%s.xyz" % (self.name, guest.ident), 'w')
                 locations.write(" %i\nBinding sites at %r\n" %
                                 (len(maxima), tp_point))

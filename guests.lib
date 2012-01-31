@@ -1,7 +1,7 @@
 # guests.lib
 #
 # Library for guest molecule types
-# These are defaults that can be overridden with a custom library 
+# These are defaults that can be overridden with a custom library
 # in the job directory.
 #
 # Use the template to make new guests. Blocks of text need to be indented.
@@ -11,8 +11,8 @@ name = Molecule Name
 source = doi or reference
 atoms =
     at_name  at_mass  at_charge  at_x  at_y  at_z  # must be indented
-    Ox  15.9994 -0.32560  1.149  0.0  0.0 
-    Ox  15.9994 -0.32560 -1.149  0.0  0.0 
+    Ox  15.9994 -0.32560  1.149  0.0  0.0
+    Ox  15.9994 -0.32560 -1.149  0.0  0.0
 potentials =
     at_name  at_sigma  at_epsilon
     Cx  2.745  0.05948
@@ -26,9 +26,9 @@ probability =
 name = Carbon Dioxide
 source = http://dx.doi.org/10.1021/jp810871f
 atoms =
-    Cx  12.0107  0.65120  0.0    0.0  0.0 
-    Ox  15.9994 -0.32560  1.149  0.0  0.0 
-    Ox  15.9994 -0.32560 -1.149  0.0  0.0 
+    Cx  12.0107  0.65120  0.0    0.0  0.0
+    Ox  15.9994 -0.32560  1.149  0.0  0.0
+    Ox  15.9994 -0.32560 -1.149  0.0  0.0
 potentials =
     Cx  2.745  0.05948
     Ox  3.017  0.17023
@@ -39,17 +39,17 @@ probability =
 [TIP5P]
 name = TIP5P Water
 source = http://dx.doi.org/10.1063/1.481505
-atoms = 
+atoms =
     Ow  15.9990  0.000 -0.84626011  1.34987746  0.00000000
     Hw   1.0079  0.241 -0.56648324  0.43447769  0.00000000
     Hw   1.0079  0.241 -1.80256726  1.30854376  0.00000000
     L    0.0000 -0.241 -0.61291913  1.67986268 -0.57154330
     L    0.0000 -0.241 -0.61291913  1.67986268  0.57154330
-potentials = 
+potentials =
     Ow  3.120  0.15999
     Hw  0.000  0.00000
     L   0.000  0.00000
-probability = 
+probability =
     0
     1
     2 3
@@ -57,17 +57,17 @@ probability =
 [TIP5P-Ew]
 name = TIP5P-Ew Water for Ewald sums
 source = http://dx.doi.org/10.1063/1.1652434
-atoms = 
+atoms =
     Ow  15.9990  0.000 -0.84626011  1.34987746  0.00000000
     Hw   1.0079  0.241 -0.56648324  0.43447769  0.00000000
     Hw   1.0079  0.241 -1.80256726  1.30854376  0.00000000
     L    0.0000 -0.241 -0.61291913  1.67986268 -0.57154330
     L    0.0000 -0.241 -0.61291913  1.67986268  0.57154330
-potentials = 
+potentials =
     Ow  3.097  0.17801
     Hw  0.000  0.00000
     L   0.000  0.00000
-probability = 
+probability =
     0
     1
     2 3
@@ -75,16 +75,16 @@ probability =
 [TIP4P-Ew]
 name = TIP4P-Ew four-site water model for biomolecular simulations
 source = http://dx.doi.org/10.1063/1.1683075
-atoms = 
-    Ow  15.9994  0.00000  0.0000000  0.000000  0.0000000 
+atoms =
+    Ow  15.9994  0.00000  0.0000000  0.000000  0.0000000
     Hw   1.0079  0.52422  0.7569503 -0.585882  0.0000000
     Hw   1.0079  0.52422 -0.7569503 -0.585882  0.0000000
     Hx   0.0000 -1.04844  0.0000000 -0.125000  0.0000000
-potentials = 
+potentials =
     Ow  3.16435  0.16275
     Hw  0.00000  0.00000
     Hx  0.00000  0.00000
-probability = 
+probability =
     0
     1
     2 3
@@ -94,38 +94,52 @@ name = TraPPE Methane; Single Site
 source = http://dx.doi.org/10.1021/jp972543+
 atoms =
     CM  16.000  0.0  0.0  0.0  0.0
-potentials = 
+potentials =
     CM  3.7300  0.294106
-probability = 
+probability =
     0
 
 [CH4-5s]
 name = Methane 5 Site
 source = doi://
-atoms = 
+atoms =
     C_M  12.000 -0.480  0.000000  0.000000  0.000000
     H_M   1.000 +0.120  0.640513  0.640513  0.640513
     H_M   1.000 +0.120 -0.640513 -0.640513  0.640513
     H_M   1.000 +0.120 -0.640513  0.640513 -0.640513
     H_M   1.000 +0.120  0.640513 -0.640513 -0.640513
-potentials = 
+potentials =
     C_M  3.43085  0.10500
     H_M  2.84600  0.01522
-probability = 
+probability =
     0
 
 [N2]
 name = Nitrogen based on Etters potential
 source = doi://10.1063/1.1352078
-atoms = 
+atoms =
     Nx   14.0067 -0.4954 -0.556 0.000 0.000
     Nx   14.0067 -0.4954  0.556 0.000 0.000
     E     0.0000 +0.9908  0.000 0.000 0.000
-potentials = 
+potentials =
     Nx   3.2096  0.0809
     E    0.0000  0.0000
-probability = 
+probability =
     0
     1 2
+
+[H2S]
+name = Hydrogen Sulphide for vapor-liquid equilibria
+source = doi://10.1063/1.2049278
+atoms =
+    SX    32.065 -0.380  0.000000  0.000000  0.000000
+    HS     1.008 +0.190  0.967967 -0.926600  0.000000
+    HS     1.008 +0.190 -0.967967 -0.926600  0.000000
+potentials =
+    SX   3.72  0.46103
+    HS   0.00  0.00000
+probability =
+    1
+    2 3
 
 # vim:ft=dosini:set paste:

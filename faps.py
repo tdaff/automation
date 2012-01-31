@@ -99,12 +99,14 @@ class PyNiss(object):
         if new_options.getbool('update_opts'):
             info("Using new options.")
             self.options = new_options
+            self.structure.name = new_options.get('job_name')
         else:
             # Just update command line stuff
             info("Using old options with new command line arguments.")
             self.options.args = new_options.args
             self.options.options = new_options.options
             self.options.cmdopts = new_options.cmdopts
+            self.structure.name = new_options.get('job_name')
         self.status(initial=True)
 
     def job_dispatcher(self):
@@ -2156,7 +2158,7 @@ def mk_incar(options, esp_grid=None):
     if optim_cell:
         # Positions will be fixed by selective dynamics
         info("Cell vectors will be optimized")
-        incar.extend(["ENCUT = 520\n",
+        incar.extend(["ENCUT   = 520\n",
                       "IBRION  = 2\n",
                       "NSW     = 800\n",
                       "ISIF    = 3\n"])

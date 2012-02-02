@@ -84,10 +84,13 @@ def _sharcnet_submit(job_type, options, input_file=None):
         else:
             # Ensure mpi is enebaled
             sqsub_args.extend(['-f', 'mpi'])
-            sqsub_args.extend(['--mpp=1.33g'])
             # be nice and use whole nodes if possible
             if nodes % 24 == 0 or nodes < 24:
+                sqsub_args.extend(['--mpp=1.33g'])
                 sqsub_args.extend(['--pack'])
+            else:
+                sqsub_args.extend(['--mpp=2.66g'])
+
     else:
         sqsub_args.extend(['--mpp=%fg' % options.getfloat('threaded_memory')])
     # run-time estimate mandatory; 12 hours is plenty?
@@ -137,7 +140,7 @@ def _sharcnet_postrun(waitid):
         '-q', 'NRAP_20405',
         '-r', '10m',
         '-o', 'faps-post-%s.out' % '-'.join(sorted(waitid)),
-        '--mpp=2g',
+        '--mpp=3g',
         '--waitfor=%s' % ','.join(waitid),
         ] + _argstrip(sys.argv)
     # We can just call this as we don't care about the jobid

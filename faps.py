@@ -418,7 +418,11 @@ class PyNiss(object):
         esp_grid = self.esp_grid
 
         filetemp = open("INCAR", "wb")
-        filetemp.writelines(mk_incar(self.options, esp_grid=esp_grid))
+        if self.esp_reduced:
+            # Let VASP do the grid if we don't need to
+            filetemp.writelines(mk_incar(self.options, esp_grid=esp_grid))
+        else:
+            filetemp.writelines(mk_incar(self.options))
         filetemp.close()
 
         filetemp = open("KPOINTS", "wb")
@@ -743,6 +747,7 @@ class PyNiss(object):
         esp_grid = tuple([int(4*np.ceil(x/(4*resolution)))
                           for x in self.structure.cell.params[:3]])
         memory_guess = prod(esp_grid)*self.structure.natoms*repeat_prec/1e9
+        self._esp_reduced = False
         if memory_guess > vmem:
             warning("ESP at this resolution might need up to %.1f GB of "
                     "memory but calculation will only request %.1f" %
@@ -751,8 +756,18 @@ class PyNiss(object):
             esp_grid = tuple([int(4*np.ceil(x/(4*resolution)))
                               for x in self.structure.cell.params[:3]])
             warning("Reduced grid to %.2f A resolution to fit" % resolution)
+            self._esp_reduced = True
 
+        self._esp_grid = esp_grid
         return esp_grid
+
+    @property
+    def esp_reduced(self):
+        """Has the esp been reduced to fit the memory requirements?"""
+        if not hasattr(self, '_esp_reduced'):
+            # generate the esp and check memory requirements
+            self.esp_grid
+        return self._esp_reduced
 
     def calc_surface_area(self, rprobe=0.0):
         """Accessible surface area by uniform or Monte Carlo sampling."""

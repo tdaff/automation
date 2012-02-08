@@ -21,7 +21,7 @@ import sys
 import textwrap
 from StringIO import StringIO
 from optparse import OptionParser
-from logging import debug
+from logging import debug, error
 
 import __main__
 
@@ -56,6 +56,11 @@ class Options(object):
         self.load_defaults()
         self.load_site_defaults()
         self.load_job_defaults()
+        if self.options.job_type:
+            self.job_type_ini = ConfigParser.SafeConfigParser()
+            self.load_job_type(self.options.job_type)
+        else:
+            self.job_type_ini = NullConfigParser()
 
     def get(self, item):
         """Map values from different sources based on priorities."""
@@ -75,6 +80,9 @@ class Options(object):
             # jobname.fap per-job setings
             debug("a job option: %s" % item)
             return self.job_ini.get('job_config', item)
+        elif self.job_type_ini.has_option('job_type', item):
+            debug("a job_type option: %s" % item)
+            return self.job_type_ini.get('job_type', item)
         elif self.site_ini.has_option('site_config', item):
             debug("a site option: %s" % item)
             return self.site_ini.get('site_config', item)
@@ -198,6 +206,8 @@ class Options(object):
         parser.add_option("-n", "--no-submit", action="store_true",
                           dest="no_submit",
                           help="create input files only, do not run any jobs")
+        parser.add_option("-j", "--job-type", dest="job_type",
+                          help="user preconfigured job settings")
         (local_options, local_args) = parser.parse_args()
 
         # job_name may or may not be passed or set initially
@@ -275,6 +285,24 @@ class Options(object):
             job_ini = StringIO('[job_config]\n')
         self.job_ini.readfp(job_ini)
 
+    def load_job_type(self, job_type):
+        """Find where the job is running and load defaults"""
+        home_dir = os.path.expanduser('~')
+        job_type_ini_path = os.path.join(home_dir, '.faps', job_type + '.fap')
+        try:
+            filetemp = open(job_type_ini_path, 'r')
+            job_type_ini = filetemp.read()
+            filetemp.close()
+            if not '[job_type]' in job_type_ini.lower():
+                job_type_ini = '[job_type]\n' + job_type_ini
+            job_type_ini = StringIO(job_type_ini)
+            debug("Job type options read from %s" % job_type_ini_path)
+        except IOError:
+            # file does not exist so we just use a blank string
+            error("Job type '%s' specified but options file '%s' not found" %
+                  (job_type, job_type_ini_path))
+            job_type_ini = StringIO('[job_config]\n')
+        self.job_type_ini.readfp(job_type_ini)
 
 def options_test():
     """Try and read a few options from different sources."""
@@ -338,6 +366,17 @@ class ColouredConsoleHandler(logging.StreamHandler):
             myrecord.msg, initial_indent=text, width=76,
             subsequent_indent='\033[0m   %s' % text) + '\033[0m'
         logging.StreamHandler.emit(self, myrecord)
+
+
+class NullConfigParser(object):
+    """Use in place of a blank ConfigParser that has no options."""
+    def __init__(self, *args, **kwargs):
+        """This is empty, so do nothing."""
+        pass
+
+    def has_option(*args, **kwargs):
+        """Always return Fasle as there are no options."""
+        return False
 
 
 if __name__ == '__main__':

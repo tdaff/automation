@@ -13,7 +13,7 @@ Modified version for faps, provides Cube object.
 import bz2
 import gzip
 from glob import glob
-from logging import info, debug
+from logging import info, debug, error
 
 import numpy as np
 from numpy import array, zeros, matrix
@@ -32,6 +32,7 @@ class Cube(object):
         self.natoms = 0
         self.grid = [0, 0, 0]
         self.rgrid = [0, 0, 0]
+        self.cell = np.eye(3)
         self.datapoints = np.array([])
         # Do we initialise here?
         if self.filename is not None:
@@ -74,7 +75,6 @@ class Cube(object):
         self.rgrid[1] = self.grid[1]/fold[1]
         self.rgrid[2] = self.grid[2]/fold[2]
 
-        localdata = zeros([np.prod(fold)] + self.rgrid)
         # read in the top bits -- don't change for now
         for _lineno in range(self.natoms+6):
             self.header_block.append(cube_temp.readline())
@@ -84,46 +84,70 @@ class Cube(object):
             "%6i" % (self.rgrid[1]) + self.header_block[4][6:],
             "%6i" % (self.rgrid[2]) + self.header_block[5][6:]]
 
+        self.cell = np.array(
+            [[float(x) for x in self.header_block[3].split()[1:]],
+             [float(x) for x in self.header_block[4].split()[1:]],
+             [float(x) for x in self.header_block[5].split()[1:]]])*0.529177249
+
         if crop_atoms:
             self.header_block = in_cell(self.header_block, self.rgrid)
             self.natoms = len(self.header_block) - 6
 
-        # read the rest of the file
-        xidx, yidx, zidx = 0, 0, 0
 
-#        for line in cube_temp:
-#            for point in line.split():
-#                point = float(point)
-#                localdata[xidx % self.rgrid[0],
-#                          yidx % self.rgrid[1],
-#                          zidx % self.rgrid[2]] += point
-#                zidx += 1
-#                if zidx == self.grid[2]:
-#                    zidx = 0
-#                    yidx += 1
-#                    if yidx == self.grid[1]:
-#                        yidx = 0
-#                        xidx += 1
-        cube_data = np.fromstring(cube_temp.read(), sep=' ').reshape(self.grid)
+        # Fromfile might be slower and can't deal with zipped files,
+        # but uses less memory
+        data_start_pos = cube_temp.tell()
+        localdata = zeros([np.prod(fold)] + self.rgrid)
+        stacked_data = True
+        try:
+            cube_data = np.fromstring(cube_temp.read(), sep=' ').reshape(self.grid)
+        except MemoryError:
+            try:
+                cube_temp.seek(data_start_pos)
+                cube_data = np.fromfile(cube_temp, sep=' ').reshape(self.grid)
+            except MemoryError:
+                # Read line by line directly into folded grid,
+                # slowest but with least memory
+                stacked_data = False
+                cube_temp.seek(data_start_pos)
+                localdata = zeros(self.rgrid)
+                xidx, yidx, zidx = 0, 0, 0
+                for line in cube_temp:
+                    for point in line.split():
+                        point = float(point)
+                        localdata[xidx % self.rgrid[0],
+                                  yidx % self.rgrid[1],
+                                  zidx % self.rgrid[2]] += point
+                        zidx += 1
+                        if zidx == self.grid[2]:
+                            zidx = 0
+                            yidx += 1
+                            if yidx == self.grid[1]:
+                                yidx = 0
+                            xidx += 1
+
         cube_temp.close()
 
-        for xidx in range(fold[0]):
-            for yidx in range(fold[1]):
-                for zidx in range(fold[2]):
-                    grid_idx = zidx+yidx*fold[2]+xidx*fold[2]*fold[1]
-                    localdata[grid_idx] = cube_data[
-                        (xidx*self.grid[0])/fold[0]:((xidx+1)*self.grid[0])/fold[0],
-                        (yidx*self.grid[1])/fold[1]:((yidx+1)*self.grid[1])/fold[1],
-                        (zidx*self.grid[2])/fold[2]:((zidx+1)*self.grid[2])/fold[2]]
+        if stacked_data:
+            for xidx in range(fold[0]):
+                for yidx in range(fold[1]):
+                    for zidx in range(fold[2]):
+                        grid_idx = zidx+yidx*fold[2]+xidx*fold[2]*fold[1]
+                        localdata[grid_idx] = cube_data[
+                            (xidx*self.grid[0])/fold[0]:((xidx+1)*self.grid[0])/fold[0],
+                            (yidx*self.grid[1])/fold[1]:((yidx+1)*self.grid[1])/fold[1],
+                            (zidx*self.grid[2])/fold[2]:((zidx+1)*self.grid[2])/fold[2]]
 
-        del cube_data
-        self.datapoints = np.mean(localdata, axis=0)
-        stdev = np.std(localdata, axis=0)
-        self.error = ((np.sum(stdev)/np.sum(self.datapoints))/
-                      np.flatnonzero(self.datapoints).size)
-        info("Estimated error in cube file: %g" % self.error)
-        if self.debug:
-            self.write_generic(rstdev, self.error_name)
+            del cube_data
+            self.datapoints = np.mean(localdata, axis=0)
+            stdev = np.std(localdata, axis=0)
+            self.error = ((np.sum(stdev)/np.sum(self.datapoints))/
+                          np.flatnonzero(self.datapoints).size)
+            info("Estimated error in cube file: %g" % self.error)
+            if self.debug:
+                self.write_generic(rstdev, self.error_name)
+        else:
+            self.datapoints = localdata/float(fold[0]*fold[1]*fold[2])
 
     def write_cube(self, outname=None):
         """Write out the data, already folded"""
@@ -167,13 +191,27 @@ class Cube(object):
         Return the cartesian positions of maxima in a tuple with their
         magnitudes from the smoothed data.
         """
-        from scipy.ndimage.filters import gaussian_filter, maximum_filter, median_filter
-        from scipy.ndimage.morphology import generate_binary_structure, binary_erosion, iterate_structure
+        try:
+            from scipy.ndimage.filters import gaussian_filter, maximum_filter
+            from scipy.ndimage.filters import median_filter
+            from scipy.ndimage.morphology import generate_binary_structure
+            from scipy.ndimage.morphology import binary_erosion
+            from scipy.ndimage.morphology import iterate_structure
+        except ImportError:
+            error("Scipy not found, skipping maxima finding")
+            return []
 
         temp_data = self.datapoints
+        normalising_sum = sum(temp_data)
 
+        # First run a median filter to remove any exceptionally low or high
+        # Size seems to work best at about 0.2 A
         temp_data = median_filter(temp_data, 4, mode='wrap')
+        # Gaussian filter smoothes out the data
         temp_data = gaussian_filter(temp_data, 4, mode="wrap")
+
+        # Renormalise to pre-filtered values
+        temp_data *= normalising_sum/sum(temp_data)
 
         # define a connectivity neighborhood
         neighborhood = generate_binary_structure(np.ndim(temp_data), 3)
@@ -232,9 +270,7 @@ class Cube(object):
 
 def in_cell(header_block, grid):
     """Cut any atoms that are not in the box from the header block"""
-    rcell = matrix([[float(x) for x in header_block[3].split()[1:]],
-                    [float(x) for x in header_block[4].split()[1:]],
-                    [float(x) for x in header_block[5].split()[1:]]]).I
+    rcell = matrix(self.cell).I
     newlines = []
     for line in header_block[6:]:
         cpos = [float(x) for x in line.split()[2:]]

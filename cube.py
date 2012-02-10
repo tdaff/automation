@@ -90,7 +90,7 @@ class Cube(object):
              [float(x) for x in self.header_block[5].split()[1:]]])*0.529177249
 
         if crop_atoms:
-            self.header_block = in_cell(self.header_block, self.rgrid)
+            self.header_block = in_cell(self.header_block, self.rgrid, self.cell)
             self.natoms = len(self.header_block) - 6
 
 
@@ -268,9 +268,9 @@ class Cube(object):
         else:
             return self.filename + "_error.cube"
 
-def in_cell(header_block, grid):
+def in_cell(header_block, grid, cell):
     """Cut any atoms that are not in the box from the header block"""
-    rcell = matrix(self.cell).I
+    rcell = matrix(cell).I
     newlines = []
     for line in header_block[6:]:
         cpos = [float(x) for x in line.split()[2:]]

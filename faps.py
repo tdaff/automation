@@ -2041,14 +2041,22 @@ class Guest(object):
             script_dir = os.path.dirname(__file__)
         else:
             script_dir = os.path.abspath(sys.path[0])
+        dot_faps_dir = os.path.join(os.path.expanduser('~'), '.faps')
+        # A parser for each location
         job_guests = ConfigParser.SafeConfigParser()
+        dot_faps_guests = ConfigParser.SafeConfigParser()
         lib_guests = ConfigParser.SafeConfigParser()
         # Try and find guest in guests.lib
         job_guests.read(os.path.join(job_dir, 'guests.lib'))
+        dot_faps_guests.read(os.path.join(dot_faps_dir, 'guests.lib'))
         lib_guests.read(os.path.join(script_dir, 'guests.lib'))
+        # Job dir and user defined have priority
         if job_guests.has_section(ident):
             debug("%s found in job dir" % ident)
             self._parse_guest(job_guests.items(ident))
+        elif dot_faps_guests.has_section(ident):
+            debug("%s found in dot_faps" % ident)
+            self._parse_guest(dot_faps_guests.items(ident))
         elif lib_guests.has_section(ident):
             debug("%s found in library" % ident)
             self._parse_guest(lib_guests.items(ident))

@@ -5,7 +5,9 @@ Customising faps
 Sensible defaults are provided by faps for most options, however it also aims
 to offer many options for customising calculations. Defaults for all options
 can be found in the ``defaults.ini``; site-wide options such as the exe names
-and directories should be set in the :ref:`site.ini <site-ini>`.
+and directories should be set in the :ref:`site.ini <site-ini>`. Custom job
+types should be set up in your ``~/faps/$JOB_TYPE.fap`` and referenced with the
+``--job-type`` commandline option.
 
 .. _config-files:
 
@@ -70,7 +72,7 @@ each option is given here. For the most up-to-date list, see the
 
 .. envvar:: esp_resolution = 0.1
 
-   Resolution, in Angstrom, of the esp grid. [float]
+   Resolution of the esp grid (A). [float]
 
 .. envvar:: esp_src = vasp
 
@@ -86,6 +88,14 @@ each option is given here. For the most up-to-date list, see the
 
    Number of CPUs to run fastmc on. Make sure that you use the
    correct fastmc_exe for parallel runs. [int]
+
+.. envvar:: find_maxima = True
+
+   Calculate the location of the guests from the probability cube [bool]
+
+.. envvar:: fold = True
+
+   Fold probability cube into the unit cell [bool]
 
 .. envvar:: guests = CO2
 
@@ -279,11 +289,11 @@ each option is given here. For the most up-to-date list, see the
 
    Radius of probe for calculating surface areas. A probe of radius 0.0 will
    generate the VdW surface typical values for probe molecules are 1.42 (H2),
-   1.72 (CO2) or 1.82 (N2) (Å). [float, list]
+   1.72 (CO2) or 1.82 (N2) (A). [float, list]
 
 .. envvar:: surface_area_resolution = 0.03
 
-   Approximate area per point when subdividing accessible surface areas (Å²).
+   Approximate area per point when subdividing accessible surface areas (A^2).
 
 .. envvar:: surface_area_save = False
 
@@ -356,6 +366,12 @@ flags are described here.
 
    Do not produce any terminal output. All normal output is still logged to the
    ``$JOBNAME.flog`` file.
+
+.. option:: -j $JOB_TYPE, --job-type=$JOB_TYPE
+
+   Use the ``~/.faps/$JOB_TYPE.fap`` file to set options for the current job.
+   This will override defaults but options will still be overridden by
+   ``$jobname.fap`` and options set on the commandline.
 
 .. option:: -m, --import
 

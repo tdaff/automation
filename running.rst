@@ -6,7 +6,8 @@ Each job is uniquely identified by the ``$JOBNAME``. To run faps you will
 usually just issue the command ``faps $JOBNAME``. A structure file is required,
 and a configuration file is optional. By default, all calculation step will run
 in sequence and ``$JOBNAME-$GUEST.csv`` files with the adsoprtion data are
-produced.
+produced. A directory ``faps_$JOBNAME_properties`` will contain output from
+extra structure related analysis codes.
 
 .. _structure-files:
 
@@ -14,18 +15,25 @@ produced.
 Structure files
 ---------------
 
-Structures can be read from ``CIF``, ``PDB``, ``VASP`` or ``xyz`` files. One
-file from this list is **required**. By default the code will look for
-``$JOBNAME.pdb``, other file formats may be set in the config files or on the
-commandline.
+Structures can be read from ``CIF``, ``PDB``, ``PQR``, ``VASP``, ``CSSR`` or
+``xyz`` files. One file from this list is **required**. By default the code
+will look for ``$JOBNAME.pdb``, other file formats may be set in the config
+files or on the commandline with the ``initial_structure_format`` option.
+
+The charges can be specified with the structure for the ``PQR``, ``CSSR`` and
+``xyz`` types. Details are given below.
 
 .. object:: $JOBNAME.pdb
 
    The structure from any standard Protein Data Bank (PDB) structure file,
    ``$JOBNAME.pdb``, can be read by faps. These are fixed column formats and
    faps may not work if your pdb file is broken. The cell is taken from the
-   ``cryst1`` line. The position, in colums 31 to 54, and the atom type, at
+   ``cryst1`` line. The position, in columns 31 to 54, and the atom type, at
    column 77, are required for ``ATOM`` or ``HETATM`` records.
+
+   If ``pqr`` input is requested then the extension ``.pqr`` may be used and
+   initial charges are also read in from the occupancy column in position 54.
+   These will be replaced if a charge calulation is carried out.
 
    .. warning::
 
@@ -52,7 +60,8 @@ commandline.
 
    Structures that are compatible with VASP 5 can be read by faps. The code
    will read a standard POSCAR type file provided the line with atom types is
-   given (i.e. files written by VASP 4 will not work)
+   given (i.e. files written by VASP 4 with only the atom counts will not
+   work).
 
 
 .. object:: $JOBNAME.xyz
@@ -63,6 +72,9 @@ commandline.
    coordinates for each atom. As faps requires periodicity the structure is
    placed in the box defined by the ``default_cell`` option.
 
+   To specify charges in the ``.xyz`` put them in a fifth field on the atom
+   line, ``atom_type x.x y.y z.z cha.rge``. Values that cannot be parsed as
+   a number will fail silently and have an initial charge of 0.0.
 
 ------------
 Config files
@@ -78,6 +90,15 @@ everything, most installations will require customisation of the ``site.ini``.
    *'input file'*, as it is only required if non-defalut options are needed.
    Options are set in standard ``.ini`` format, as described in :ref:`config
    files <config-files>`.
+
+
+.. object:: ~/.faps/$JOB_TYPE.fap
+
+   Each user may have a directory with standard job types that are called with
+   the --job-type commandline option. As with the ``.fap`` file, options are
+   set in standard ``.ini`` format, as described in :ref:`config files
+   <config-files>`. These options will override the defaults but be overridden
+   by a per-job ``.fap`` file.
 
 
 .. object:: site.ini
@@ -99,6 +120,10 @@ Library files
 .. object:: guests.lib
 
    Predefined guests are stored here. The library file is in standard ``.ini``
-   format and can be used as a template for new guests in a :ref:`custom
-   guests.lib <custom-guests>` in the working directory. Do not modify this
-   file directly.
+   format. Faps will search for guests in the working directory first, then in
+   the ``~/.faps/`` directory and finally the standard guests library
+   distributed with the code. The ``guests.lib`` provided with the code can be
+   used as a template for new guests in a :ref:`custom guests.lib
+   <custom-guests>` but do not modify this file directly as it will be
+   overwritten on updates.
+

@@ -12,7 +12,7 @@ rst = []
 this_option = []
 
 for line in defaults:
-    line = line.strip()
+    line = line.strip().replace('*', '\\*')
     if not line:
         continue
     elif line[0] in ['#', ';']:

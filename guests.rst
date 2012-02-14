@@ -4,7 +4,9 @@ Guests
 
 Faps is distributed with a number of standard guests available in the
 ``guests.lib`` file in the faps directory. It is also possible to add
-custom guests for your simulation.
+custom guests for your simulation either in a ``~/.faps/guests.lib``
+that is queried for all simulations or a ``$JOBDIR/guests.lib`` that
+is queried for all jobs running in that directory.
 
 ----------------
 Available guests
@@ -23,6 +25,7 @@ TIP4P-Ew     TIP4P-Ew four-site water model for biomolecular simulations
 CH4-TraPPE   TraPPE Methane; Single Site
 CH4-5s       Methane 5 Site
 N2           Nitrogen based on Etters potential
+H2S          Hydrogen Sulphide for vapor-liquid equilibria
 ============ ===========================================================
 
 

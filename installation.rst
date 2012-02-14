@@ -77,3 +77,12 @@ space, add it to the ``compress_files`` list of you wish to keep it.
 Pseudopotentials for ``siesta`` must all be in a single directory and
 named ``${ELEMENT}.psf``. If the OS allows it, the files will be
 symlinked otherwise a copy is made. They are not deleted by default.
+
+---------------------------
+Custom job types and guests
+---------------------------
+
+Each user may have a dot_faps directory, ``${HOME}/.faps/``, to store
+``.fap`` files for common custom job types that are accessed with the
+``--job-type`` commandline option, and for a user maintained
+``guests.lib`` with a library of common guests.

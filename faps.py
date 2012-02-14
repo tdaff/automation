@@ -783,8 +783,8 @@ class PyNiss(object):
         cell = self.structure.cell.cell
         inv_cell = np.linalg.inv(cell.T)
         # Pre-calculate and organise the in-cell atoms
-        atoms = [(atom.ipos(cell).tolist(),
-                  atom.ifpos(cell),
+        atoms = [(atom.ipos(cell, inv_cell).tolist(),
+                  atom.ifpos(inv_cell),
                   atom.vdw_radius+rprobe,
                   atom.neighbours,
                   atom) for atom in self.structure.atoms]
@@ -1471,7 +1471,7 @@ class Structure(object):
             if cartesian:
                 string_pos = "%9.5f %9.5f %9.5f " % tuple(atom.pos)
             else:
-                string_pos = "%9.5f %9.5f %9.5f " % tuple(atom.ifpos(cell.cell))
+                string_pos = "%9.5f %9.5f %9.5f " % tuple(atom.ifpos(cell.inverse))
             cssr.append("%4i %-4s  %s" % (at_idx+1, atom_name, string_pos) +
                         "   0"*8 + " %7.3f\n" % atom.charge)
 
@@ -1556,9 +1556,9 @@ class Structure(object):
         """Find overlapping atoms and remove them."""
         uniq_atoms = []
         found_atoms = []
-        cell = self.cell.cell
+        inv_cell = self.cell.inverse
         for atom in self.atoms:
-            ifpos = atom.ifpos(cell)
+            ifpos = atom.ifpos(inv_cell)
             for found_atom in found_atoms:
                 if frac_near(ifpos, found_atom, epsilon=epsilon):
                     break
@@ -1617,8 +1617,9 @@ class Structure(object):
         debug("Calculating neighbour list.")
 
         cell = self.cell.cell
-        cpositions = [atom.ipos(cell) for atom in self.atoms]
-        fpositions = [atom.ifpos(cell) for atom in self.atoms]
+        inv_cell = self.cell.inverse
+        cpositions = [atom.ipos(cell, inv_cell) for atom in self.atoms]
+        fpositions = [atom.ifpos(inv_cell) for atom in self.atoms]
         cell = cell.tolist()
 
         # loop over all pairs to find minimum periodic distances
@@ -1634,7 +1635,7 @@ class Structure(object):
         ## Neighbourlist printed in VASP style
         #for idx, atom in enumerate(self.atoms):
         #    print("%4i" % (idx+1) +
-        #          "%7.3f%7.3f%7.3f" % tuple(atom.ifpos(self.cell.cell)) +
+        #          "%7.3f%7.3f%7.3f" % tuple(atom.ifpos(inv_cell)) +
         #          "-" +
         #          "".join("%4i%5.2f" % (y+1, x) for x, y in atom.neighbours if x<2.5))
 
@@ -1675,8 +1676,8 @@ class Structure(object):
                            params[2]/grid_size[2]]
         print grid_resolution
         grid = np.zeros(grid_size, dtype=bool)
-        atoms = [(atom.ipos(cell).tolist(),
-                  atom.ifpos(cell),
+        atoms = [(atom.ipos(cell), inv_cell.tolist(),
+                  atom.ifpos(inv_cell),
                   atom.vdw_radius) for atom in self.atoms]
 
         for x_idx in range(grid_size[0]):
@@ -1765,6 +1766,7 @@ class Cell(object):
                             [0.0, 1.0, 0.0],
                             [0.0, 0.0, 1.0]])
         self._params = (1.0, 1.0, 1.0, 90.0, 90.0, 90.0)
+        self._inverse = None
 
     def from_pdb(self, line):
         """Extract cell from CRYST1 line in a pdb."""
@@ -1839,6 +1841,7 @@ class Cell(object):
         """Set cell and params from the cell representation."""
         self._cell = value
         self.__mkparam()
+        self._inverse = np.linalg.inv(self.cell.T)
 
     # Property so that params are updated when cell is set
     cell = property(get_cell, set_cell)
@@ -1851,9 +1854,19 @@ class Cell(object):
         """Set cell and params from the cell parameters."""
         self._params = value
         self.__mkcell()
+        self._inverse = np.linalg.inv(self.cell.T)
 
     # Property so that cell is updated when params are set
     params = property(get_params, set_params)
+
+    @property
+    def inverse(self):
+        try:
+            if self._inverse is None:
+                self._inverse = np.linalg.inv(self.cell.T)
+        except AttributeError:
+            self._inverse = np.linalg.inv(self.cell.T)
+        return self._inverse
 
     # Implementation details -- directly access the private _{cell|param}
     # attributes; please don't break.
@@ -1904,17 +1917,17 @@ class Atom(object):
     def __repr__(self):
         return "Atom(%r,%r)" % (self.type, self.pos)
 
-    def fpos(self, cell):
+    def fpos(self, inv_cell):
         """Fractional position within a given cell."""
-        return np.linalg.solve(cell.T, self.pos).tolist()
+        return dot(inv_cell, self.pos).tolist()
 
-    def ifpos(self, cell):
+    def ifpos(self, inv_cell):
         """In cell fractional position."""
-        return [i % 1 for i in self.fpos(cell)]
+        return [i % 1 for i in self.fpos(inv_cell)]
 
-    def ipos(self, cell):
+    def ipos(self, cell, inv_cell):
         """In cell cartesian position."""
-        return dot(self.ifpos(cell), cell)
+        return dot(self.ifpos(inv_cell), cell)
 
     def from_cif(self, at_dict, cell, symmetry=None, idx=None):
         """Extract an atom description from dictionary of cif items."""

@@ -31,8 +31,9 @@ import sys
 import textwrap
 from copy import copy
 from itertools import count
-from math import ceil
 from logging import warning, debug, error, info, critical
+from math import ceil
+from os import path
 
 import numpy as np
 from numpy import pi, cos, sin, sqrt, arccos
@@ -403,7 +404,7 @@ class PyNiss(object):
         nproc = self.options.getint('vasp_ncpu')
         # Keep things tidy in a subdirectory
         dft_code = self.options.get('dft_code')
-        vasp_dir = os.path.join(self.options.get('job_dir'),
+        vasp_dir = path.join(self.options.get('job_dir'),
                                 'faps_%s_%s' % (job_name, dft_code))
         mkdirs(vasp_dir)
         os.chdir(vasp_dir)
@@ -435,7 +436,7 @@ class PyNiss(object):
             # Try and get the preferred POTCARS
             debug("Using %s pseudopotential for %s" %
                  (VASP_PSEUDO_PREF.get(at_type, at_type), at_type))
-            potcar_src = os.path.join(potcar_dir,
+            potcar_src = path.join(potcar_dir,
                                       VASP_PSEUDO_PREF.get(at_type, at_type),
                                       "POTCAR")
             shutil.copyfileobj(open(potcar_src), filetemp)
@@ -464,7 +465,7 @@ class PyNiss(object):
         nproc = self.options.getint('siesta_ncpu')
         # Keep things tidy in a subdirectory
         dft_code = self.options.get('dft_code')
-        siesta_dir = os.path.join(self.options.get('job_dir'),
+        siesta_dir = path.join(self.options.get('job_dir'),
                                   'faps_%s_%s' % (job_name, dft_code))
         mkdirs(siesta_dir)
         os.chdir(siesta_dir)
@@ -479,10 +480,10 @@ class PyNiss(object):
         psf_dir = self.options.get('psf_dir')
         for at_type in psf_types:
             psf_atm = '%s.psf' % at_type
-            psf_src = os.path.join(psf_dir, psf_atm)
-            psf_dest = os.path.join(siesta_dir, psf_atm)
+            psf_src = path.join(psf_dir, psf_atm)
+            psf_dest = path.join(siesta_dir, psf_atm)
             try:
-                if not os.path.exists(psf_atm):
+                if not path.exists(psf_atm):
                     os.symlink(psf_src, psf_dest)
             # symlinks not available pre 3.2 on windows
             except AttributeError:
@@ -513,10 +514,10 @@ class PyNiss(object):
         job_name = self.options.get('job_name')
         qeq_code = 'gulp'
         if fitting:
-            qeq_dir = os.path.join(self.options.get('job_dir'),
+            qeq_dir = path.join(self.options.get('job_dir'),
                                    'faps_%s_%s_fit' % (job_name, qeq_code))
         else:
-            qeq_dir = os.path.join(self.options.get('job_dir'),
+            qeq_dir = path.join(self.options.get('job_dir'),
                                    'faps_%s_%s' % (job_name, qeq_code))
         mkdirs(qeq_dir)
         os.chdir(qeq_dir)
@@ -552,10 +553,10 @@ class PyNiss(object):
         """Make the cube for repeat input."""
         job_name = self.options.get('job_name')
         esp_src = self.options.get('esp_src')
-        repeat_dir = os.path.join(self.options.get('job_dir'),
+        repeat_dir = path.join(self.options.get('job_dir'),
                                   'faps_%s_repeat' % job_name)
         mkdirs(repeat_dir)
-        src_dir = os.path.join(self.options.get('job_dir'),
+        src_dir = path.join(self.options.get('job_dir'),
                                'faps_%s_%s' % (job_name, esp_src))
         os.chdir(src_dir)
         if esp_src == 'vasp':
@@ -575,7 +576,7 @@ class PyNiss(object):
                 error("No cube files found; check vasp_to_cube output")
             # Move it to the repeat directory and give a proper name
             move_and_overwrite(cube_file,
-                               os.path.join(repeat_dir, job_name + '.cube'))
+                               path.join(repeat_dir, job_name + '.cube'))
             unneeded_files = self.options.gettuple('vasp_delete_files')
             remove_files(unneeded_files)
             keep_files = self.options.gettuple('vasp_compress_files')
@@ -603,7 +604,7 @@ class PyNiss(object):
         """Submit the repeat calc to the queue."""
         job_name = self.options.get('job_name')
         charge_code = self.options.get('charge_method')
-        repeat_dir = os.path.join(self.options.get('job_dir'),
+        repeat_dir = path.join(self.options.get('job_dir'),
                                   'faps_%s_%s' % (job_name, charge_code))
         mkdirs(repeat_dir)
         os.chdir(repeat_dir)
@@ -646,7 +647,7 @@ class PyNiss(object):
             debug("Retaining previous guests")
             guests = self.structure.guests
 
-        gcmc_dir = os.path.join(self.options.get('job_dir'),
+        gcmc_dir = path.join(self.options.get('job_dir'),
                                 'faps_%s_%s' % (job_name, mc_code))
         mkdirs(gcmc_dir)
         os.chdir(gcmc_dir)
@@ -673,10 +674,10 @@ class PyNiss(object):
             tp_path = ('T%s' % temp +
                        ''.join(['P%.2f' % x for x in press]))
             mkdirs(tp_path)
-            try_symlink(os.path.join(gcmc_dir, 'CONFIG'),
-                        os.path.join(tp_path, 'CONFIG'))
-            try_symlink(os.path.join(gcmc_dir, 'FIELD'),
-                        os.path.join(tp_path, 'FIELD'))
+            try_symlink(path.join(gcmc_dir, 'CONFIG'),
+                        path.join(tp_path, 'CONFIG'))
+            try_symlink(path.join(gcmc_dir, 'FIELD'),
+                        path.join(tp_path, 'FIELD'))
             os.chdir(tp_path)
             filetemp = open("CONTROL", "wb")
             filetemp.writelines(mk_gcmc_control(temp, press, self.options,
@@ -709,7 +710,7 @@ class PyNiss(object):
 
         job_name = self.options.get('job_name')
         job_dir = self.options.get('job_dir')
-        props_dir = os.path.join(job_dir, 'faps_%s_properties' % job_name)
+        props_dir = path.join(job_dir, 'faps_%s_properties' % job_name)
         mkdirs(props_dir)
         os.chdir(props_dir)
 
@@ -925,22 +926,22 @@ class Structure(object):
 
     def update_pos(self, opt_code):
         """Select the method for updating atomic positions."""
-        opt_path = os.path.join('faps_%s_%s' % (self.name, opt_code))
+        opt_path = path.join('faps_%s_%s' % (self.name, opt_code))
         info("Updating positions from %s" % opt_code)
         if opt_code == 'vasp':
-            self.from_vasp(os.path.join(opt_path, 'CONTCAR'), update=True)
+            self.from_vasp(path.join(opt_path, 'CONTCAR'), update=True)
         elif opt_code == 'siesta':
-            self.from_siesta(os.path.join(opt_path, '%s.STRUCT_OUT' % self.name))
+            self.from_siesta(path.join(opt_path, '%s.STRUCT_OUT' % self.name))
         else:
             error("Unknown positions to import %s" % opt_code)
 
     def update_charges(self, charge_method, options=None):
         """Select the method for updating charges."""
-        charge_path = os.path.join('faps_%s_%s' % (self.name, charge_method))
+        charge_path = path.join('faps_%s_%s' % (self.name, charge_method))
         if charge_method == 'repeat':
             info("Updating charges from repeat")
             self.charges_from_repeat(
-                os.path.join(charge_path, 'faps-%s.out' % self.name),
+                path.join(charge_path, 'faps-%s.out' % self.name),
                 options.getbool('symmetry'))
             # Cleanup of REPEAT files
             unneeded_files = options.gettuple('repeat_delete_files')
@@ -950,16 +951,16 @@ class Structure(object):
         elif charge_method == 'gulp':
             info("Updating charges from GULP QEq")
             self.charges_from_gulp(
-                os.path.join(charge_path, 'faps-%s.out' % self.name))
+                path.join(charge_path, 'faps-%s.out' % self.name))
         else:
             error("Unknown charge method to import %s" % charge_method)
 
     def update_gcmc(self, tp_point, options):
         """Select the source for GCMC results and import."""
         gcmc_code = options.get('mc_code')
-        gcmc_path = os.path.join('faps_%s_%s' % (self.name, gcmc_code))
+        gcmc_path = path.join('faps_%s_%s' % (self.name, gcmc_code))
         # Runs in subdirectories
-        tp_path = os.path.join(gcmc_path, 'T%s' % tp_point[0] +
+        tp_path = path.join(gcmc_path, 'T%s' % tp_point[0] +
                                ''.join(['P%.2f' % x for x in tp_point[1]]))
         if gcmc_code == 'fastmc':
             info("Importing results from FastGCMC")
@@ -2028,28 +2029,26 @@ class Guest(object):
         if ident:
             self.load_guest(ident, path=None)
 
-    def load_guest(self, ident, path=None):
+    def load_guest(self, ident, guest_path=None):
         """Look in guests.lib in submit directory and default."""
         # Ident set here to keep consistent
         self.ident = ident
         # Need the different directories
-        if path is None:
-            job_dir = os.getcwd()
-        else:
-            job_dir = path
+        if guest_path is None:
+            guest_path = os.getcwd()
         if __name__ != '__main__':
-            script_dir = os.path.dirname(__file__)
+            script_dir = path.dirname(__file__)
         else:
-            script_dir = os.path.abspath(sys.path[0])
-        dot_faps_dir = os.path.join(os.path.expanduser('~'), '.faps')
+            script_dir = path.abspath(sys.path[0])
+        dot_faps_dir = path.join(path.expanduser('~'), '.faps')
         # A parser for each location
         job_guests = ConfigParser.SafeConfigParser()
         dot_faps_guests = ConfigParser.SafeConfigParser()
         lib_guests = ConfigParser.SafeConfigParser()
         # Try and find guest in guests.lib
-        job_guests.read(os.path.join(job_dir, 'guests.lib'))
-        dot_faps_guests.read(os.path.join(dot_faps_dir, 'guests.lib'))
-        lib_guests.read(os.path.join(script_dir, 'guests.lib'))
+        job_guests.read(path.join(guest_path, 'guests.lib'))
+        dot_faps_guests.read(path.join(dot_faps_dir, 'guests.lib'))
+        lib_guests.read(path.join(script_dir, 'guests.lib'))
         # Job dir and user defined have priority
         if job_guests.has_section(ident):
             debug("%s found in job dir" % ident)
@@ -2332,7 +2331,7 @@ def lorentz_berthelot(left, right):
 # General utility functions
 def mkdirs(directory):
     """Create a directory if it does not exist."""
-    if not os.path.exists(directory):
+    if not path.exists(directory):
         os.makedirs(directory)
 
 
@@ -2349,18 +2348,18 @@ def terminate(exit_code=0):
 def move_and_overwrite(src, dest):
     """Move src to dest and overwrite if it is an existing file."""
     # As src and dest can be files or directories, do some checks.
-    if os.path.exists(dest):
-        if os.path.isdir(dest):
-            dest_full = os.path.join(dest, os.path.basename(src))
-            if os.path.exists(dest_full):
-                if os.path.isfile(dest_full):
+    if path.exists(dest):
+        if path.isdir(dest):
+            dest_full = path.join(dest, path.basename(src))
+            if path.exists(dest_full):
+                if path.isfile(dest_full):
                     os.remove(dest_full)
                     shutil.move(src, dest)
                 else:
                     raise OSError("Directory %s already exists" % dest_full)
             else:
                 shutil.move(src, dest)
-        elif os.path.isfile(dest):
+        elif path.isfile(dest):
             os.remove(dest)
             shutil.move(src, dest)
         else:
@@ -2371,7 +2370,7 @@ def move_and_overwrite(src, dest):
 
 def try_symlink(src, dest):
     """Delete an existing dest file, symlink a new one if possible."""
-    if os.path.lexists(dest):
+    if path.lexists(dest):
         os.remove(dest)
     try:
         os.symlink(src, dest)
@@ -2467,7 +2466,7 @@ def remove_files(files, directory='.'):
     """Delete any of the files if they exist, or ignore if not found."""
     del_list = []
     for file_name in files:
-        del_list.extend(glob.glob(os.path.join(directory, file_name)))
+        del_list.extend(glob.glob(path.join(directory, file_name)))
     for del_name in del_list:
         debug("deleting %s" % del_name)
         os.remove(del_name)
@@ -2477,7 +2476,7 @@ def compress_files(files, directory='.'):
     """Gzip any big files to keep."""
     zip_list = []
     for file_name in files:
-        zip_list.extend(glob.glob(os.path.join(directory, file_name)))
+        zip_list.extend(glob.glob(path.join(directory, file_name)))
     for zip_name in zip_list:
         debug("compressing %s" % zip_name)
         gzip_command = ['gzip', '-f', zip_name]
@@ -2540,7 +2539,7 @@ def main():
     # try to unpickle the job or
     # fall back to starting a new simulation
     niss_name = main_options.get('job_name') + ".niss"
-    if os.path.exists(niss_name):
+    if path.exists(niss_name):
         info("Existing simulation found: %s; loading..." % niss_name)
         load_niss = open(niss_name)
         my_simulation = pickle.load(load_niss)

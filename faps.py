@@ -2028,7 +2028,7 @@ class Atom(object):
 
 class Guest(object):
     """Guest molecule and properties."""
-    def __init__(self, ident=None, path=None):
+    def __init__(self, ident=None, guest_path=None):
         """Populate an empty guest then load from library if required."""
         self.ident = ''
         self.name = "Unknown guest"
@@ -2040,7 +2040,7 @@ class Guest(object):
         self.hoa = {}
         # only load if asked, set the ident in the loader
         if ident:
-            self.load_guest(ident, path=None)
+            self.load_guest(ident, guest_path=None)
 
     def load_guest(self, ident, guest_path=None):
         """Look in guests.lib in submit directory and default."""

@@ -729,6 +729,31 @@ class PyNiss(object):
             atom.neighbours = None
             del atom.neighbours
 
+        if self.options.getbool('zeo++'):
+            zeofiles = self.structure.to_zeoplusplus()
+
+            filetemp = open("%s.cssr" % job_name, 'wb')
+            filetemp.writelines(zeofiles[0])
+            filetemp.close()
+
+            filetemp = open("%s.rad" % job_name, 'wb')
+            filetemp.writelines(zeofiles[1])
+            filetemp.close()
+
+            filetemp = open("%s.mass" % job_name, 'wb')
+            filetemp.writelines(zeofiles[2])
+            filetemp.close()
+
+            zeo_command = shlex.split(self.options.get('zeo++_command'))
+            zeo_command.extend(['-r', '%s.rad' % job_name, '-mass',
+                                '%s.mass' % job_name, '%s.cssr' % job_name])
+            info("Running zeo++")
+            debug("Zeo ++ command: '" + " ".join(zeo_command) + "'")
+            try:
+                subprocess.Popen(zeo_command)
+            except OSError:
+                error("Error running zeo++, please run manually")
+
         os.chdir(job_dir)
 
     @property
@@ -1447,6 +1472,7 @@ class Structure(object):
         """
         Return a Cerius2 cssr file with coordinates and cell as a list of
         strings. Set no_atom_id to produce labels to work with Zeo++.
+
         """
 
         space_group = (1, "P 1")
@@ -1476,6 +1502,19 @@ class Structure(object):
                         "   0"*8 + " %7.3f\n" % atom.charge)
 
         return cssr
+
+    def to_zeoplusplus(self):
+        """
+        Return a tuple containing a cssr file, radii file and mass file.
+
+        """
+
+        radii = ["%-7s %-f\n" % (atom, UFF[atom][0]/2.0)
+                 for atom in unique(self.types)]
+        masses = ["%-7s %-fs\n" % (atom, WEIGHT[atom])
+                  for atom in unique(self.types)]
+
+        return (self.to_cssr(no_atom_id=True), radii, masses)
 
     def fastmc_postproc(self, filepath, tp_point, options):
         """Update structure properties from gcmc OUTPUT."""

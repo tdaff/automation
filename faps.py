@@ -745,8 +745,9 @@ class PyNiss(object):
             filetemp.close()
 
             zeo_command = shlex.split(self.options.get('zeo++_command'))
-            zeo_command.extend(['-r', '%s.rad' % job_name, '-mass',
-                                '%s.mass' % job_name, '%s.cssr' % job_name])
+            zeo_command[1:1] = ['-mass', '%s.mass' % job_name,
+                                '-r', '%s.rad' % job_name]
+            zeo_command.append('%s.cssr' % job_name)
             info("Running zeo++")
             debug("Zeo ++ command: '" + " ".join(zeo_command) + "'")
             try:
@@ -1511,7 +1512,7 @@ class Structure(object):
 
         radii = ["%-7s %-f\n" % (atom, UFF[atom][0]/2.0)
                  for atom in unique(self.types)]
-        masses = ["%-7s %-fs\n" % (atom, WEIGHT[atom])
+        masses = ["%-7s %-f\n" % (atom, WEIGHT[atom])
                   for atom in unique(self.types)]
 
         return (self.to_cssr(no_atom_id=True), radii, masses)

@@ -1886,8 +1886,8 @@ class Cell(object):
     cell = property(get_cell, set_cell)
 
     def get_params(self):
-        """Get the six parameter cell representation."""
-        return self._params
+        """Get the six parameter cell representation as a tuple."""
+        return tuple(self._params)
 
     def set_params(self, value):
         """Set cell and params from the cell parameters."""

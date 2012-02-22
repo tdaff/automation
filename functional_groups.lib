@@ -1,0 +1,24 @@
+# functional_groups.lib
+#
+# Library for functional groups.
+#
+# Blocks of text need to be indented.
+
+[Cl]
+name = Chloride
+atoms =
+    Cl   0.0  0.0  0.0
+connection_point = 0.0 0.0 0.0
+orientation = 1.0 0.0 0.0
+
+[NH2]
+name = Amine
+atoms =
+    N    0.000  0.000  0.000
+    H    0.866  0.500  0.000
+    H   -0.866  0.500  0.000
+connection_point = 0.0 0.0 0.0
+orientation = 0.0 1.0 0.0
+
+
+# vim:ft=dosini:set paste:

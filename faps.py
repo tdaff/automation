@@ -1100,6 +1100,7 @@ class Structure(object):
             # can skip if just identity operation as it's slow for big systems
             self.remove_duplicates()
         self.order_by_types()
+        self.symmetry = symmetry
 
     def from_vasp(self, filename='CONTCAR', update=False):
         """Read a structure from a vasp [POS,CONT]CAR file."""
@@ -1479,7 +1480,7 @@ class Structure(object):
         space_group = (1, "P 1")
         opt = 1
         cell = self.cell
-        # spacens between all format strings ensures that there will always
+        # spacers between all format strings ensures that there will always
         # be whitespace between components.
         cssr = [" "*38, "%8.3f %7.3f %7.3f\n" % cell.params[:3],
                 " "*21, "%8.3f %7.3f %7.3f" % cell.params[3:], " "*4,

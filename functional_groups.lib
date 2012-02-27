@@ -20,7 +20,7 @@ atoms =
     H   -0.866  0.500  0.000
 connection_point = 0.0 0.0 0.0
 orientation = 0.0 1.0 0.0
-normals = 1.0 0.0 0.0
+normals = 0.0 0.0 1.0
 
 
 # vim:ft=dosini:set paste:

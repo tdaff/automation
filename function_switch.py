@@ -70,6 +70,7 @@ class ModifiableStructure(Structure):
             for neighbour in atom.neighbours:
                 if neighbour[0] < 0.5*(atom.vdw_radius + self.atoms[neighbour[1]].vdw_radius):
                     atom.bonds.append(neighbour)
+                else:
                     break
             if atom.type == 'H':
                 neighbour_a = self.atoms[self.atoms[atom.bonds[0][1]].neighbours[0][1]].pos
@@ -79,17 +80,27 @@ class ModifiableStructure(Structure):
                 self.attachments.append((self.atoms.index(atom), atom.bonds, normal))
 
     def gen_site_connection_table(self):
-        u_atoms = unique(self.atoms, key=lambda x: x.site)
+        """
+        Find connections and organise by site type.
+
+        """
+
+#        u_atoms = unique(self.atoms, key=lambda x: x.site)
         self.gen_neighbour_list()
-        self.attachments = []
-        for atom in u_atoms:
+        self.attachments = {}
+        for atom in self.atoms:
             atom.bonds = []
             for neighbour in atom.neighbours:
                 if neighbour[0] < 0.5*(atom.vdw_radius + self.atoms[neighbour[1]].vdw_radius):
                     atom.bonds.append(neighbour)
+                else:
                     break
             if atom.type == 'H':
-                self.attachments.append((self.atoms.index(atom), atom.bonds))
+                if atom.site in self.attachments:
+                    self.attachments[atom.site].append((self.atoms.index(atom), atom.bonds))
+                else:
+                    self.attachments[atom.site] = [(self.atoms.index(atom), atom.bonds)]
+
 
 
 class FunctionalGroupLibrary(dict):
@@ -240,44 +251,54 @@ def main():
     job_options = Options()
     job_name = job_options.get('job_name')
 
-    irmof1 = ModifiableStructure("IMOF1")
-    irmof1.from_cif("MOF5/277428.cif")
+    input_structure = ModifiableStructure("CALF21")
+    input_structure.from_cif("test_cifs/CALF21.cif")
 
-    irmof1.gen_connection_table()
-    #irmof1.symmetry_conections()
-    irmof1.gen_normals()
+    input_structure.gen_site_connection_table()
+    #input_structure.symmetry_conections()
+    input_structure.gen_normals()
 
     f_groups = FunctionalGroupLibrary()
     f_groups.from_file()
     print(f_groups)
 
-    print len(irmof1.attachments)
-
-    for atom in irmof1.atoms:
-        print atom.bonds
-
-    for r in range(len(irmof1.attachments)+1):
-        print(factorial(len(irmof1.attachments))/(factorial(r)*factorial((len(irmof1.attachments)-r))))
-
-    for idx, attach_points in enumerate(powerset(irmof1.attachments)):
-        attachment = f_groups['NH2']
-    #    print attach_points
-        new_mof = list(irmof1.atoms)
-        for this_point in attach_points:
+    attachment = f_groups['NH2']
+    for attach_site, attachments in input_structure.attachments.items():
+        new_mof = list(input_structure.atoms)
+        for this_point in attachments:
             attach_id = this_point[0]
             attach_to = this_point[1][0][1]
-            attach_at = irmof1.atoms[attach_to].pos
-            attach_towards = direction3d(attach_at, irmof1.atoms[attach_id].pos)
-            bond_length = 0.5*(irmof1.atoms[attach_to].vdw_radius + attachment.atoms[0].vdw_radius)
+            attach_at = input_structure.atoms[attach_to].pos
+            attach_towards = direction3d(attach_at, input_structure.atoms[attach_id].pos)
+            bond_length = 0.5*(input_structure.atoms[attach_to].vdw_radius + attachment.atoms[0].vdw_radius)
             new_mof[attach_id:attach_id+1] = [None]
             #attach_normal = this_point[2]
-            attach_normal = irmof1.atoms[attach_to].normal
+            attach_normal = input_structure.atoms[attach_to].normal
             new_mof.extend(attachment.atoms_attached_to(attach_at, bond_length, attach_towards, attach_normal))
         new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
-        print idx, '\r',
-        if not idx % 500:
-            with open('output%04i.xyz' % idx, 'wb') as output_file:
-                output_file.writelines(to_xyz(new_mof))
+        with open('output%s.xyz' % attach_site, 'wb') as output_file:
+            output_file.writelines(to_xyz(new_mof))
+
+
+    #for idx, attach_points in enumerate(powerset(input_structure.attachments)):
+    #    attachment = f_groups['NH2']
+    ##    print attach_points
+    #    new_mof = list(input_structure.atoms)
+    #    for this_point in attach_points:
+    #        attach_id = this_point[0]
+    #        attach_to = this_point[1][0][1]
+    #        attach_at = input_structure.atoms[attach_to].pos
+    #        attach_towards = direction3d(attach_at, input_structure.atoms[attach_id].pos)
+    #        bond_length = 0.5*(input_structure.atoms[attach_to].vdw_radius + attachment.atoms[0].vdw_radius)
+    #        new_mof[attach_id:attach_id+1] = [None]
+    #        #attach_normal = this_point[2]
+    #        attach_normal = input_structure.atoms[attach_to].normal
+    #        new_mof.extend(attachment.atoms_attached_to(attach_at, bond_length, attach_towards, attach_normal))
+    #    new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
+    #    print idx, '\r',
+    #    if not idx % 500:
+    #        with open('output%04i.xyz' % idx, 'wb') as output_file:
+    #            output_file.writelines(to_xyz(new_mof))
 
 if __name__ == '__main__':
 

@@ -12,7 +12,7 @@ import copy
 import ConfigParser
 import re
 from math import factorial
-from itertools import chain, combinations, combinations_with_replacement
+from itertools import chain, combinations, product
 
 import numpy as np
 from numpy import array, asarray, dot, cross
@@ -252,7 +252,7 @@ def all_combinations_replace(structure, groups):
     sites = powerset(structure.attachments)
     idx = 0
     for site_set in sites:
-        for group_set in combinations_with_replacement(groups, len(site_set)):
+        for group_set in product(groups, repeat=len(site_set)):
             new_mof_name = []
             new_mof = list(structure.atoms)
             for this_site, this_group in zip(site_set, group_set):
@@ -284,7 +284,7 @@ def main():
     job_name = job_options.get('job_name')
 
     input_structure = ModifiableStructure("CALF21")
-    input_structure.from_cif("test_cifs/CALF21.cif")
+    input_structure.from_cif("test_cifs/CALF21-same.cif")
 
     input_structure.gen_site_connection_table()
     #input_structure.symmetry_conections()

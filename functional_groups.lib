@@ -4,6 +4,15 @@
 #
 # Blocks of text need to be indented.
 
+[H]
+name = Hydrogen
+atoms =
+    H    0.0  0.0  0.0
+connection_point = 0.0 0.0 0.0
+orientation = 1.0 0.0 0.0
+normals = 0.0 0.0 1.0
+
+
 [Cl]
 name = Chloro
 atoms =
@@ -11,6 +20,7 @@ atoms =
 connection_point = 0.0 0.0 0.0
 orientation = 1.0 0.0 0.0
 normals = 0.0 0.0 1.0
+
 
 [F]
 name = Fluoro
@@ -20,6 +30,7 @@ connection_point = 0.0 0.0 0.0
 orientation = 1.0 0.0 0.0
 normals = 0.0 0.0 1.0
 
+
 [Br]
 name = Bromo
 atoms =
@@ -27,6 +38,7 @@ atoms =
 connection_point = 0.0 0.0 0.0
 orientation = 1.0 0.0 0.0
 normals = 0.0 0.0 1.0
+
 
 [NH2]
 name = Amine
@@ -37,6 +49,7 @@ atoms =
 connection_point = 0.0 0.0 0.0
 orientation = 0.0 1.0 0.0
 normals = 0.0 0.0 1.0
+
 
 [CH4]
 name = Methyl
@@ -49,12 +62,65 @@ connection_point = 0.0 0.0 0.0
 orientation = 0.0 0.0 -1.0
 normals = 0.0 1.0 0.0
 
+
 [NO2]
 name = Nitro
 atoms =
     N    0.000  0.000  0.000
     O    0.866  0.500  0.000
     O   -0.866  0.500  0.000
+connection_point = 0.0 0.0 0.0
+orientation = 0.0 1.0 0.0
+normals = 0.0 0.0 1.0
+
+
+[HCO]
+name = Aldehyde
+atoms =
+    C    0.000  0.000  0.000
+    H    0.866  0.500  0.000
+    O   -0.866  0.500  0.000
+connection_point = 0.0 0.0 0.0
+orientation = 0.0 1.0 0.0
+normals = 0.0 0.0 1.0
+
+
+[COOH]
+name = Carboxylate
+atoms =
+    C    0.000  0.000  0.000
+    O    0.866  0.500  0.000
+    O   -0.866  0.500  0.000
+    H    0.000  1.000  0.000
+connection_point = 0.0 0.0 0.0
+orientation = 0.0 1.0 0.0
+normals = 0.0 0.0 1.0
+
+
+[O]
+name = Ketone
+atoms =
+    O    0.000  0.000  0.000
+connection_point = 0.0 0.0 0.0
+orientation = 0.0 1.0 0.0
+normals = 0.0 0.0 1.0
+
+
+[OH]
+name = Alcohol
+atoms =
+    O    0.000  0.000  0.000
+    H    0.866  0.500  0.000
+connection_point = 0.0 0.0 0.0
+orientation = 0.0 1.0 0.0
+normals = 0.0 0.0 1.0
+
+
+[CN]
+name = Nitrile
+atoms =
+    C    0.000  0.000  0.000
+    N    0.000  1.000  0.000
 connection_point = 0.0 0.0 0.0
 orientation = 0.0 1.0 0.0
 normals = 0.0 0.0 1.0

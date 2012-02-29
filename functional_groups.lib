@@ -10,7 +10,8 @@ atoms =
     H    0.0  0.0  0.0
 connection_point = 0.0 0.0 0.0
 orientation = 1.0 0.0 0.0
-normals = 0.0 0.0 1.0
+normal = 0.0 0.0 1.0
+carbon_bond = 1.07
 
 
 [Cl]
@@ -19,7 +20,8 @@ atoms =
     Cl   0.0  0.0  0.0
 connection_point = 0.0 0.0 0.0
 orientation = 1.0 0.0 0.0
-normals = 0.0 0.0 1.0
+normal = 0.0 0.0 1.0
+carbon_bond = 1.77
 
 
 [F]
@@ -28,7 +30,8 @@ atoms =
     F   0.0  0.0  0.0
 connection_point = 0.0 0.0 0.0
 orientation = 1.0 0.0 0.0
-normals = 0.0 0.0 1.0
+normal = 0.0 0.0 1.0
+carbon_bond = 1.41
 
 
 [Br]
@@ -37,18 +40,20 @@ atoms =
     Br   0.0  0.0  0.0
 connection_point = 0.0 0.0 0.0
 orientation = 1.0 0.0 0.0
-normals = 0.0 0.0 1.0
+normal = 0.0 0.0 1.0
+carbon_bond = 2.04
 
 
 [NH2]
 name = Amine
 atoms =
     N    0.000  0.000  0.000
-    H    0.866  0.500  0.000
-    H   -0.866  0.500  0.000
+    H    0.829  0.559  0.000
+    H   -0.829  0.559  0.000
 connection_point = 0.0 0.0 0.0
 orientation = 0.0 1.0 0.0
-normals = 0.0 0.0 1.0
+normal = 0.0 0.0 1.0
+carbon_bond = 1.37
 
 
 [CH4]
@@ -60,70 +65,98 @@ atoms =
     H   -0.513360  0.889165 -0.363000
 connection_point = 0.0 0.0 0.0
 orientation = 0.0 0.0 -1.0
-normals = 0.0 1.0 0.0
+normal = 0.0 1.0 0.0
+carbon_bond = 1.68
 
 
 [NO2]
 name = Nitro
 atoms =
     N    0.000  0.000  0.000
-    O    0.866  0.500  0.000
-    O   -0.866  0.500  0.000
+    O    1.111  0.573  0.000
+    O   -1.111  0.573  0.000
 connection_point = 0.0 0.0 0.0
 orientation = 0.0 1.0 0.0
-normals = 0.0 0.0 1.0
+#normal = 0.0 0.0 1.0
+normal = 0.5878 0.0 0.8090
+carbon_bond = 1.51
 
 
 [HCO]
 name = Aldehyde
 atoms =
     C    0.000  0.000  0.000
-    H    0.866  0.500  0.000
-    O   -0.866  0.500  0.000
+    H    0.950  0.400  0.000
+    O   -1.043  0.842  0.000
 connection_point = 0.0 0.0 0.0
 orientation = 0.0 1.0 0.0
-normals = 0.0 0.0 1.0
+normal = 0.0 0.0 1.0
+carbon_bond = 1.64
 
 
 [COOH]
 name = Carboxylate
 atoms =
     C    0.000  0.000  0.000
-    O    0.866  0.500  0.000
-    O   -0.866  0.500  0.000
-    H    0.000  1.000  0.000
+    O    1.032  0.651  0.000
+    O   -1.231  0.530  0.000
+    H   -1.231  1.550  0.000
 connection_point = 0.0 0.0 0.0
 orientation = 0.0 1.0 0.0
-normals = 0.0 0.0 1.0
+#normal = 0.0 0.0 1.0
+normal = 0.5307 0.0 0.8476
+carbon_bond = 1.55
 
 
-[O]
-name = Ketone
-atoms =
-    O    0.000  0.000  0.000
-connection_point = 0.0 0.0 0.0
-orientation = 0.0 1.0 0.0
-normals = 0.0 0.0 1.0
+#[O]
+#name = Ketone
+#atoms =
+#    O    0.000  0.000  0.000
+#connection_point = 0.0 0.0 0.0
+#orientation = 0.0 1.0 0.0
+#normal = 0.0 0.0 1.0
+#carbon_bond = 1.30
 
 
 [OH]
 name = Alcohol
 atoms =
     O    0.000  0.000  0.000
-    H    0.866  0.500  0.000
+    H    0.916  0.253  0.000
 connection_point = 0.0 0.0 0.0
 orientation = 0.0 1.0 0.0
-normals = 0.0 0.0 1.0
+normal = 0.0 0.0 1.0
+carbon_bond = 1.38
 
 
 [CN]
 name = Nitrile
 atoms =
     C    0.000  0.000  0.000
-    N    0.000  1.000  0.000
+    N    0.000  1.290  0.000
 connection_point = 0.0 0.0 0.0
 orientation = 0.0 1.0 0.0
-normals = 0.0 0.0 1.0
+normal = 0.0 0.0 1.0
+carbon_bond = 1.69
+
+[Ph]
+name = Phenyl
+atoms =
+    C    0.000  0.000  0.000
+    C    1.212  0.700  0.000
+    C    1.212  2.100  0.000
+    C    0.000  2.800  0.000
+    C   -1.212  2.100  0.000
+    C   -1.212  0.700  0.000
+    H    2.156  0.155  0.000
+    H    2.156  2.645  0.000
+    H    0.000  3.890  0.000
+    H   -2.156  2.645  0.000
+    H   -2.156  0.155  0.000
+connection_point = 0.0 0.0 0.0
+orientation = 0.0 1.0 0.0
+normal = 0.0 0.0 1.0
+carbon_bond = 1.52
 
 
 # vim:ft=dosini:set paste:

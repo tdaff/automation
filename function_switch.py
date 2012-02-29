@@ -10,7 +10,10 @@ Alter a known structure with new functional groups ready for fapping.
 
 import copy
 import ConfigParser
+import hashlib
+import random
 import re
+from logging import info, warn, error
 from math import factorial
 from itertools import chain, combinations, product
 
@@ -30,6 +33,19 @@ class ModifiableStructure(Structure):
     into the parent Structure class.
 
     """
+
+    def gen_factional_positions(self):
+        """
+        Precalculate the fractional positions for all the atoms in the
+        current cell. These will be incorrect if the cell chagnes!
+
+        """
+
+        cell = self.cell.cell
+        inv_cell = self.cell.inverse
+        for atom in self.atoms:
+            atom.cellpos = atom.ipos(cell, inv_cell)
+            atom.cellfpos = atom.ifpos(inv_cell)
 
     def gen_normals(self):
         """
@@ -55,7 +71,6 @@ class ModifiableStructure(Structure):
                              cpositions[conex[1]], fpositions[conex[1]],
                              cell)
             atom.normal = cross(left, right)
-        print [atom.normal for atom in self.atoms]
 
 
     def gen_connection_table(self):
@@ -81,18 +96,19 @@ class ModifiableStructure(Structure):
 
     def gen_site_connection_table(self):
         """
-        Find connections and organise by site type.
+        Find connected atoms (bonds) and organise by sites. Symmetry
+        equivalent atoms have the same site.
 
         """
 
-#        u_atoms = unique(self.atoms, key=lambda x: x.site)
         self.gen_neighbour_list()
         self.attachments = {}
-        for atom in self.atoms:
+        for at_idx, atom in enumerate(self.atoms):
             atom.bonds = []
             for neighbour in atom.neighbours:
-                if neighbour[0] < 0.5*(atom.vdw_radius + self.atoms[neighbour[1]].vdw_radius):
-                    atom.bonds.append(neighbour)
+                n_atom = self.atoms[neighbour[1]]
+                if neighbour[0] < 0.5*(atom.vdw_radius + n_atom.vdw_radius):
+                    atom.bonds.append((n_atom.type, neighbour[1]))
                 else:
                     break
             if atom.type == 'H':
@@ -137,7 +153,8 @@ class FunctionalGroup(object):
 
         self._parse_atoms(items.pop('atoms'))
         self.orientation = string_to_tuple(items.pop('orientation'), float)
-        self.normal = string_to_tuple(items.pop('normals'), float)
+        self.normal = string_to_tuple(items.pop('normal'), float)
+        self.bond_length = float(items.pop('carbon_bond'))
         # Arbitrary attributes can be set
         self.__dict__.update(items)
 
@@ -150,8 +167,10 @@ class FunctionalGroup(object):
                 continue
             self.atoms.append(Atom(atom[0], [float(x) for x in atom[1:4]]))
 
-    def atoms_attached_to(self, point, bond_length, direction, normal):
+    def atoms_attached_to(self, point, direction, normal, bond_length=None):
         """Return a list of atoms at the specified position."""
+        if bond_length is None:
+            bond_length = self.bond_length
         new_atoms = [copy.copy(atom) for atom in self.atoms]
         rotate_matrix = matrix_rotate(self.orientation, direction)
         my_rotated_normal = np.dot(rotate_matrix, self.normal)
@@ -169,11 +188,11 @@ def to_xyz(atoms, charges=True, name=None):
 
     if charges:
         xyz = ["%-6s" % atom.type +
-               "%9.6f %9.6f %9.6f" % tuple(atom.pos) +
+               "%11.6f %11.6f %11.6f" % tuple(atom.pos) +
                "%11.6f\n" % atom.charge for atom in atoms]
     else:
         xyz = ["%-6s" % atom.type +
-               "%9.6f %9.6f %9.6f" % tuple(atom.pos) for atom in atoms]
+               "%11.6f %11.6f %11.6f" % tuple(atom.pos) for atom in atoms]
 
     # header needs the atom counts
     if name is None:
@@ -181,6 +200,23 @@ def to_xyz(atoms, charges=True, name=None):
     xyz = [" %i\n" % len(atoms), "%s\n" % name] + xyz
 
     return xyz
+
+
+def to_pdb(atoms, cell, name=None):
+    """
+    Return a pdb compatible file representation.
+
+    """
+    pdb = ["CRYST1%9.3f%9.3f%9.3f%7.2f%7.2f%7.2f P 1           0\n" % cell.params]
+    site_number = 1
+    for at_idx, atom in enumerate(atoms):
+        if atom.site is None:
+            atom.site = "%s%i" % (atom.type, site_number)
+            site_number += 1
+        pdb.append("ATOM  %5i %-4s UNK A   1    " % (at_idx+1, atom.site) +
+                   "%8.3f%8.3f%8.3f" % tuple(atom.pos) +
+                   "%6.2f  0.00%12s  \n" % (atom.charge, atom.type))
+    return pdb
 
 
 def matrix_rotate(source, target):
@@ -244,12 +280,32 @@ def min_vect(c_coa, f_coa, c_cob, f_cob_in, box):
         return direction3d(c_coa, new_b)
 
 
+def test_collision(test_atom, atoms, cell):
+    """
+    Does atom intersect with any others?
+
+    """
+    pos = test_atom.ipos(cell.cell, cell.inverse)
+    ipos = test_atom.ifpos(cell.inverse)
+    for atom in atoms:
+        if atom is None:
+            continue
+        dist = min_vect(pos, ipos, atom.ipos(cell.cell, cell.inverse), atom.ifpos(cell.inverse), cell.cell)
+        dist = dot(dist, dist)
+        if dist < 0.5:
+            error("Atoms closer than 0.5 A")
+            return False
+        elif dist < 0.8:
+            warn("Atoms closer than 0.8 A")
+    return True
+
 def all_combinations_replace(structure, groups):
     """
     Replace every functional point with every combination of functional groups.
 
     """
-    sites = powerset(structure.attachments)
+    sites = powerset(sorted(structure.attachments))
+    structure.gen_factional_positions()
     idx = 0
     for site_set in sites:
         for group_set in product(groups, repeat=len(site_set)):
@@ -263,16 +319,42 @@ def all_combinations_replace(structure, groups):
                     attach_to = this_point[1][0][1]
                     attach_at = structure.atoms[attach_to].pos
                     attach_towards = direction3d(attach_at, structure.atoms[attach_id].pos)
-                    bond_length = 0.5*(structure.atoms[attach_to].vdw_radius + attachment.atoms[0].vdw_radius)
-                    new_mof[attach_id:attach_id+1] = [None]
                     attach_normal = structure.atoms[attach_to].normal
-                    new_mof.extend(attachment.atoms_attached_to(attach_at, bond_length, attach_towards, attach_normal))
+                    incoming_group = attachment.atoms_attached_to(attach_at, attach_towards, attach_normal)
+                    extracted_atoms = new_mof[attach_id:attach_id+1]
+                    new_mof[attach_id:attach_id+1] = [None]
+                    for atom in incoming_group:
+                        if not test_collision(atom, new_mof, structure.cell):
+                            new_mof_name.append("X")
+                    new_mof.extend(incoming_group)
+
 
             new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
+            new_mof_name = "".join(new_mof_name)
+            info("%i: %s" % (idx, new_mof_name))
             with open('output%05i.xyz' % idx, 'wb') as output_file:
-                new_mof_name = "".join(new_mof_name)
                 output_file.writelines(to_xyz(new_mof, name=new_mof_name))
+            with open('output%05i.pdb' % idx, 'wb') as output_file:
+                output_file.writelines(to_pdb(new_mof, structure.cell))
             idx += 1
+
+
+def random_replace(structure, groups, count):
+    """
+    Replace a random number of sites.
+
+    """
+    nsites = sum(len(x) for x in structure.attachments.values())
+    if count > nsites:
+        print("too many sites requested")
+        count = nsites
+    func_repr = [random.choice(groups.keys()) for _counter in range(count)] + [None]*(nsites - count)
+    print(func_repr)
+    print(hashlib.md5(str(func_repr)).hexdigest())
+    random.shuffle(func_repr)
+    print(func_repr)
+    print(hashlib.md5(str(func_repr)).hexdigest())
+
 
 def main():
     """
@@ -284,7 +366,7 @@ def main():
     job_name = job_options.get('job_name')
 
     input_structure = ModifiableStructure("CALF21")
-    input_structure.from_cif("test_cifs/CALF21-same.cif")
+    input_structure.from_cif("test_cifs/CALF21.cif")
 
     input_structure.gen_site_connection_table()
     #input_structure.symmetry_conections()
@@ -292,11 +374,11 @@ def main():
 
     f_groups = FunctionalGroupLibrary()
     f_groups.from_file()
-    print(f_groups)
 
     attachment = f_groups['Cl']
 
     all_combinations_replace(input_structure, f_groups)
+    random_replace(input_structure, f_groups, 4)
 
     for attach_site, attachments in input_structure.attachments.items():
         new_mof = list(input_structure.atoms)

@@ -1582,13 +1582,13 @@ class Structure(object):
                 for sites in guest_locations:
                     atom_name = name_from_types(sites, guest)
                     for atom, magnitude in guest_locations[sites]:
-                        maxima.append("%-6s" % atom_name +
+                        maxima.append((magnitude, "%-6s" % atom_name +
                                       "%10.6f %10.6f %10.6f " % tuple(atom) +
-                                      "%10.6f\n" % magnitude)
+                                      "%10.6f\n" % magnitude))
                 locations = open("%s-%s.xyz" % (self.name, guest.ident), 'w')
                 locations.write(" %i\nBinding sites at %r\n" %
                                 (len(maxima), tp_point))
-                locations.writelines(maxima)
+                locations.writelines([x[1] for x in sorted(maxima, reverse=True)])
                 locations.close()
 
 
@@ -2216,8 +2216,8 @@ def mk_repeat(cube_name='REPEAT_ESP.cube', symmetry=False):
         "0\n",
         "If flag above=1 then provide weight next\n",
         "0.00000\n",
-        "Enter total charge of the system\n",
-        "0.00000\n"]
+        "Max distance cut-off scaling factor (1000.0 default)\n",
+        "2.0\n"]
 
     filetemp = open('REPEAT_param.inp', 'w')
     filetemp.writelines(repeat_input)

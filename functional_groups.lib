@@ -14,16 +14,6 @@ normal = 0.0 0.0 1.0
 carbon_bond = 1.07
 
 
-[Cl]
-name = Chloro
-atoms =
-    Cl   0.0  0.0  0.0
-connection_point = 0.0 0.0 0.0
-orientation = 1.0 0.0 0.0
-normal = 0.0 0.0 1.0
-carbon_bond = 1.77
-
-
 [F]
 name = Fluoro
 atoms =
@@ -34,6 +24,16 @@ normal = 0.0 0.0 1.0
 carbon_bond = 1.41
 
 
+[Cl]
+name = Chloro
+atoms =
+    Cl   0.0  0.0  0.0
+connection_point = 0.0 0.0 0.0
+orientation = 1.0 0.0 0.0
+normal = 0.0 0.0 1.0
+carbon_bond = 1.77
+
+
 [Br]
 name = Bromo
 atoms =
@@ -42,6 +42,16 @@ connection_point = 0.0 0.0 0.0
 orientation = 1.0 0.0 0.0
 normal = 0.0 0.0 1.0
 carbon_bond = 2.04
+
+
+[I]
+name = Iodo
+atoms =
+    I    0.0  0.0  0.0
+connection_point = 0.0 0.0 0.0
+orientation = 1.0 0.0 0.0
+normal = 0.0 0.0 1.0
+carbon_bond = 2.12
 
 
 [NH2]
@@ -141,16 +151,6 @@ orientation = 0.0 1.0 0.0
 #normal = 0.0 0.0 1.0
 normal = 0.5307 0.0 0.8476
 carbon_bond = 1.55
-
-
-#[O]
-#name = Ketone
-#atoms =
-#    O    0.000  0.000  0.000
-#connection_point = 0.0 0.0 0.0
-#orientation = 0.0 1.0 0.0
-#normal = 0.0 0.0 1.0
-#carbon_bond = 1.30
 
 
 [OH]

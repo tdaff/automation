@@ -323,7 +323,7 @@ def test_collision(test_atom, atoms, cell, overlap=1.3):
             return False
     return True
 
-def all_combinations_replace(structure, groups):
+def all_combinations_replace(structure, groups, rotations=12):
     """
     Replace every functional point with every combination of functional groups.
 
@@ -331,6 +331,7 @@ def all_combinations_replace(structure, groups):
     sites = powerset(sorted(structure.attachments))
     structure.gen_factional_positions()
     idx = 0
+    rotation_angle = 2*np.pi/rotations
     for site_set in sites:
         for group_set in product(groups, repeat=len(site_set)):
             idx += 1
@@ -348,12 +349,12 @@ def all_combinations_replace(structure, groups):
                     attach_normal = structure.atoms[attach_to].normal
                     extracted_atoms = new_mof[attach_id:attach_id+1]
                     new_mof[attach_id:attach_id+1] = [None]
-                    for trial_rotation in range(12):
+                    for _trial_rotation in range(rotations):
                         incoming_group = attachment.atoms_attached_to(attach_at, attach_towards, attach_normal)
                         for atom in incoming_group:
                             if not test_collision(atom, new_mof, structure.cell):
                                 debug("Rotating group")
-                                attach_normal = dot(rotation_about_angle(attach_towards, 30.0), attach_normal)
+                                attach_normal = dot(rotation_about_angle(attach_towards, rotation_angle), attach_normal)
                                 # Don't need to test more atoms
                                 break
                         else:
@@ -371,13 +372,14 @@ def all_combinations_replace(structure, groups):
                 continue
             new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
             info("%i: %s" % (idx, new_mof_name))
-            with open('output%05i.xyz' % idx, 'wb') as output_file:
+            job_name = structure.name
+            with open('%s_func_%05i.xyz' % (job_name, idx), 'wb') as output_file:
                 output_file.writelines(to_xyz(new_mof, name=new_mof_name))
-            with open('output%05i.pdb' % idx, 'wb') as output_file:
+            with open('%s_func_%05i.pdb' % (job_name, idx), 'wb') as output_file:
                 output_file.writelines(to_pdb(new_mof, structure.cell, name=new_mof_name))
 
 
-def random_replace(structure, groups, count=None):
+def random_replace(structure, groups, count=None, rotations=36):
     """
     Replace a random number of sites.
 
@@ -405,21 +407,37 @@ def random_replace(structure, groups, count=None):
         attach_at = structure.atoms[attach_to].pos
         attach_towards = direction3d(attach_at, structure.atoms[attach_id].pos)
         attach_normal = structure.atoms[attach_to].normal
-        incoming_group = attachment.atoms_attached_to(attach_at, attach_towards, attach_normal)
         extracted_atoms = new_mof[attach_id:attach_id+1]
         new_mof[attach_id:attach_id+1] = [None]
-        for atom in incoming_group:
-            if not test_collision(atom, new_mof, structure.cell):
-                new_mof_name.append("X")
-        new_mof.extend(incoming_group)
+        for trial_rotation in range(rotations):
+            incoming_group = attachment.atoms_attached_to(attach_at, attach_towards, attach_normal)
+            for atom in incoming_group:
+                if not test_collision(atom, new_mof, structure.cell):
+                    debug("Rotating group")
+                    attach_normal = dot(rotation_about_angle(attach_towards, random.random()*np.pi*2), attach_normal)
+                    break
+            else:
+                new_mof.extend(incoming_group)
+                break
+        else:
+            # this_point not valid
+            did_not_attach = this_group
+            error("Failed to generate: %s" % ".".join([x or "" for x in func_repr]))
+            warn("Stopped after: %s" % ".".join(new_mof_name))
+
+            return False
 
     new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
     new_mof_name = "{" + ".".join(new_mof_name) + "}"
-    info(new_mof_name)
+    info("Generated: %s" % new_mof_name)
+    info("With unique name: %s" % unique_name)
     with open('random-%s.xyz' % unique_name, 'wb') as output_file:
         output_file.writelines(to_xyz(new_mof, name=new_mof_name))
     with open('random-%s.pdb' % unique_name, 'wb') as output_file:
         output_file.writelines(to_pdb(new_mof, structure.cell, name=new_mof_name))
+
+    # completed sucessfully
+    return True
 
 
 def main():
@@ -431,21 +449,21 @@ def main():
     job_options = Options()
     job_name = job_options.get('job_name')
 
-    input_structure = ModifiableStructure("CALF21")
-    input_structure.from_cif("test_cifs/CALF21.cif")
+    input_structure = ModifiableStructure(job_name)
+    input_structure.from_file(job_name,
+                              job_options.get('initial_structure_format'),
+                              job_options)
+    #input_structure.from_cif("test_cifs/CALF21.cif")
 
     input_structure.gen_site_connection_table()
-    #input_structure.symmetry_conections()
     input_structure.gen_normals()
 
     f_groups = FunctionalGroupLibrary()
     f_groups.from_file()
 
-    attachment = f_groups['Cl']
-
     all_combinations_replace(input_structure, f_groups)
-    for _make_some_randoms in range(30):
-        random_replace(input_structure, f_groups)
+#    for _make_some_randoms in range(30):
+#        random_replace(input_structure, f_groups)
 
 
 if __name__ == '__main__':

@@ -14,12 +14,12 @@ import hashlib
 import random
 import re
 import textwrap
-from logging import info, warn, error
+from logging import debug, info, warn, error
 from math import factorial
 from itertools import chain, combinations, product
 
 import numpy as np
-from numpy import array, asarray, dot, cross
+from numpy import array, identity, asarray, dot, cross, outer, sin, cos
 from numpy.linalg import norm
 
 from faps import Structure, Atom
@@ -243,6 +243,22 @@ def matrix_rotate(source, target):
                   [h*v[0]*v[2] - v[1], h*v[1]*v[2] + v[0], c + h*v[2]*v[2]]])
 
 
+def rotation_about_angle(axis_in, angle):
+    """
+    Create a rotation matrix corresponding to the rotation around a general
+    axis by a specified angle.
+
+    """
+    axis = axis_in/norm(axis_in)
+
+    aprod = outer(axis, axis)
+    skew = array([[ 0, axis[2], -axis[1]], [-axis[2], 0, axis[0]],
+        [axis[1], -axis[0], 0]])
+
+    # R = dd^T + cos(a) (I - dd^T) + sin(a) skew(d)
+    return aprod+cos(angle)*(identity(3)-aprod)+sin(angle)*skew
+
+
 def direction3d(source, target):
     """Return the vector connecting two 3d points."""
     return [target[0] - source[0],
@@ -291,7 +307,7 @@ def min_vect(c_coa, f_coa, c_cob, f_cob_in, box):
         return direction3d(c_coa, new_b)
 
 
-def test_collision(test_atom, atoms, cell):
+def test_collision(test_atom, atoms, cell, overlap=1.3):
     """
     Does atom intersect with any others?
 
@@ -303,11 +319,8 @@ def test_collision(test_atom, atoms, cell):
             continue
         dist = min_vect(pos, ipos, atom.ipos(cell.cell, cell.inverse), atom.ifpos(cell.inverse), cell.cell)
         dist = dot(dist, dist)
-        if dist < 0.5:
-            error("Atoms closer than 0.5 A")
+        if dist < overlap:
             return False
-        elif dist < 0.8:
-            warn("Atoms closer than 0.8 A")
     return True
 
 def all_combinations_replace(structure, groups):
@@ -320,8 +333,10 @@ def all_combinations_replace(structure, groups):
     idx = 0
     for site_set in sites:
         for group_set in product(groups, repeat=len(site_set)):
+            idx += 1
             new_mof_name = []
             new_mof = list(structure.atoms)
+            did_not_attach = False
             for this_site, this_group in zip(site_set, group_set):
                 new_mof_name.append("<%s-%s>" % (this_site, groups[this_group].name))
                 attachment = groups[this_group]
@@ -331,22 +346,35 @@ def all_combinations_replace(structure, groups):
                     attach_at = structure.atoms[attach_to].pos
                     attach_towards = direction3d(attach_at, structure.atoms[attach_id].pos)
                     attach_normal = structure.atoms[attach_to].normal
-                    incoming_group = attachment.atoms_attached_to(attach_at, attach_towards, attach_normal)
                     extracted_atoms = new_mof[attach_id:attach_id+1]
                     new_mof[attach_id:attach_id+1] = [None]
-                    for atom in incoming_group:
-                        if not test_collision(atom, new_mof, structure.cell):
-                            new_mof_name.append("X")
-                    new_mof.extend(incoming_group)
-
-            new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
+                    for trial_rotation in range(12):
+                        incoming_group = attachment.atoms_attached_to(attach_at, attach_towards, attach_normal)
+                        for atom in incoming_group:
+                            if not test_collision(atom, new_mof, structure.cell):
+                                debug("Rotating group")
+                                attach_normal = dot(rotation_about_angle(attach_towards, 30.0), attach_normal)
+                                # Don't need to test more atoms
+                                break
+                        else:
+                            # Fits, so add and move on
+                            new_mof.extend(incoming_group)
+                            break
+                    else:
+                        did_not_attach = this_group
+                        break
+                if did_not_attach:
+                    break
             new_mof_name = "".join(new_mof_name)
+            if did_not_attach:
+                error("%i failed: %s from %s" % (idx, this_group, group_set))
+                continue
+            new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
             info("%i: %s" % (idx, new_mof_name))
             with open('output%05i.xyz' % idx, 'wb') as output_file:
                 output_file.writelines(to_xyz(new_mof, name=new_mof_name))
             with open('output%05i.pdb' % idx, 'wb') as output_file:
                 output_file.writelines(to_pdb(new_mof, structure.cell, name=new_mof_name))
-            idx += 1
 
 
 def random_replace(structure, groups, count=None):

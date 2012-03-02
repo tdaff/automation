@@ -13,6 +13,7 @@ import ConfigParser
 import hashlib
 import random
 import re
+import textwrap
 from logging import info, warn, error
 from math import factorial
 from itertools import chain, combinations, product
@@ -207,7 +208,9 @@ def to_pdb(atoms, cell, name=None):
     Return a pdb compatible file representation.
 
     """
-    pdb = ["CRYST1%9.3f%9.3f%9.3f%7.2f%7.2f%7.2f P 1           0\n" % cell.params]
+    pdb = [
+        "TITLE  faps functional group switching\n",
+        "CRYST1%9.3f%9.3f%9.3f%7.2f%7.2f%7.2f P 1           0\n" % cell.params]
     site_number = 1
     for at_idx, atom in enumerate(atoms):
         if atom.site is None:
@@ -216,6 +219,14 @@ def to_pdb(atoms, cell, name=None):
         pdb.append("ATOM  %5i %-4s UNK A   1    " % (at_idx+1, atom.site) +
                    "%8.3f%8.3f%8.3f" % tuple(atom.pos) +
                    "%6.2f  0.00%12s  \n" % (atom.charge, atom.type))
+
+    if name is not None:
+        pdb.extend(["REMARK".ljust(70), "\n",
+                    textwrap.fill(name, initial_indent="REMARK     ",
+                                  subsequent_indent="REMARK     ",
+                                  break_long_words=True), "\n",
+                    "REMARK".ljust(70), "\n",])
+
     return pdb
 
 
@@ -328,32 +339,59 @@ def all_combinations_replace(structure, groups):
                             new_mof_name.append("X")
                     new_mof.extend(incoming_group)
 
-
             new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
             new_mof_name = "".join(new_mof_name)
             info("%i: %s" % (idx, new_mof_name))
             with open('output%05i.xyz' % idx, 'wb') as output_file:
                 output_file.writelines(to_xyz(new_mof, name=new_mof_name))
             with open('output%05i.pdb' % idx, 'wb') as output_file:
-                output_file.writelines(to_pdb(new_mof, structure.cell))
+                output_file.writelines(to_pdb(new_mof, structure.cell, name=new_mof_name))
             idx += 1
 
 
-def random_replace(structure, groups, count):
+def random_replace(structure, groups, count=None):
     """
     Replace a random number of sites.
 
     """
     nsites = sum(len(x) for x in structure.attachments.values())
-    if count > nsites:
-        print("too many sites requested")
+    if count is None:
+        count = random.randint(1, nsites)
+    elif count > nsites:
+        warn("too many sites requested")
         count = nsites
     func_repr = [random.choice(groups.keys()) for _counter in range(count)] + [None]*(nsites - count)
-    print(func_repr)
-    print(hashlib.md5(str(func_repr)).hexdigest())
     random.shuffle(func_repr)
-    print(func_repr)
-    print(hashlib.md5(str(func_repr)).hexdigest())
+    unique_name = hashlib.md5(str(func_repr)).hexdigest()
+    new_mof_name = []
+    new_mof = list(structure.atoms)
+    for this_point, this_group in zip(chain(*[structure.attachments[x] for x in sorted(structure.attachments)]), func_repr):
+        if this_group is None:
+            new_mof_name.append("")
+            continue
+        else:
+            new_mof_name.append(this_group)
+        attachment = groups[this_group]
+        attach_id = this_point[0]
+        attach_to = this_point[1][0][1]
+        attach_at = structure.atoms[attach_to].pos
+        attach_towards = direction3d(attach_at, structure.atoms[attach_id].pos)
+        attach_normal = structure.atoms[attach_to].normal
+        incoming_group = attachment.atoms_attached_to(attach_at, attach_towards, attach_normal)
+        extracted_atoms = new_mof[attach_id:attach_id+1]
+        new_mof[attach_id:attach_id+1] = [None]
+        for atom in incoming_group:
+            if not test_collision(atom, new_mof, structure.cell):
+                new_mof_name.append("X")
+        new_mof.extend(incoming_group)
+
+    new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
+    new_mof_name = "{" + ".".join(new_mof_name) + "}"
+    info(new_mof_name)
+    with open('random-%s.xyz' % unique_name, 'wb') as output_file:
+        output_file.writelines(to_xyz(new_mof, name=new_mof_name))
+    with open('random-%s.pdb' % unique_name, 'wb') as output_file:
+        output_file.writelines(to_pdb(new_mof, structure.cell, name=new_mof_name))
 
 
 def main():
@@ -378,44 +416,9 @@ def main():
     attachment = f_groups['Cl']
 
     all_combinations_replace(input_structure, f_groups)
-    random_replace(input_structure, f_groups, 4)
+    for _make_some_randoms in range(30):
+        random_replace(input_structure, f_groups)
 
-    for attach_site, attachments in input_structure.attachments.items():
-        new_mof = list(input_structure.atoms)
-        for this_point in attachments:
-            attach_id = this_point[0]
-            attach_to = this_point[1][0][1]
-            attach_at = input_structure.atoms[attach_to].pos
-            attach_towards = direction3d(attach_at, input_structure.atoms[attach_id].pos)
-            bond_length = 0.5*(input_structure.atoms[attach_to].vdw_radius + attachment.atoms[0].vdw_radius)
-            new_mof[attach_id:attach_id+1] = [None]
-            #attach_normal = this_point[2]
-            attach_normal = input_structure.atoms[attach_to].normal
-            new_mof.extend(attachment.atoms_attached_to(attach_at, bond_length, attach_towards, attach_normal))
-        new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
-        with open('output%s.xyz' % attach_site, 'wb') as output_file:
-            output_file.writelines(to_xyz(new_mof))
-
-
-    #for idx, attach_points in enumerate(powerset(input_structure.attachments)):
-    #    attachment = f_groups['NH2']
-    ##    print attach_points
-    #    new_mof = list(input_structure.atoms)
-    #    for this_point in attach_points:
-    #        attach_id = this_point[0]
-    #        attach_to = this_point[1][0][1]
-    #        attach_at = input_structure.atoms[attach_to].pos
-    #        attach_towards = direction3d(attach_at, input_structure.atoms[attach_id].pos)
-    #        bond_length = 0.5*(input_structure.atoms[attach_to].vdw_radius + attachment.atoms[0].vdw_radius)
-    #        new_mof[attach_id:attach_id+1] = [None]
-    #        #attach_normal = this_point[2]
-    #        attach_normal = input_structure.atoms[attach_to].normal
-    #        new_mof.extend(attachment.atoms_attached_to(attach_at, bond_length, attach_towards, attach_normal))
-    #    new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
-    #    print idx, '\r',
-    #    if not idx % 500:
-    #        with open('output%04i.xyz' % idx, 'wb') as output_file:
-    #            output_file.writelines(to_xyz(new_mof))
 
 if __name__ == '__main__':
 

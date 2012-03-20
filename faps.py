@@ -674,11 +674,9 @@ class PyNiss(object):
             tp_path = ('T%s' % temp +
                        ''.join(['P%.2f' % x for x in press]))
             mkdirs(tp_path)
-            try_symlink(path.join(gcmc_dir, 'CONFIG'),
-                        path.join(tp_path, 'CONFIG'))
-            try_symlink(path.join(gcmc_dir, 'FIELD'),
-                        path.join(tp_path, 'FIELD'))
             os.chdir(tp_path)
+            try_symlink(path.join('..', 'CONFIG'),'CONFIG')
+            try_symlink(path.join('..', 'FIELD'), 'FIELD')
             filetemp = open("CONTROL", "wb")
             filetemp.writelines(mk_gcmc_control(temp, press, self.options,
                                                 guests, self.structure.gcmc_supercell))
@@ -1053,7 +1051,10 @@ class Structure(object):
                     line = cif_file[idx]
                 while idx < len(cif_file) and '_' not in line:
                     # shlex keeps 'quoted items' as one
-                    body.extend(shlex.split(line))
+                    # Some cifs seem to have primed atom symbols
+                    # posix=False should help
+                    split_line = shlex.split(line, posix=False)
+                    body.extend([x.strip("'").strip('"') for x in split_line])
                     idx += 1
                     try:
                         line = cif_file[idx]

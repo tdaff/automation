@@ -38,7 +38,7 @@ class Cube(object):
         if self.filename is not None:
             self.read_file()
 
-    def read_file(self, filename=None, fold=None, crop_atoms=True):
+    def read_file(self, filename=None, fold=None, trim_atoms=True, crop_atoms=False):
         """Read the gridded cubedata and fold"""
 
         if filename is not None:
@@ -89,7 +89,10 @@ class Cube(object):
              [float(x) for x in self.header_block[4].split()[1:]],
              [float(x) for x in self.header_block[5].split()[1:]]])*0.529177249
 
-        if crop_atoms:
+        if trim_atoms:
+            self.header_block = in_cell(self.header_block, fold)
+            self.natoms = len(self.header_block) - 6
+        elif crop_atoms:
             self.header_block = in_cell(self.header_block, self.rgrid, self.cell)
             self.natoms = len(self.header_block) - 6
 
@@ -144,8 +147,6 @@ class Cube(object):
             self.error = ((np.sum(stdev)/np.sum(self.datapoints))/
                           np.flatnonzero(self.datapoints).size)
             info("Estimated error in cube file: %g" % self.error)
-            if self.debug:
-                self.write_generic(rstdev, self.error_name)
         else:
             self.datapoints = localdata/float(fold[0]*fold[1]*fold[2])
 
@@ -281,6 +282,19 @@ def in_cell(header_block, grid, cell):
     header_block[2] = "%6i" % (len(newlines)) + header_block[2][6:]
     return header_block[:6] + newlines
 
+
+def trim_atoms(header_block, fold):
+    """
+    Trim the atoms to just the first block. Assumes that subcell are in
+    sequential blocks.
+
+    """
+    repeats = fold[0]*fold[1]*fold[2]
+    oldatoms = header_block[6:]
+    newatoms = oldatoms[:len(oldatoms)/repeats]
+    header_block[2] = "%6i" % (len(newatoms)) + header_block[2][6:]
+    return header_block[:6] + newatoms
+    
 
 def compressed_open(filename):
     """Return file objects for either compressed and uncompressed files"""

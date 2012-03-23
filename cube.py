@@ -90,7 +90,7 @@ class Cube(object):
              [float(x) for x in self.header_block[5].split()[1:]]])*0.529177249
 
         if trim_atoms:
-            self.header_block = in_cell(self.header_block, fold)
+            self.header_block = extract_atoms(self.header_block, fold)
             self.natoms = len(self.header_block) - 6
         elif crop_atoms:
             self.header_block = in_cell(self.header_block, self.rgrid, self.cell)
@@ -283,7 +283,7 @@ def in_cell(header_block, grid, cell):
     return header_block[:6] + newlines
 
 
-def trim_atoms(header_block, fold):
+def extract_atoms(header_block, fold):
     """
     Trim the atoms to just the first block. Assumes that subcell are in
     sequential blocks.

@@ -2274,7 +2274,7 @@ def mk_incar(options, esp_grid=None):
     elif optim_all or optim_h:
         # Just move positions
         incar.extend(["IBRION  = 2\n",
-                      "NSW     = 300\n",
+                      "NSW     = 600\n",
                       "ISIF    = 2\n"])
     else:
         # Single point energy

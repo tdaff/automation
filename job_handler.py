@@ -14,6 +14,7 @@ import shlex
 import subprocess
 import sys
 import time
+from logging import debug, info, warn, error
 from subprocess import Popen, PIPE, STDOUT
 
 
@@ -78,11 +79,13 @@ def _sharcnet_submit(job_type, options, input_file=None):
         sqsub_args.extend(['-n', '%i' % nodes])
         if job_type in openmp_codes:
             # Some jobs are only openmp
+            _check_program(exe)
             sqsub_args.extend(['-f', 'threaded'])
             sqsub_args.extend(['--mpp=%fg' %
                                options.getfloat('threaded_memory')])
         else:
             # Ensure mpi is enebaled
+            _check_program(exe, mpi=True)
             sqsub_args.extend(['-f', 'mpi'])
             # be nice and use whole nodes if possible
             if nodes % 24 == 0 or nodes < 24:
@@ -92,9 +95,10 @@ def _sharcnet_submit(job_type, options, input_file=None):
                 sqsub_args.extend(['--mpp=2.66g'])
 
     else:
+        _check_program(exe)
         sqsub_args.extend(['--mpp=%fg' % options.getfloat('threaded_memory')])
     # run-time estimate mandatory; 12 hours is plenty?
-    sqsub_args.extend(['-r', '12h'])
+    sqsub_args.extend(['-r', '48h'])
     # Some codes need the input file name
     if input_file is not None:
         sqsub_args.extend(['-i', '%s' % input_file])
@@ -103,13 +107,14 @@ def _sharcnet_submit(job_type, options, input_file=None):
     # Which command?
     sqsub_args.extend([exe])
 
+    debug("Submission command: %s" % " ".join(sqsub_args))
     submit = Popen(sqsub_args, stdout=PIPE)
     for line in submit.stdout.readlines():
         if 'submitted as' in line:
             jobid = int(line.split()[-1])
             break
     else:
-        print("Job submission failed?")
+        error("Job submission failed, no jobid received. Faps will crash now")
 
     return jobid
 
@@ -144,6 +149,7 @@ def _sharcnet_postrun(waitid):
         '--waitfor=%s' % ','.join(waitid),
         ] + _argstrip(sys.argv)
     # We can just call this as we don't care about the jobid
+    debug("Postrun command: %s" % " ".join(sqsub_args))
     subprocess.call(sqsub_args)
 
 
@@ -166,7 +172,7 @@ def _sharcnet_jobcheck(jobid):
             else:
                 return False
     else:
-        print("Failed to get job information.")  # qstat parsing failed?
+        error("Failed to get job information. Is sqjobs working?")
         # Act as if the job is still running, in case it hasn't finished
         return True
 
@@ -208,6 +214,7 @@ def _wooki_submit(job_type, options, *args, **kwargs):
         nodes = 1
 
     submit_args = [submit_scripts[job_type], job_name, "%i" % nodes]
+    debug("Submission command: %s" % " ".join(submit_args))
     submit = Popen(submit_args, stdout=subprocess.PIPE)
     for line in submit.stdout.readlines():
         if "wooki" in line:
@@ -314,3 +321,43 @@ def _argstrip(arglist):
         while item in newargs:
             newargs.remove(item)
     return newargs
+
+
+def _check_program(program, mpi=False):
+    """Test to see if the exe is in the path and might work."""
+    exe = which(program)
+    if exe is None:
+        error("Could not find %s in path, job will probably fail." % program)
+        return False
+    elif mpi:
+        try:
+            binary = open(exe, 'rb')
+            if re.search('mpi_init', binary.read(), re.IGNORECASE):
+                return True
+            else:
+                warn("%s doesn't appear to be an mpi executable, job may fail" % program)
+                return False
+        except IOError:
+            return False
+    else:
+        # TODO(tdaff): No easy way to check for OMP in general?
+        return True
+
+
+def which(program):
+    """Return the equivalent of the 'which' command."""
+    import os
+    def is_exe(fpath):
+        return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
+
+    fpath, fname = os.path.split(program)
+    if fpath:
+        if is_exe(program):
+            return program
+    else:
+        for path in os.environ["PATH"].split(os.pathsep):
+            exe_file = os.path.join(path, program)
+            if is_exe(exe_file):
+                return exe_file
+
+    return None

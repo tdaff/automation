@@ -87,10 +87,28 @@ def _sharcnet_submit(job_type, options, input_file=None):
             # Ensure mpi is enebaled
             _check_program(exe, mpi=True)
             sqsub_args.extend(['-f', 'mpi'])
-            # be nice and use whole nodes if possible
-            if nodes % 24 == 0 or nodes < 24:
-                sqsub_args.extend(['--mpp=1.33g'])
+            # Pack up to 12 procs on a single node
+            if nodes < 12:
+                sqsub_args.extend(['--mpp=1.66g'])
                 sqsub_args.extend(['--pack'])
+            elif nodes % 2 == 0 and nodes/2 < 8:
+                sqsub_args.extend(['--mpp=1.66g'])
+                sqsub_args.extend(['-N2'])
+            elif nodes % 4 == 0 and nodes/4 < 8:
+                sqsub_args.extend(['--mpp=1.66g'])
+                sqsub_args.extend(['-N4'])
+            elif nodes % 6 == 0 and nodes/6 < 8:
+                sqsub_args.extend(['--mpp=1.66g'])
+                sqsub_args.extend(['-N6'])
+            elif nodes % 8 == 0 and nodes/8 < 8:
+                sqsub_args.extend(['--mpp=1.66g'])
+                sqsub_args.extend(['-N8'])
+            elif nodes % 12 == 0 and nodes/12 < 8:
+                sqsub_args.extend(['--mpp=1.66g'])
+                sqsub_args.extend(['-N12'])
+            elif nodes % 24 == 0 and nodes/24 < 8:
+                sqsub_args.extend(['--mpp=1.66g'])
+                sqsub_args.extend(['-N24'])
             else:
                 sqsub_args.extend(['--mpp=2.66g'])
 
@@ -143,7 +161,7 @@ def _sharcnet_postrun(waitid):
     sqsub_args = [
         'sqsub',
         '-q', 'NRAP_20405',
-        '-r', '10m',
+        '-r', '20m',
         '-o', 'faps-post-%s.out' % '-'.join(sorted(waitid)),
         '--mpp=3g',
         '--waitfor=%s' % ','.join(waitid),

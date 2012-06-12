@@ -394,6 +394,8 @@ class PyNiss(object):
             self.run_repeat()
         elif chg_method == 'gulp':
             self.run_qeq_gulp()
+        elif chg_method == 'egulp':
+            self.run_qeq_egulp()
         else:
             critical("Unknown charge calculation method: %s" % chg_method)
             terminate(93)
@@ -539,6 +541,50 @@ class PyNiss(object):
             jobid = self.job_handler.submit(qeq_code, self.options,
                                             input_file='%s.gin' % job_name)
             info("Running GULP job in queue. Jobid: %s" % jobid)
+            self.state['charges'] = (RUNNING, jobid)
+            if self.options.getbool('run_all'):
+                debug('Submitting postrun script')
+                os.chdir(self.options.get('job_dir'))
+                self.job_handler.postrun(jobid)
+            else:
+                debug('Postrun script not submitted')
+        # Tidy up at the end
+        os.chdir(self.options.get('job_dir'))
+
+    def run_qeq_egulp(self):
+        """Run EGULP to calculate charge equilibration charges."""
+        job_name = self.options.get('job_name')
+        qeq_code = 'egulp'
+        qeq_dir = path.join(self.options.get('job_dir'),
+                            'faps_%s_%s' % (job_name, qeq_code))
+        mkdirs(qeq_dir)
+        os.chdir(qeq_dir)
+        debug("Running in %s" % qeq_dir)
+
+        filetemp = open('%s.geo' % job_name, 'wb')
+        filetemp.writelines(self.structure.to_egulp())
+        filetemp.close()
+
+        # EGULP defaults to GULP parameters if not specified
+        egulp_parameters = self.options.gettuple('egulp_parameters')
+        if egulp_parameters:
+            info("Custom EGULP parameters selected")
+            filetemp = open('%s.param' % job_name, 'wb')
+            filetemp.writelines(mk_egulp_params(egulp_parameters))
+            filetemp.close()
+            # job handler needs to know about both these files
+            egulp_args = ['%s.geo' % job_name, '%s.param' % job_name]
+        else:
+            # Only geometry file is needed for this run
+            egulp_args = ['%s.geo' % job_name]
+
+        if self.options.getbool('no_submit'):
+            info("EGULP input files generated; skipping job submission")
+            self.state['charges'] = (SKIPPED, False)
+        else:
+            jobid = self.job_handler.submit(qeq_code, self.options,
+                                            input_args=egulp_args)
+            info("Running EGULP job in queue. Jobid: %s" % jobid)
             self.state['charges'] = (RUNNING, jobid)
             if self.options.getbool('run_all'):
                 debug('Submitting postrun script')
@@ -976,6 +1022,9 @@ class Structure(object):
             info("Updating charges from GULP QEq")
             self.charges_from_gulp(
                 path.join(charge_path, 'faps-%s.out' % self.name))
+        elif charge_method == 'egulp':
+            info("Updating charges from EGULP QEq")
+            self.charges_from_egulp(path.join(charge_path, 'charges.dat'))
         else:
             error("Unknown charge method to import %s" % charge_method)
 
@@ -1228,6 +1277,16 @@ class Structure(object):
         for atom, chg_line in zip(self.atoms, gout[start_line:]):
             atom.charge = float(chg_line.split()[2])
 
+    def charges_from_egulp(self, filename):
+        """Parse QEq charges from EGULP output."""
+        info("Getting charges from file: %s" % filename)
+        filetemp = open(filename)
+        gout = filetemp.readlines()
+        filetemp.close()
+        # charges.dat file only has list of charges in it
+        for atom, chg_line in zip(self.atoms, gout):
+            atom.charge = float(chg_line.split()[2])
+
     def to_vasp(self, options):
         """Return a vasp5 poscar as a list of lines."""
         optim_h = options.getbool('optim_h')
@@ -1400,6 +1459,23 @@ class Structure(object):
                                  "%14.7f %14.7f %14.7f\n" % tuple(atom.pos)])
         gin_file.append("\ndump every %s.grs\nprint 1\n" % self.name)
         return gin_file
+
+    def to_egulp(self):
+        """Generate input files for Eugene's QEq code."""
+        # bind cell locally for speed and convenience
+        cell = self.cell.cell
+        inv_cell = self.cell.inverse
+        # format exactly as Eugene original script generates it
+        geometry_file = ['%s\n' % self.name]
+        geometry_file.extend(self.cell.to_vector_strings(fmt=' %15.12f'))
+        geometry_file.append('%i\n' % self.natoms)
+        geometry_file.extend([
+            ('%6d ' % atom.atomic_number) +
+            ('%12.7f %12.7f  %12.7f\n' % tuple(atom.ipos(cell, inv_cell)))
+            for atom in self.atoms
+        ])
+        return geometry_file
+
 
     def to_fastmc(self, options):
         """Return the FIELD and CONFIG needed for a fastmc run."""
@@ -2355,6 +2431,31 @@ def mk_gcmc_control(temperature, pressures, options, guests, supercell=None):
 
     control.append("finish\n")
     return control
+
+
+def mk_egulp_params(param_tuple):
+    """Convert an options tuple to an EGULP parameters file filling."""
+    # group up into ()(atom, electronegativity, 0.5*hardness), ... )
+    param_tuple = subgroup(param_tuple, 3)
+    # first line is the number of parametr sets
+    #TODO(tdaff): try adding some error checking
+    egulp_file = ["%s\n" % len(param_tuple)]
+    for param_set in param_tuple:
+        try:
+            atom_type = int(param_set[0])
+        except ValueError:
+            # assume it is an element symbol instead
+            atom_type = ATOMIC_NUMBER.index(param_set[0])
+        try:
+            egulp_file.append("%-4d %f %f\n" % (atom_type,
+                                                float(param_set[1]),
+                                                float(param_set[2])))
+        except IndexError:
+            error("Cannot read parameters for %s" % ATOMIC_NUMBER[atom_type])
+            terminate(223)
+
+    return egulp_file
+
 
 
 def unique(in_list, key=None):

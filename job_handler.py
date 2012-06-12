@@ -54,7 +54,7 @@ class JobHandler(object):
         pass
 
 
-def _sharcnet_submit(job_type, options, input_file=None):
+def _sharcnet_submit(job_type, options, input_file=None, input_args=None):
     """Simple interface to the 'sqsub' submission on sharcnet"""
     # Threaded codes have different behaviour
     openmp_codes = options.gettuple('threaded_codes')
@@ -124,6 +124,8 @@ def _sharcnet_submit(job_type, options, input_file=None):
     sqsub_args.extend(['-o', 'faps-%s.out' % job_name])
     # Which command?
     sqsub_args.extend([exe])
+    if input_args is not None:
+        sqsub_args.extend(input_args)
 
     debug("Submission command: %s" % " ".join(sqsub_args))
     submit = Popen(sqsub_args, stdout=PIPE)
@@ -223,7 +225,8 @@ def _wooki_submit(job_type, options, *args, **kwargs):
         'repeat': 'repeatsubmit-faps',
         'siesta': 'siestasubmit-faps',
         'fastmc': 'fastmcsubmit-faps',
-        'gulp': 'gulpsubmit-faps'
+        'gulp': 'gulpsubmit-faps',
+        'egulp': 'egulpsubmit-faps'
     }
     job_name = options.get('job_name')
     try:
@@ -232,6 +235,10 @@ def _wooki_submit(job_type, options, *args, **kwargs):
         nodes = 1
 
     submit_args = [submit_scripts[job_type], job_name, "%i" % nodes]
+
+    if nodes != 1:
+        submit_args.append("%i" % nodes)
+
     debug("Submission command: %s" % " ".join(submit_args))
     submit = Popen(submit_args, stdout=subprocess.PIPE)
     for line in submit.stdout.readlines():

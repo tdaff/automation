@@ -96,9 +96,30 @@ Charge equilibration
 --------------------
 
 For fast charge derivation faps can use the charge equilibration method in
-GULP, which requires no dft and completes within minutes even for 1000+ atom
+EGULP, which requires no dft and completes within minutes even for 1000+ atom
 structures compared to hours or days of CPU time for DFT charges. Charges are
-likely to be less accurate and the structure cannot be optimised.
+likely to be less accurate and the structure cannot be optimised. If parameters
+is blank then the defaults are used.
+
+.. code-block:: ini
+
+   # structure.fap
+   no_dft = True
+   charge_method = egulp
+   egulp_parameters =
+       C   5.87730000   5.23176667
+       8   9.61510000   7.08292000
+      Zn   4.59540000   3.85650000
+
+
+-------------------------
+GULP Charge equilibration
+-------------------------
+
+Fast charge equilibration in faps was originally implemented with GULP. This can
+still be used, but EGULP is preferred and allows better manipulation of the
+parameters. The qeq_fit option can be used to generate a file that will use gulp
+to fit the parameters.
 
 .. code-block:: ini
 

@@ -70,6 +70,14 @@ each option is given here. For the most up-to-date list, see the
    Turn on empirical dispersion corrections in dft codes that
    support it. [bool]
 
+.. envvar:: egulp_exe = egulp
+
+   Location of Eugenes QEq code
+
+.. envvar:: egulp_parameters =
+
+   custom parameter sets for QEq as (atom, electronegativity, 0.5\*hardness)
+
 .. envvar:: esp_resolution = 0.1
 
    Resolution of the esp grid (A). [float]
@@ -135,7 +143,7 @@ each option is given here. For the most up-to-date list, see the
 
    GCMC equilibration steps. [int]
 
-.. envvar:: mc_history_freq = 1000
+.. envvar:: mc_history_freq = 0
 
    How often to write the fastmc history. [int]
 
@@ -236,7 +244,7 @@ each option is given here. For the most up-to-date list, see the
 
    files to keep and compress after a successful REPEAT job [str, list]
 
-.. envvar:: repeat_delete_files = ESP_real_coul.dat fort.30 fort.40
+.. envvar:: repeat_delete_files = ESP_real_coul.dat fort.30 fort.40 REPEAT_param.inp
 
    files to delete after a successful REPEAT job [str, list]
 
@@ -319,11 +327,11 @@ each option is given here. For the most up-to-date list, see the
 
    Re-read options on restart. [bool]
 
-.. envvar:: vasp_compress_files = LOCPOT CHGCAR vasprun.xml XDATCAR
+.. envvar:: vasp_compress_files = LOCPOT CHGCAR vasprun.xml
 
    files to keep and compress after a successful VASP job [str, list]
 
-.. envvar:: vasp_delete_files = WAVECAR CHG DOSCAR EIGENVAL POTCAR
+.. envvar:: vasp_delete_files = WAVECAR CHG DOSCAR EIGENVAL POTCAR PCDAT IBZKPT XDATCAR KPOINTS
 
    files to delete after a successful VASP job [str, list]
 
@@ -343,7 +351,14 @@ each option is given here. For the most up-to-date list, see the
 
    Print debugging information. This will be ignored here; set on commandline.
 
+.. envvar:: zeo++ = True
 
+   Run zeo++ on the structure? [bool]
+
+.. envvar:: zeo++_command = network -res -chan 1.72 -sa 0.0 0.0 50000 -vol 0.0 0.0 50000
+
+   Command to run for zeo++. Include all required options here but omit the
+   cssr name. Radius (-r) and mass (-mass) files are automatically added.
 
 .. _commandline-options:
 

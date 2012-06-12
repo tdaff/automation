@@ -1053,7 +1053,10 @@ class Structure(object):
                     # shlex keeps 'quoted items' as one
                     # Some cifs seem to have primed atom symbols
                     # posix=False should help
-                    split_line = shlex.split(line, posix=False)
+                    # using .shlex instead of .split works with '#' comments too
+                    split_line = shlex.shlex(line, posix=False)
+                    split_line.whitespace_split = True
+                    split_line = list(split_line)
                     body.extend([x.strip("'").strip('"') for x in split_line])
                     idx += 1
                     try:

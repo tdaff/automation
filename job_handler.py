@@ -22,6 +22,14 @@ class JobHandler(object):
     """
     Abstraction of batch scheduler submission.
 
+    Provides a few helper methods for job submission and tracking.
+
+       submit
+          run a job; returns a jobid for a queued job, True for a completed job
+          and False for a failed job
+       postrun
+          submit script to run itself after completion
+
     """
 
     def __init__(self, options):
@@ -37,8 +45,8 @@ class JobHandler(object):
             self.postrun = _sharcnet_postrun
             self.jobcheck = _sharcnet_jobcheck
             self.env = _sharcnet_env
-        elif self.queue == 'local':
-            self.submit = _local_run
+        elif self.queue == 'serial':
+            self.submit = _serial_run
             self.postrun = _pass
             self.jobcheck = _pass
             self.env = _pass
@@ -246,7 +254,7 @@ def _wooki_submit(job_type, options, *args, **kwargs):
             jobid = line.split(".")[0]
             break
     else:
-        print("Job submission failed?")
+        error("Job submission failed, no jobid received. Faps will crash now")
 
     return jobid
 
@@ -305,32 +313,32 @@ def _wooki_env(code, *args, **kwargs):
     pass
 
 
-def _local_run(job_type, options, input_file=None):
-    """Run the exe in a subprocess."""
-    # Threaded codes have different behaviour
-#    openmp_codes = options.gettuple('threaded_codes')
+def _serial_run(job_type, options, input_file=None, input_args=None):
+    """Run the exe in a subprocess. input_args must be a list if """
 
     # Bind some things locally, so we know what's going on
     job_name = options.get('job_name')
     exe = options.get('%s_exe' % job_type)
-    try:
-        nodes = options.getint('%s_ncpu' % job_type)
-    except AttributeError:
-        nodes = 1
+    run_args = shlex.split(exe)
+
+    if input_args is not None:
+        serial_args.extend(input_args)
 
     # Some codes need the input file name
     if input_file is not None:
-        sqsub_args.extend(['-i', '%s' % input_file])
+        input_file = file('%s' % input_file)
+
     # Output
     out_file = open('faps-%s.out' % job_name, 'wb')
 
-    run_args = shlex.split(exe)
-
-    submit = Popen(sqsub_args, stdout=out_file)
+    # run the job in process
+    submit = Popen(sqsub_args, stdin=input_file, stdout=out_file)
     submit.wait()
     finished = submit.returncode
+    info("%s job finished with return code %s" % (exe, finished))
 
-    return None
+    # always return True for a finished job
+    return True
 
 
 def _pass(*args, **kwargs):

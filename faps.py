@@ -168,30 +168,7 @@ class PyNiss(object):
                 self.run_qeq_gulp(fitting=True)
                 self.dump_state()
 
-        if self.options.getbool('no_gcmc'):
-            info("Skipping GCMC simulation")
-        elif not self.state['gcmc'] or 'gcmc' in self.options.args:
-            # The dictionary is empty before any runs
-            info("Starting gcmc step")
-            self.run_fastmc()
-            self.dump_state()
-            terminate(0)
-        else:
-            unfinished_gcmc = False
-            for tp_point, tp_state in self.state['gcmc'].iteritems():
-                if tp_state[0] == RUNNING:
-                    new_state = self.job_handler.jobcheck(tp_state[1])
-                    if not new_state:
-                        info("Queue reports GCMC %s finished" % (tp_point,))
-                        self.structure.update_gcmc(tp_point, self.options)
-                        self.state['gcmc'][tp_point] = (UPDATED, False)
-                        self.dump_state()
-                    else:
-                        info("GCMC %s still running" % (tp_point,))
-                        unfinished_gcmc = True
-            if not unfinished_gcmc:
-                info("GCMC run has finished")
-                #terminate(0)
+        self.step_gcmc()
 
         if not self.options.getbool('no_properties'):
             self.calculate_properties()
@@ -353,6 +330,7 @@ class PyNiss(object):
     def step_gcmc(self):
         """Check the GCMC step of the calculation."""
         end_after = False
+        jobids = {}
 
         if self.options.getbool('no_gcmc'):
             info("Skipping GCMC simulation")
@@ -362,22 +340,42 @@ class PyNiss(object):
             info("Starting gcmc step")
             jobids = self.run_fastmc()
             self.dump_state()
-        else:
-            unfinished_gcmc = False
-            for tp_point, tp_state in self.state['gcmc'].iteritems():
-                if tp_state[0] == RUNNING:
-                    new_state = self.job_handler.jobcheck(tp_state[1])
-                    if not new_state:
-                        info("Queue reports GCMC %s finished" % (tp_point,))
-                        self.structure.update_gcmc(tp_point, self.options)
-                        self.state['gcmc'][tp_point] = (UPDATED, False)
-                        self.dump_state()
-                    else:
-                        info("GCMC %s still running" % (tp_point,))
-                        unfinished_gcmc = True
-            if not unfinished_gcmc:
-                info("GCMC run has finished")
-                #terminate(0)
+
+        for tp_point, jobid in jobids.iteritems():
+            if jobid is True:
+                self.state['gcmc'][tp_point] = (FINISHED, False)
+            elif jobid is False:
+                self.state['gcmc'][tp_point] = (SKIPPED, False)
+            else:
+                info("FastMC job in queue. Jobid: %s" % jobid)
+                self.state['dft'] = (RUNNING, jobid)
+                # unfinished GCMCs
+                end_after = True
+
+        for tp_point in self.state['gcmc']:
+            tp_state = self.state['gcmc'][tp_point]
+            if tp_state[0] == RUNNING:
+                new_state = self.job_handler.jobcheck(tp_state[1])
+                if not new_state:
+                    info("Queue reports GCMC %s finished" % (tp_point,))
+                    # need to know we have finished to update below
+                    tp_state = (FINISHED, False)
+                    self.state['gcmc'][tp_point] = tp_state
+                    self.dump_state()
+                else:
+                    info("GCMC %s still running" % (tp_point,))
+                    # unfinished GCMC so exit later
+                    end_after = True
+
+            # any states that need to be updated should have been done by now
+            if tp_state[0] == FINISHED:
+                self.structure.update_gcmc(tp_point, self.options)
+                self.state['gcmc'][tp_point] = (UPDATED, False)
+                self.dump_state()
+
+        if end_after:
+            info("GCMC run has not finished completely")
+            terminate(0)
 
 
     def import_old(self):

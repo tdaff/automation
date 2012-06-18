@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 from logging import debug, info, warn, error
+from os import path
 from subprocess import Popen, PIPE, STDOUT
 
 
@@ -319,7 +320,7 @@ def _serial_run(job_type, options, input_file=None, input_args=None):
     # Bind some things locally, so we know what's going on
     job_name = options.get('job_name')
     exe = options.get('%s_exe' % job_type)
-    run_args = shlex.split(exe)
+    serial_args = shlex.split(exe)
 
     if input_args is not None:
         serial_args.extend(input_args)
@@ -332,7 +333,8 @@ def _serial_run(job_type, options, input_file=None, input_args=None):
     out_file = open('faps-%s.out' % job_name, 'wb')
 
     # run the job in process
-    submit = Popen(sqsub_args, stdin=input_file, stdout=out_file)
+    debug("Waiting for command: %s" % " ".join(serial_args))
+    submit = Popen(serial_args, stdin=input_file, stdout=out_file)
     submit.wait()
     finished = submit.returncode
     info("%s job finished with return code %s" % (exe, finished))
@@ -368,7 +370,7 @@ def _check_program(program, mpi=False):
             if re.search('mpi_init', binary.read(), re.IGNORECASE):
                 return True
             else:
-                warn("%s doesn't appear to be an mpi executable, job may fail" % program)
+                warn("%s doesn't appear to be an mpi executable." % program)
                 return False
         except IOError:
             return False
@@ -377,19 +379,21 @@ def _check_program(program, mpi=False):
         return True
 
 
+def is_exe(fpath):
+    """Return executability of a file."""
+    return path.isfile(fpath) and os.access(fpath, os.X_OK)
+
+
 def which(program):
     """Return the equivalent of the 'which' command."""
-    import os
-    def is_exe(fpath):
-        return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
 
-    fpath, fname = os.path.split(program)
+    fpath, _fname = path.split(program)
     if fpath:
         if is_exe(program):
             return program
     else:
-        for path in os.environ["PATH"].split(os.pathsep):
-            exe_file = os.path.join(path, program)
+        for env_path in os.environ["PATH"].split(os.pathsep):
+            exe_file = path.join(env_path, program)
             if is_exe(exe_file):
                 return exe_file
 

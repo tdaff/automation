@@ -1333,7 +1333,13 @@ class Structure(object):
         filetemp = open(filename)
         gout = filetemp.readlines()
         filetemp.close()
-        start_line = gout.index('  Final charges from QEq :\n') + 7
+        start_line = None
+        for line_num, line in enumerate(gout):
+            if '  Final charges from QEq :' in line:
+                start_line = line_num + 7
+        if start_line is None:
+            error("Final charges not found in gulp output")
+            terminate(184)
         for atom, chg_line in zip(self.atoms, gout[start_line:]):
             atom.charge = float(chg_line.split()[2])
 

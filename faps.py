@@ -795,7 +795,7 @@ class PyNiss(object):
             info("Running zeo++")
             debug("Zeo ++ command: '" + " ".join(zeo_command) + "'")
             try:
-                subprocess.Popen(zeo_command)
+                subprocess.call(zeo_command)
             except OSError:
                 error("Error running zeo++, please run manually")
 

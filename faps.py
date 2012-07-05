@@ -331,6 +331,7 @@ class PyNiss(object):
         """Check the GCMC step of the calculation."""
         end_after = False
         jobids = {}
+        postrun_ids = []
 
         if self.options.getbool('no_gcmc'):
             info("Skipping GCMC simulation")
@@ -348,9 +349,13 @@ class PyNiss(object):
                 self.state['gcmc'][tp_point] = (SKIPPED, False)
             else:
                 info("FastMC job in queue. Jobid: %s" % jobid)
-                self.state['dft'] = (RUNNING, jobid)
+                self.state['gcmc'][tp_point] = (RUNNING, jobid)
+                postrun_ids.append(jobid)
                 # unfinished GCMCs
                 end_after = True
+        else:
+            # when the loop completes write out the state
+            self.dump_state()
 
         for tp_point in self.state['gcmc']:
             tp_state = self.state['gcmc'][tp_point]
@@ -372,6 +377,9 @@ class PyNiss(object):
                 self.structure.update_gcmc(tp_point, self.options)
                 self.state['gcmc'][tp_point] = (UPDATED, False)
                 self.dump_state()
+
+        if postrun_ids:
+            self.postrun(postrun_ids)
 
         if end_after:
             info("GCMC run has not finished completely")

@@ -2178,6 +2178,11 @@ class Atom(object):
         """Get the vdw radius from the UFF parameters."""
         return UFF[self.type][0]/2.0
 
+    @property
+    def is_metal(self):
+        """Return True if element is in a predetermined set of metals."""
+        return self.atomic_number in METALS
+
 
 class Guest(object):
     """Guest molecule and properties."""

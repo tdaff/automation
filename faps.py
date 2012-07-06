@@ -16,7 +16,7 @@ doing select parts.
 
 """
 
-__version__ = "$Revision$"
+__version__ = "$Revision: 236 $"
 
 import code
 import ConfigParser
@@ -42,6 +42,7 @@ from numpy.linalg import norm
 
 from config import Options
 from elements import WEIGHT, ATOMIC_NUMBER, UFF, VASP_PSEUDO_PREF
+from elements import UFF_INTRA_CUTOFF, METALS
 from job_handler import JobHandler
 from logo import LOGO
 
@@ -1428,7 +1429,7 @@ class Structure(object):
 
         return fdf
 
-    def to_gulp(self, qeq_fit=True):
+    def to_gulp(self, qeq_fit=False):
         """Return a GULP file to use for the QEq charges."""
         if qeq_fit:
             from elements import QEQ_PARAMS
@@ -2177,6 +2178,11 @@ class Atom(object):
     def vdw_radius(self):
         """Get the vdw radius from the UFF parameters."""
         return UFF[self.type][0]/2.0
+
+    @property
+    def bond_cutoff(self):
+        """Approximate cutoff for bond searching in the UFF."""
+        return UFF_INTRA_CUTOFF[self.type]
 
     @property
     def is_metal(self):

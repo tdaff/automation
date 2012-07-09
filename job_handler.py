@@ -43,7 +43,7 @@ class JobHandler(object):
             self.env = _wooki_env
         elif self.queue == 'sharcnet':
             self.submit = _sharcnet_submit
-            self.postrun = _sharcnet_postrun
+            self.postrun = _mk_sharcnet_postrun(options.get('dedicated_queue'))
             self.jobcheck = _sharcnet_jobcheck
             self.env = _sharcnet_env
         elif self.queue == 'serial':
@@ -78,7 +78,9 @@ def _sharcnet_submit(job_type, options, input_file=None, input_args=None):
 
     sqsub_args = ['sqsub']
     # Always use the dedicated queue; faster
-    sqsub_args.extend(['-q', 'NRAP_20405'])
+    dedicated_queue = options.get('dedicated_queue')
+    if dedicated_queue:
+        sqsub_args.extend(['-q', dedicated_queue])
     # job_name
     sqsub_args.extend(['-j', 'faps-%s-%s' % (job_name, job_type)])
     # Is it a multiple CPU job?
@@ -148,39 +150,44 @@ def _sharcnet_submit(job_type, options, input_file=None, input_args=None):
     return jobid
 
 
-def _sharcnet_postrun(waitid):
-    """
-    Resubmit this script for the postrun on job completion. Will accept
-    a single jobid or a list, as integers or strings.
-    """
+def _mk_sharcnet_postrun(dedicated_queue=None):
+    """Return a postrun function for a particular queue."""
+    def _sharcnet_postrun(waitid):
+        """
+        Resubmit this script for the postrun on job completion. Will accept
+        a single jobid or a list, as integers or strings.
+        """
 
-    # Magic makes everything into a set of strings
-    if hasattr(waitid, '__iter__'):
-        waitid = frozenset([("%s" % wid).strip() for wid in waitid])
-    else:
-        waitid = frozenset([("%s" % waitid).strip()])
-    # Check that job appears in sqjobs before submitting next one
-    for loop_num in range(10):
-        qstat = Popen(['qstat', '-u', '$USER'], stdout=PIPE, shell=True)
-        if waitid.issubset(re.split('[\s.]', qstat.stdout.read())):
-            # All jobs there
-            break
+        # Magic makes everything into a set of strings
+        if hasattr(waitid, '__iter__'):
+            waitid = frozenset([("%s" % wid).strip() for wid in waitid])
         else:
-            # Wait longer each time, in case the system is very slow
-            time.sleep(loop_num)
-    # Sumbit here, even if jobs never found in queue
-    sqsub_args = [
-        'sqsub',
-        '-q', 'NRAP_20405',
-        '-r', '20m',
-        '-o', 'faps-post-%s.out' % '-'.join(sorted(waitid)),
-        '--mpp=3g',
-        '--waitfor=%s' % ','.join(waitid),
-        ] + _argstrip(sys.argv)
-    # We can just call this as we don't care about the jobid
-    debug("Postrun command: %s" % " ".join(sqsub_args))
-    subprocess.call(sqsub_args)
-
+            waitid = frozenset([("%s" % waitid).strip()])
+        # Check that job appears in sqjobs before submitting next one
+        for loop_num in range(10):
+            qstat = Popen(['qstat', '-u', '$USER'], stdout=PIPE, shell=True)
+            if waitid.issubset(re.split('[\s.]', qstat.stdout.read())):
+                # All jobs there
+                break
+            else:
+                # Wait longer each time, in case the system is very slow
+                time.sleep(loop_num)
+        # Sumbit here, even if jobs never found in queue
+        sqsub_args = [
+            'sqsub',
+            '-r', '20m',
+            '-o', 'faps-post-%s.out' % '-'.join(sorted(waitid)),
+            '--mpp=3g',
+            '--waitfor=%s' % ','.join(waitid),
+            ]
+        if dedicated_queue:
+            sqsub_args.extend(['-q', dedicted_queue])
+        # Add the submitted program cleaned for instruction commands
+        sqsub_args.extend(_argstrip(sys.argv))
+        # We can just call this as we don't care about the jobid
+        debug("Postrun command: %s" % " ".join(sqsub_args))
+        subprocess.call(sqsub_args)
+    return _sharcnet_postrun
 
 def _sharcnet_jobcheck(jobid):
     """Return true if job is still running or queued, or check fails."""

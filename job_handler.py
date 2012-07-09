@@ -149,6 +149,9 @@ def _sharcnet_submit(job_type, options, input_file=None, input_args=None):
 
     return jobid
 
+def _sharcnet_postrun(waitid):
+    """Dummy to stop picked jobs failing"""
+    _pass()
 
 def _mk_sharcnet_postrun(dedicated_queue=None):
     """Return a postrun function for a particular queue."""
@@ -181,7 +184,7 @@ def _mk_sharcnet_postrun(dedicated_queue=None):
             '--waitfor=%s' % ','.join(waitid),
             ]
         if dedicated_queue:
-            sqsub_args.extend(['-q', dedicted_queue])
+            sqsub_args.extend(['-q', dedicated_queue])
         # Add the submitted program cleaned for instruction commands
         sqsub_args.extend(_argstrip(sys.argv))
         # We can just call this as we don't care about the jobid

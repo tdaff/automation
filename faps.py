@@ -91,9 +91,14 @@ class PyNiss(object):
         job_name = self.options.get('job_name')
         info("Writing state file, %s.niss." % job_name)
         os.chdir(self.options.get('job_dir'))
+        # Don't save the job handler in case it changes
+        save_handler = self.job_handler
+        self.job_handler = None
         my_niss = open(job_name + ".niss", "wb")
         pickle.dump(self, my_niss)
         my_niss.close()
+        # put the job handler back and continue
+        self.job_handler = save_handler
 
     def re_init(self, new_options):
         """Re initialize simulation (with updated options)."""

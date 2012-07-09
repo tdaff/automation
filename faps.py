@@ -57,6 +57,7 @@ RUNNING = 1
 FINISHED = 2
 UPDATED = 3
 SKIPPED = -1
+NOT_SUBMITTED = -2
 
 
 class PyNiss(object):
@@ -157,50 +158,9 @@ class PyNiss(object):
             self.state['init'] = (UPDATED, False)
             self.dump_state()
 
-        if self.state['dft'][0] not in [UPDATED, SKIPPED]:
-            if self.options.getbool('no_dft'):
-                info("Skipping DFT step completely")
-                info("Job might fail later if you need the ESP")
-                self.state['dft'] = (SKIPPED, False)
-            elif self.state['dft'][0] == RUNNING:
-                job_state = self.job_handler.jobcheck(self.state['dft'][1])
-                if not job_state:
-                    info("Queue reports DFT step has finished")
-                    # Finished running update positions
-                    self.structure.update_pos(self.options.get('dft_code'))
-                    self.state['dft'] = (UPDATED, False)
-                    self.dump_state()
-                else:
-                    # Still running
-                    info("DFT still in progress")
-                    terminate(0)
+        self.step_dft()
 
-        if self.state['dft'][0] == NOT_RUN or 'dft' in self.options.args:
-            self.run_dft()
-            self.dump_state()
-            terminate(0)
-
-        if self.state['charges'][0] not in [UPDATED, SKIPPED]:
-            if self.options.getbool('no_charges'):
-                info("Skipping charge calculation")
-                self.state['charges'] = (SKIPPED, False)
-            elif self.state['charges'][0] == RUNNING:
-                job_state = self.job_handler.jobcheck(self.state['charges'][1])
-                if not job_state:
-                    info("Queue reports charge calculation has finished")
-                    self.structure.update_charges(
-                        self.options.get('charge_method'), self.options)
-                    self.state['charges'] = (UPDATED, False)
-                    self.dump_state()
-                else:
-                    info("Charge calculation still running")
-                    terminate(0)
-
-        if self.state['charges'][0] == NOT_RUN or 'charges' in self.options.args:
-            self.run_charges()
-            info("Running charge calculation")
-            self.dump_state()
-            terminate(0)
+        self.step_charges()
 
         if self.options.getbool('qeq_fit'):
             if not 'qeq_fit' in self.state and self.state['charges'][0] == UPDATED:
@@ -208,30 +168,7 @@ class PyNiss(object):
                 self.run_qeq_gulp(fitting=True)
                 self.dump_state()
 
-        if self.options.getbool('no_gcmc'):
-            info("Skipping GCMC simulation")
-        elif not self.state['gcmc'] or 'gcmc' in self.options.args:
-            # The dictionary is empty before any runs
-            info("Starting gcmc step")
-            self.run_fastmc()
-            self.dump_state()
-            terminate(0)
-        else:
-            unfinished_gcmc = False
-            for tp_point, tp_state in self.state['gcmc'].iteritems():
-                if tp_state[0] == RUNNING:
-                    new_state = self.job_handler.jobcheck(tp_state[1])
-                    if not new_state:
-                        info("Queue reports GCMC %s finished" % (tp_point,))
-                        self.structure.update_gcmc(tp_point, self.options)
-                        self.state['gcmc'][tp_point] = (UPDATED, False)
-                        self.dump_state()
-                    else:
-                        info("GCMC %s still running" % (tp_point,))
-                        unfinished_gcmc = True
-            if not unfinished_gcmc:
-                info("GCMC run has finished")
-                #terminate(0)
+        self.step_gcmc()
 
         if not self.options.getbool('no_properties'):
             self.calculate_properties()
@@ -246,7 +183,8 @@ class PyNiss(object):
                         RUNNING: 'Running',
                         FINISHED: 'Finished',
                         UPDATED: 'Processed',
-                        SKIPPED: 'Skipped'}
+                        SKIPPED: 'Skipped',
+                        NOT_SUBMITTED: 'Not submitted'}
 
         if initial:
             info("Previous system state reported from .niss file "
@@ -324,6 +262,130 @@ class PyNiss(object):
                      (probe, area, vol_area, specific_area))
             info("========= ========= ========= =========")
 
+    def step_dft(self):
+        """Check the DFT step of the calculation."""
+        end_after = False
+
+        if self.state['dft'][0] not in [UPDATED, SKIPPED]:
+            if self.options.getbool('no_dft'):
+                info("Skipping DFT step completely")
+                info("Job might fail later if you need the ESP")
+                self.state['dft'] = (SKIPPED, False)
+            elif self.state['dft'][0] == RUNNING:
+                job_state = self.job_handler.jobcheck(self.state['dft'][1])
+                if not job_state:
+                    info("Queue reports DFT step has finished")
+                    self.state['dft'] = (FINISHED, False)
+                else:
+                    # Still running
+                    info("DFT still in progress")
+                    end_after = True
+
+        if self.state['dft'][0] == NOT_RUN or 'dft' in self.options.args:
+            jobid = self.run_dft()
+            end_after = self.postrun(jobid)
+            self.dump_state()
+
+        if self.state['dft'][0] == FINISHED:
+            self.structure.update_pos(self.options.get('dft_code'))
+            self.state['dft'] = (UPDATED, False)
+            self.dump_state()
+
+        # If postrun is submitted then this script is done!
+        if end_after:
+            terminate(0)
+
+    def step_charges(self):
+        """Check the charge step of the calculation."""
+        end_after = False
+
+        if self.state['charges'][0] not in [UPDATED, SKIPPED]:
+            if self.options.getbool('no_charges'):
+                info("Skipping charge calculation")
+                self.state['charges'] = (SKIPPED, False)
+            elif self.state['charges'][0] == RUNNING:
+                job_state = self.job_handler.jobcheck(self.state['charges'][1])
+                if not job_state:
+                    info("Queue reports charge calculation has finished")
+                    self.state['charges'] = (FINISHED, False)
+                else:
+                    info("Charge calculation still running")
+                    end_after = True
+
+        if self.state['charges'][0] == NOT_RUN or 'charges' in self.options.args:
+            jobid = self.run_charges()
+            end_after = self.postrun(jobid)
+            self.dump_state()
+
+        if self.state['charges'][0] == FINISHED:
+            self.structure.update_charges(self.options.get('charge_method'),
+                                          self.options)
+            self.state['charges'] = (UPDATED, False)
+            self.dump_state()
+
+        # If postrun is submitted then this script is done!
+        if end_after:
+            terminate(0)
+
+    def step_gcmc(self):
+        """Check the GCMC step of the calculation."""
+        end_after = False
+        jobids = {}
+        postrun_ids = []
+
+        if self.options.getbool('no_gcmc'):
+            info("Skipping GCMC simulation")
+            return
+        elif not self.state['gcmc'] or 'gcmc' in self.options.args:
+            # The dictionary is empty before any runs
+            info("Starting gcmc step")
+            jobids = self.run_fastmc()
+            self.dump_state()
+
+        for tp_point, jobid in jobids.iteritems():
+            if jobid is True:
+                self.state['gcmc'][tp_point] = (FINISHED, False)
+            elif jobid is False:
+                self.state['gcmc'][tp_point] = (SKIPPED, False)
+            else:
+                info("FastMC job in queue. Jobid: %s" % jobid)
+                self.state['gcmc'][tp_point] = (RUNNING, jobid)
+                postrun_ids.append(jobid)
+                # unfinished GCMCs
+                end_after = True
+        else:
+            # when the loop completes write out the state
+            self.dump_state()
+
+        for tp_point in self.state['gcmc']:
+            tp_state = self.state['gcmc'][tp_point]
+            if tp_state[0] == RUNNING:
+                new_state = self.job_handler.jobcheck(tp_state[1])
+                if not new_state:
+                    info("Queue reports GCMC %s finished" % (tp_point,))
+                    # need to know we have finished to update below
+                    tp_state = (FINISHED, False)
+                    self.state['gcmc'][tp_point] = tp_state
+                    self.dump_state()
+                else:
+                    info("GCMC %s still running" % (tp_point,))
+                    # unfinished GCMC so exit later
+                    end_after = True
+
+            # any states that need to be updated should have been done by now
+            if tp_state[0] == FINISHED:
+                self.structure.update_gcmc(tp_point, self.options)
+                self.state['gcmc'][tp_point] = (UPDATED, False)
+                self.dump_state()
+
+        if postrun_ids:
+            self.postrun(postrun_ids)
+
+        if end_after:
+            info("GCMC run has not finished completely")
+            terminate(0)
+
+
     def import_old(self):
         """Try and import any data from previous stopped simulation."""
         job_name = self.options.get('job_name')
@@ -372,17 +434,46 @@ class PyNiss(object):
         # Reset directory at end
         os.chdir(job_dir)
 
+    def postrun(self, jobid):
+        """Determine if we need the job handler to post submit itself."""
+        # update the job tracker
+        if jobid is not False and jobid is not True:
+            if self.options.getbool('run_all'):
+                debug('Submitting postrun script')
+                os.chdir(self.options.get('job_dir'))
+                self.job_handler.postrun(jobid)
+                return True
+            else:
+                debug('Postrun script not submitted')
+                return False
+        else:
+            return False
+
+
     def run_dft(self):
         """Select correct method for running the dft/optim."""
         dft_code = self.options.get('dft_code')
         info("Running a %s calculation" % dft_code)
         if dft_code == 'vasp':
-            self.run_vasp()
+            jobid = self.run_vasp()
         elif dft_code == 'siesta':
-            self.run_siesta()
+            jobid = self.run_siesta()
         else:
             critical("Unknown dft method: %s" % dft_code)
             terminate(92)
+
+        # update the job tracker
+        #if jobid is False:
+        #    self.state['dft'] = (NOT_SUBMITTED, False)
+            # submission skipped
+        if jobid is True:
+            # job run and finished
+            self.state['dft'] = (FINISHED, False)
+        else:
+            info("Running %s job in queue. Jobid: %s" % (dft_code, jobid))
+            self.state['dft'] = (RUNNING, jobid)
+
+        return jobid
 
     def run_charges(self):
         """Select correct charge processing methods."""
@@ -391,14 +482,25 @@ class PyNiss(object):
         if chg_method == 'repeat':
             # Get ESP
             self.esp_to_cube()
-            self.run_repeat()
+            jobid = self.run_repeat()
         elif chg_method == 'gulp':
-            self.run_qeq_gulp()
+            jobid = self.run_qeq_gulp()
         elif chg_method == 'egulp':
-            self.run_qeq_egulp()
+            jobid = self.run_qeq_egulp()
         else:
             critical("Unknown charge calculation method: %s" % chg_method)
             terminate(93)
+
+        # update the job tracker
+        if jobid is True:
+            # job run and finished
+            self.state['charges'] = (FINISHED, False)
+        else:
+            info("Running %s job in queue. Jobid: %s" % (chg_method, jobid))
+            self.state['charges'] = (RUNNING, jobid)
+
+        return jobid
+
 
     def run_vasp(self):
         """Make inputs and run vasp job."""
@@ -446,20 +548,15 @@ class PyNiss(object):
 
         if self.options.getbool('no_submit'):
             info("Vasp input files generated; skipping job submission")
-            self.state['dft'] = (SKIPPED, False)
+            # act as if job completed
+            jobid = False
         else:
             self.job_handler.env(dft_code, options=self.options)
             jobid = self.job_handler.submit(dft_code, self.options)
-            info("Running VASP job in queue. Jobid: %s" % jobid)
-            self.state['dft'] = (RUNNING, jobid)
-            if self.options.getbool('run_all'):
-                debug('Submitting postrun script')
-                os.chdir(self.options.get('job_dir'))
-                self.job_handler.postrun(jobid)
-            else:
-                debug('Postrun script not submitted')
-        # Tidy up at the end
+
+        # Tidy up at the end and pass on job id
         os.chdir(self.options.get('job_dir'))
+        return jobid
 
     def run_siesta(self):
         """Make siesta input and run job."""
@@ -494,22 +591,16 @@ class PyNiss(object):
 
         if self.options.getbool('no_submit'):
             info("Siesta input files generated; skipping job submission")
-            self.state['dft'] = (SKIPPED, False)
+            jobid = False
         else:
             # sharcnet does weird things for siesta
             self.job_handler.env(dft_code, options=self.options)
             jobid = self.job_handler.submit(dft_code, self.options,
                                             input_file='%s.fdf' % job_name)
-            info("Running SIESTA job in queue. Jobid: %s" % jobid)
-            self.state['dft'] = (RUNNING, jobid)
-            if self.options.getbool('run_all'):
-                debug('Submitting postrun script')
-                os.chdir(self.options.get('job_dir'))
-                self.job_handler.postrun(jobid)
-            else:
-                debug('Postrun script not submitted')
+
         # Tidy up at the end
         os.chdir(self.options.get('job_dir'))
+        return jobid
 
     def run_qeq_gulp(self, fitting=False):
         """Run GULP to calculate charge equilibration charges."""
@@ -531,7 +622,7 @@ class PyNiss(object):
 
         if self.options.getbool('no_submit'):
             info("GULP input files generated; skipping job submission")
-            self.state['charges'] = (SKIPPED, False)
+            jobid = False
         elif fitting:
             jobid = self.job_handler.submit(qeq_code, self.options,
                                             input_file='%s.gin' % job_name)
@@ -540,16 +631,10 @@ class PyNiss(object):
         else:
             jobid = self.job_handler.submit(qeq_code, self.options,
                                             input_file='%s.gin' % job_name)
-            info("Running GULP job in queue. Jobid: %s" % jobid)
-            self.state['charges'] = (RUNNING, jobid)
-            if self.options.getbool('run_all'):
-                debug('Submitting postrun script')
-                os.chdir(self.options.get('job_dir'))
-                self.job_handler.postrun(jobid)
-            else:
-                debug('Postrun script not submitted')
+
         # Tidy up at the end
         os.chdir(self.options.get('job_dir'))
+        return jobid
 
     def run_qeq_egulp(self):
         """Run EGULP to calculate charge equilibration charges."""
@@ -580,20 +665,14 @@ class PyNiss(object):
 
         if self.options.getbool('no_submit'):
             info("EGULP input files generated; skipping job submission")
-            self.state['charges'] = (SKIPPED, False)
+            jobid = False
         else:
             jobid = self.job_handler.submit(qeq_code, self.options,
                                             input_args=egulp_args)
-            info("Running EGULP job in queue. Jobid: %s" % jobid)
-            self.state['charges'] = (RUNNING, jobid)
-            if self.options.getbool('run_all'):
-                debug('Submitting postrun script')
-                os.chdir(self.options.get('job_dir'))
-                self.job_handler.postrun(jobid)
-            else:
-                debug('Postrun script not submitted')
+
         # Tidy up at the end
         os.chdir(self.options.get('job_dir'))
+        return jobid
 
     def esp_to_cube(self):
         """Make the cube for repeat input."""
@@ -662,19 +741,12 @@ class PyNiss(object):
             mk_repeat(cube_name=job_name + '.cube', symmetry=False)
         if self.options.getbool('no_submit'):
             info("REPEAT input files generated; skipping job submission")
-            self.state['charges'] = (SKIPPED, False)
+            jobid = False
         else:
             jobid = self.job_handler.submit(charge_code, self.options)
-            info("Running REPEAT calculation in queue: Jobid %s" % jobid)
-            self.state['charges'] = (RUNNING, jobid)
-            if self.options.getbool('run_all'):
-                debug('Submitting postrun script')
-                os.chdir(self.options.get('job_dir'))
-                self.job_handler.postrun(jobid)
-            else:
-                debug('Postrun script not submitted')
 
         os.chdir(self.options.get('job_dir'))
+        return jobid
 
     def run_fastmc(self):
         """Submit a fastmc job to the queue."""
@@ -711,7 +783,7 @@ class PyNiss(object):
         temps = self.options.gettuple('mc_temperature', float)
         presses = self.options.gettuple('mc_pressure', float)
         indivs = self.options.gettuple('mc_state_points', float)
-        jobids = []
+        jobids = {}
         for tp_point in state_points(temps, presses, indivs, len(guests)):
             temp = tp_point[0]
             press = tp_point[1]
@@ -731,23 +803,14 @@ class PyNiss(object):
             if self.options.getbool('no_submit'):
                 info("FastMC input files generated; "
                      "skipping job submission")
-                self.state['gcmc'][(temp, press)] = (SKIPPED, False)
+                jobids[(temp, press)] = False
             else:
                 jobid = self.job_handler.submit(mc_code, self.options)
-                info("Running FastMC in queue: Jobid %s" % jobid)
-                self.state['gcmc'][(temp, press)] = (RUNNING, jobid)
-                jobids.append(jobid)
+                jobids[(temp, press)] = jobid
             os.chdir('..')
 
-        # Postrun after all submitted so don't have to deal with messy
-        # directory switching
         os.chdir(self.options.get('job_dir'))
-        # jobids will be empty if nothing has been submitted
-        if self.options.getbool('run_all') and jobids:
-            debug('Submitting postrun script')
-            self.job_handler.postrun(jobids)
-        else:
-            debug('Postrun script not submitted')
+        return jobids
 
     def calculate_properties(self):
         """Calculate general structural properties."""
@@ -1276,7 +1339,13 @@ class Structure(object):
         filetemp = open(filename)
         gout = filetemp.readlines()
         filetemp.close()
-        start_line = gout.index('  Final charges from QEq :\n') + 7
+        start_line = None
+        for line_num, line in enumerate(gout):
+            if '  Final charges from QEq :' in line:
+                start_line = line_num + 7
+        if start_line is None:
+            error("Final charges not found in gulp output")
+            terminate(184)
         for atom, chg_line in zip(self.atoms, gout[start_line:]):
             atom.charge = float(chg_line.split()[2])
 
@@ -1982,6 +2051,7 @@ class Cell(object):
 
     @property
     def inverse(self):
+        """Inverted cell matrix for converting to fractional coordinates."""
         try:
             if self._inverse is None:
                 self._inverse = np.linalg.inv(self.cell.T)

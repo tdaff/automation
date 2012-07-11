@@ -80,6 +80,7 @@ class PyNiss(object):
         self.options = options
         self.structure = Structure(options.get('job_name'))
         self.state = {'init': (NOT_RUN, False),
+                      'ff_opt': (NOT_RUN, False),
                       'dft': (NOT_RUN, False),
                       'esp': (NOT_RUN, False),
                       'charges': (NOT_RUN, False),
@@ -163,6 +164,8 @@ class PyNiss(object):
                 self.options)
             self.state['init'] = (UPDATED, False)
             self.dump_state()
+
+        self.step_force_field()
 
         self.step_dft()
 
@@ -267,6 +270,41 @@ class PyNiss(object):
                 info("%9.3f %9.2f %9.2f %9.2f" %
                      (probe, area, vol_area, specific_area))
             info("========= ========= ========= =========")
+
+    def step_force_field(self):
+        """Check the force field step of the calculation."""
+        end_after = False
+
+        if 'ff_opt' not in self.state:
+            self.state['ff_opt'] = (NOT_RUN, False)
+
+        if self.state.get['ff_opt'][0] not in [UPDATED, SKIPPED]:
+            if self.options.getbool('no_force_field_opt'):
+                info("Skipping force field optimisation")
+                self.state['ff_opt'] = (SKIPPED, False)
+            elif self.state['ff_opt'][0] == RUNNING:
+                job_state = self.job_handler.jobcheck(self.state['ff_opt'][1])
+                if not job_state:
+                    info("Queue reports force field optimisation has finished")
+                    self.state['ff_opt'] = (FINISHED, False)
+                else:
+                    # Still running
+                    info("Force field optimisation still in progress")
+                    end_after = True
+
+        if self.state['ff_opt'][0] == NOT_RUN or 'ff_opt' in self.options.args:
+            jobid = self.run_ff_opt()
+            end_after = self.postrun(jobid)
+            self.dump_state()
+
+        if self.state['ff_opt'][0] == FINISHED:
+            self.structure.update_pos(self.options.get('ff_opt_code'))
+            self.state['ff_opt_code'] = (UPDATED, False)
+            self.dump_state()
+
+        # If postrun is submitted then this script is done!
+        if end_after:
+            terminate(0)
 
     def step_dft(self):
         """Check the DFT step of the calculation."""
@@ -405,6 +443,11 @@ class PyNiss(object):
         except IOError:
             info("No initial structure found to import")
         try:
+            self.structure.update_pos(self.options.get('ff_opt_code'))
+            self.state['ff_opt'] = (UPDATED, False)
+        except IOError:
+            info("No force field optimised structure found to import")
+        try:
             self.structure.update_pos(self.options.get('dft_code'))
             self.state['dft'] = (UPDATED, False)
         except IOError:
@@ -456,6 +499,26 @@ class PyNiss(object):
             return False
 
 
+    def run_ff_opt(self):
+        """Select correct method for running the dft/optim."""
+        ff_opt_code = self.options.get('ff_opt_code')
+        info("Running a %s calculation" % ff_opt_code)
+        if dft_code == 'gulp':
+            jobid = self.run_optimise_gulp()
+        else:
+            critical("Unknown force field method: %s" % ff_opt_code)
+            terminate(91)
+
+        if jobid is True:
+            # job run and finished
+            self.state['ff_opt'] = (FINISHED, False)
+        else:
+            info("Running %s job in queue. Jobid: %s" % (ff_opt_code, jobid))
+            self.state['ff_opt'] = (RUNNING, jobid)
+
+        return jobid
+
+
     def run_dft(self):
         """Select correct method for running the dft/optim."""
         dft_code = self.options.get('dft_code')
@@ -481,6 +544,7 @@ class PyNiss(object):
 
         return jobid
 
+
     def run_charges(self):
         """Select correct charge processing methods."""
         chg_method = self.options.get('charge_method')
@@ -505,6 +569,33 @@ class PyNiss(object):
             info("Running %s job in queue. Jobid: %s" % (chg_method, jobid))
             self.state['charges'] = (RUNNING, jobid)
 
+        return jobid
+
+    ## Methods for specific codes start here
+
+    def run_optimise_gulp(self):
+        """Run GULP to do a UFF optimisation."""
+        job_name = self.options.get('job_name')
+        optim_code = 'gulp'
+        optim_dir = path.join(self.options.get('job_dir'),
+                                   'faps_%s_%s' % (job_name, optim_code))
+        mkdirs(optim_dir)
+        os.chdir(optim_dir)
+        debug("Running in %s" % optim_dir)
+
+        filetemp = open('%s.gin' % job_name, 'wb')
+        filetemp.writelines(self.structure.to_gulp(optimise=True, bonds=True))
+        filetemp.close()
+
+        if self.options.getbool('no_submit'):
+            info("GULP input files generated; skipping job submission")
+            jobid = False
+        else:
+            jobid = self.job_handler.submit(optim_code, self.options,
+                                            input_file='%s.gin' % job_name)
+
+        # Tidy up at the end
+        os.chdir(self.options.get('job_dir'))
         return jobid
 
 

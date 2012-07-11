@@ -16,7 +16,7 @@ doing select parts.
 
 """
 
-__version__ = "$Revision: 261 $"
+__version__ = "$Revision$"
 
 import code
 import ConfigParser
@@ -42,7 +42,7 @@ from numpy.linalg import norm
 
 from config import Options
 from elements import WEIGHT, ATOMIC_NUMBER, UFF, VASP_PSEUDO_PREF
-from elements import CCDC_BOND_ORDERS
+from elements import CCDC_BOND_ORDERS, GULP_BOND_ORDERS, METALS
 from job_handler import JobHandler
 from logo import LOGO
 
@@ -278,7 +278,7 @@ class PyNiss(object):
         if 'ff_opt' not in self.state:
             self.state['ff_opt'] = (NOT_RUN, False)
 
-        if self.state.get['ff_opt'][0] not in [UPDATED, SKIPPED]:
+        if self.state['ff_opt'][0] not in [UPDATED, SKIPPED]:
             if self.options.getbool('no_force_field_opt'):
                 info("Skipping force field optimisation")
                 self.state['ff_opt'] = (SKIPPED, False)
@@ -503,7 +503,7 @@ class PyNiss(object):
         """Select correct method for running the dft/optim."""
         ff_opt_code = self.options.get('ff_opt_code')
         info("Running a %s calculation" % ff_opt_code)
-        if dft_code == 'gulp':
+        if ff_opt_code == 'gulp':
             jobid = self.run_optimise_gulp()
         else:
             critical("Unknown force field method: %s" % ff_opt_code)
@@ -577,15 +577,19 @@ class PyNiss(object):
         """Run GULP to do a UFF optimisation."""
         job_name = self.options.get('job_name')
         optim_code = 'gulp'
+        # put an opt in path to distinguish from the charge calculation
         optim_dir = path.join(self.options.get('job_dir'),
-                                   'faps_%s_%s' % (job_name, optim_code))
+                                   'faps_%s_%s_opt' % (job_name, optim_code))
         mkdirs(optim_dir)
         os.chdir(optim_dir)
         debug("Running in %s" % optim_dir)
 
         filetemp = open('%s.gin' % job_name, 'wb')
-        filetemp.writelines(self.structure.to_gulp(optimise=True, bonds=True))
+        filetemp.writelines(self.structure.to_gulp(optimise=True))
         filetemp.close()
+
+        if 'GULP_LIB' not in os.environ:
+            warning("gulp library directory not set; optimisation might fail")
 
         if self.options.getbool('no_submit'):
             info("GULP input files generated; skipping job submission")
@@ -1162,6 +1166,9 @@ class Structure(object):
             self.from_vasp(path.join(opt_path, 'CONTCAR'), update=True)
         elif opt_code == 'siesta':
             self.from_siesta(path.join(opt_path, '%s.STRUCT_OUT' % self.name))
+        elif opt_code == 'gulp':
+            opt_path = "%s_opt" % opt_path
+            self.from_gulp_output(path.join(opt_path, '%s.grs' % self.name))
         else:
             error("Unknown positions to import %s" % opt_code)
 
@@ -1339,6 +1346,9 @@ class Structure(object):
                             # TODO(tdaff): symmetry implementation for cif bonding
                             #if min_dist(): ...
                             bonds[(first_index, second_index)] = CCDC_BOND_ORDERS[bond_order]
+                            if first_atom.is_metal or second_atom.is_metal:
+                                first_atom.is_fixed = True
+                                second_atom.is_fixed = True
 
         self.bonds = bonds
         self.symmetry = symmetry
@@ -1395,6 +1405,19 @@ class Structure(object):
         self.cell.from_lines(struct_out[:3])
         for atom, line in zip(self.atoms, struct_out[4:]):
             atom.from_siesta(line, self.cell.cell)
+
+    def from_gulp_output(self, filename):
+        """Update the structure from the gulp optimisation output."""
+        info("Updating positions from file: %s" % filename)
+        grs_out = open(filename)
+        for line in grs_out:
+            if line.strip() == 'cell':
+                params = tuple(float(x) for x in grs_out.next().split()[:6])
+                self.cell.params = params
+            elif line.strip() == 'fractional':
+                cell = self.cell.cell
+                for atom, atom_line in zip(self.atoms, grs_out):
+                    atom.pos = dot([float(x) for x in atom_line.split()[2:5]], cell)
 
     def from_xyz(self, filename, update=False, cell=None):
         """Read a structure from an file."""
@@ -1622,11 +1645,13 @@ class Structure(object):
 
         return fdf
 
-    def to_gulp(self, qeq_fit=True):
+    def to_gulp(self, qeq_fit=False, optimise=False):
         """Return a GULP file to use for the QEq charges."""
         if qeq_fit:
             from elements import QEQ_PARAMS
             keywords = "fitting bulk_noopt qeq\n"
+        elif optimise:
+            return self.to_gulp_optimise()
         else:
             keywords = "single conp qeq\n"
         gin_file = [
@@ -1656,6 +1681,54 @@ class Structure(object):
                                  "%14.7f %14.7f %14.7f\n" % tuple(atom.pos)])
         gin_file.append("\ndump every %s.grs\nprint 1\n" % self.name)
         return gin_file
+
+
+    def to_gulp_optimise(self):
+        """Return a GULP file to optimise with UFF."""
+        # all atoms of the same forcefield type must have the same label
+        # gulp fails if atoms of the same type have different labels!
+        # this only crops up as an error in the 4.0 versions
+        keywords = "opti noautobond bond fix_molecule\n"
+        gin_file = [
+            "# \n# Keywords:\n# \n",
+            keywords,
+            "# \n# Options:\n# \n",
+            "# UFF optimisation by gulp\n"
+            "name %s\n" % self.name,
+            "vectors\n"] + self.cell.to_vector_strings() + [
+            " 1 1 1\n 1 1 1\n 1 1 1\n",  # constant pressure relaxation
+            "cartesian\n"]
+        all_ff_types = {}
+        for at_idx, atom in enumerate(self.atoms):
+            ff_type = atom.uff_type
+            if not ff_type in all_ff_types:
+                all_ff_types[ff_type] = atom.site
+            gin_file.extend(["%-5s core " % all_ff_types[ff_type],
+    #                         "%14.7f %14.7f %14.7f " % tuple(atom.ipos(cell.cell, cell.inverse)),
+                             "%14.7f %14.7f %14.7f " % tuple(atom.pos),
+                             "%f " % atom.charge,
+                             "%f " % 1.0,  # occupancy
+                             "0 0 0\n" if atom.is_fixed else "1 1 1\n"])
+
+        #identify all the individual uff species for the library
+        gin_file.append("\nspecies\n")
+        for ff_type, species in all_ff_types.iteritems():
+            gin_file.append("%-6s core %-6s\n" % (species, ff_type))
+
+        gin_file.append("\n")
+        for bond in sorted(self.bonds):
+            bond_type = GULP_BOND_ORDERS[self.bonds[bond]]
+            gin_file.append("connect %6i %6i %s\n" % (bond[0] + 1, bond[1] + 1, bond_type))
+
+        gin_file.append("\nlibrary uff\n")
+
+        # Restart file is for final structure
+        gin_file.append("\ndump every %s.grs\n" % self.name)
+        # optimization movie useful for debugging mostly
+        gin_file.append("\noutput movie arc %s\nprint 1\n" % self.name)
+
+        return gin_file
+
 
     def to_egulp(self):
         """Generate input files for Eugene's QEq code."""
@@ -2224,6 +2297,7 @@ class Atom(object):
         self.mass = 0.0
         self.molecule = None
         self.uff_type = None
+        self.is_fixed = False
         # Sets anything else specified as an attribute
         for key, val in kwargs.iteritems():
             setattr(self, key, val)
@@ -2344,6 +2418,11 @@ class Atom(object):
     def vdw_radius(self):
         """Get the vdw radius from the UFF parameters."""
         return UFF[self.type][0]/2.0
+
+    @property
+    def is_metal(self):
+        """Return True if element is in a predetermined set of metals."""
+        return self.atomic_number in METALS
 
 
 class Guest(object):

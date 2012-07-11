@@ -16,7 +16,7 @@ doing select parts.
 
 """
 
-__version__ = "$Revision$"
+__version__ = "$Revision: 261 $"
 
 import code
 import ConfigParser
@@ -42,6 +42,7 @@ from numpy.linalg import norm
 
 from config import Options
 from elements import WEIGHT, ATOMIC_NUMBER, UFF, VASP_PSEUDO_PREF
+from elements import CCDC_BOND_ORDERS
 from job_handler import JobHandler
 from logo import LOGO
 
@@ -1143,7 +1144,11 @@ class Structure(object):
         loops = []
         idx = 0
         while idx < len(cif_file):
-            line = cif_file[idx].lower()
+            # line text needs to be manageable; cif guidelines can be
+            # permissive
+            # Can no longer just check for _underscores in lines
+            # as UFF types can have them and mess up parsing
+            line = cif_file[idx].lower().strip()
             if '_cell_length_a' in line:
                 params[0] = ufloat(line.split()[1])
             elif '_cell_length_b' in line:
@@ -1159,14 +1164,16 @@ class Structure(object):
             elif '_symmetry_space_group_name_h-m' in line:
                 self.space_group = line.split()[1]
             elif 'loop_' in line:
-                # loops for _atom_site and _symmetry
+                # loops for _atom_site, _symmetry and _geom
                 heads = []
                 body = []
-                while '_' in line:
+                while line.startswith('_') or 'loop_' in line:
+                    # must keep the loop_ line as this can still contain headers
                     heads.extend(line.split())
                     idx += 1
-                    line = cif_file[idx]
-                while idx < len(cif_file) and '_' not in line:
+                    # don't lower these to keep atomic symbols
+                    line = cif_file[idx].strip()
+                while idx < len(cif_file) and not line.startswith('_') and not 'loop_' in line:
                     # shlex keeps 'quoted items' as one
                     # Some cifs seem to have primed atom symbols
                     # posix=False should help
@@ -1204,9 +1211,17 @@ class Structure(object):
                     symmetry.append(
                         Symmetry(sym_dict['_symmetry_equiv_pos_as_xyz']))
                     body = body[len(heads):]
+            if '_ccdc_geom_bond_type' in heads:
+                cif_bonds = {}
+                while body:
+                    bond_dict = dict(zip(heads, body))
+                    bond = (bond_dict['_geom_bond_atom_site_label_1'],
+                            bond_dict['_geom_bond_atom_site_label_2'])
+                    cif_bonds[bond] = bond_dict['_ccdc_geom_bond_type']
+                    body = body[len(heads):]
 
         if not symmetry:
-            debug('No symmetry found; assuming identity')
+            debug('No symmetry found; assuming identity only')
             symmetry = [Symmetry('x,y,z')]
 
         newatoms = []
@@ -1217,10 +1232,24 @@ class Structure(object):
                 newatoms.append(newatom)
 
         self.atoms = newatoms
+
         if len(symmetry) > 1:
             # can skip if just identity operation as it's slow for big systems
             self.remove_duplicates()
         self.order_by_types()
+
+        bonds = {}
+        # Assign bonds by index
+        for bond, bond_order in cif_bonds.iteritems():
+            for first_index, first_atom in enumerate(self.atoms):
+                if first_atom.site == bond[0]:
+                    for second_index, second_atom in enumerate(self.atoms):
+                        if second_atom.site == bond[1]:
+                            # TODO(tdaff): symmetry implementation for cif bonding
+                            #if min_dist(): ...
+                            bonds[(first_index, second_index)] = CCDC_BOND_ORDERS[bond_order]
+
+        self.bonds = bonds
         self.symmetry = symmetry
 
     def from_vasp(self, filename='CONTCAR', update=False):
@@ -1901,7 +1930,7 @@ class Structure(object):
         return [atom.type for atom in self.atoms]
 
     @property
-    def atominc_numbers(self):
+    def atomic_numbers(self):
         """Ordered list of atomic numbers."""
         return [atom.atomic_number for atom in self.atoms]
 
@@ -2103,6 +2132,7 @@ class Atom(object):
         self.site = None
         self.mass = 0.0
         self.molecule = None
+        self.uff_type = None
         # Sets anything else specified as an attribute
         for key, val in kwargs.iteritems():
             setattr(self, key, val)
@@ -2140,6 +2170,9 @@ class Atom(object):
         if re.match('[0-9]', self.site) and idx is not None:
             debug("Site label may not be unique; appending index")
             self.site = "%s%i" % (self.site, idx)
+        if '_atom_type_description' in at_dict:
+            self.uff_type = at_dict['_atom_type_description']
+
 
     def from_pdb(self, line, charges=False):
         """
@@ -2344,6 +2377,8 @@ class Symmetry(object):
         new_pos = [eval(sym_op.replace('x', str(pos[0]))
                         .replace('y', str(pos[1]))
                         .replace('z', str(pos[2]))) for sym_op in self.sym_ops]
+        # TODO(tdaff): should we translate into cell?
+        new_pos = [x%1.0 for x in new_pos]
         return new_pos
 
 

@@ -384,3 +384,15 @@ QEQ_PARAMS = {
     "No": (3.475, 3.175, 1.9),
     "Lr": (3.5, 3.2, 1.9)
 }
+
+CCDC_BOND_ORDERS = {
+    # http://cima.chem.usyd.edu.au:8080/cif/skunkworks/html/ddl1/mif/bond.html
+    'S': 1.0,  # single (two-electron) bond or sigma bond to metal
+    'D': 2.0,  # double (four-electron) bond
+    'T': 3.0,  # triple (six-electron) bond
+    'Q': 4.0,  # quadruple (eight-electron, metal-metal) bond
+    'A': 1.5,  # alternating normalized ring bond (aromatic)
+    'C': 1.0,  # catena-forming bond in crystal structure
+    'E': 1.5,  # equivalent (delocalized double) bond
+    'P': 1.0   # pi bond (metal-ligand pi interaction)
+}

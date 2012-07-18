@@ -19,7 +19,10 @@ doing select parts.
 __version__ = "$Revision$"
 
 import code
-import ConfigParser
+try:
+    import configparser
+except ImportError:
+    import ConfigParser as configparser
 import glob
 import os
 import pickle
@@ -200,12 +203,12 @@ class PyNiss(object):
                  "(running jobs may have already finished):")
         else:
             info("Current system status:")
-        for step, state in self.state.iteritems():
+        for step, state in self.state.items():
             if step == 'gcmc':
                 if not state:
                     info(" * State of GCMC: Not run")
                 else:
-                    for point, job in state.iteritems():
+                    for point, job in state.items():
                         if job[0] is RUNNING:
                             info(" * GCMC %s: Running, jobid: %s" %
                                  (point, job[1]))
@@ -264,7 +267,7 @@ class PyNiss(object):
             info("========= ========= ========= =========")
             info(" radius/A total/A^2  m^2/cm^3     m^2/g")
             info("========= ========= ========= =========")
-            for probe, area in surf_area_results.iteritems():
+            for probe, area in surf_area_results.items():
                 vol_area = 1E4*area/self.structure.volume
                 specific_area = NAVOGADRO*area/(1E20*self.structure.weight)
                 info("%9.3f %9.2f %9.2f %9.2f" %
@@ -386,7 +389,7 @@ class PyNiss(object):
             jobids = self.run_fastmc()
             self.dump_state()
 
-        for tp_point, jobid in jobids.iteritems():
+        for tp_point, jobid in jobids.items():
             if jobid is True:
                 self.state['gcmc'][tp_point] = (FINISHED, False)
             elif jobid is False:
@@ -1338,7 +1341,7 @@ class Structure(object):
 
         bonds = {}
         # Assign bonds by index
-        for bond, bond_order in cif_bonds.iteritems():
+        for bond, bond_order in cif_bonds.items():
             for first_index, first_atom in enumerate(self.atoms):
                 if first_atom.site == bond[0]:
                     for second_index, second_atom in enumerate(self.atoms):
@@ -1471,7 +1474,7 @@ class Structure(object):
             if len(charges) != len(tree):
                 error("Incorrect number of charge sets; check REPEAT output")
                 terminate(97)
-            for symm, charge in zip(sorted(tree.iteritems()), charges):
+            for symm, charge in zip(sorted(tree.items()), charges):
                 for at_idx in symm[1]:
                     self.atoms[at_idx].charge = charge[2]
         else:
@@ -1712,7 +1715,7 @@ class Structure(object):
 
         #identify all the individual uff species for the library
         gin_file.append("\nspecies\n")
-        for ff_type, species in all_ff_types.iteritems():
+        for ff_type, species in all_ff_types.items():
             gin_file.append("%-6s core %-6s\n" % (species, ff_type))
 
         gin_file.append("\n")
@@ -1974,8 +1977,14 @@ class Structure(object):
         info("Constructing %s supercell for gcmc." % str(supercell))
 
     def supercell(self, scale):
-        """Iterate over all the atoms of supercell."""
-        if isinstance(scale, (int, long)):
+        """
+        Iterate over all the atoms of supercell where scale is an integer
+        to scale uniformly or triplet with scale factors for each direction.
+
+        """
+        # Beware supercells larger than 2147483647 are not supported in
+        # python 2
+        if isinstance(scale, int):
             scale = (scale, scale, scale)
         for x_super in range(scale[0]):
             for y_super in range(scale[1]):
@@ -2058,21 +2067,21 @@ class Structure(object):
         inv_cell = np.linalg.inv(cell.T)
 
         grid_size = [int(ceil(x/initial_resolution)) for x in params[:3]]
-        print grid_size
+        print(grid_size)
         grid_resolution = [params[0]/grid_size[0],
                            params[1]/grid_size[1],
                            params[2]/grid_size[2]]
-        print grid_resolution
+        print(grid_resolution)
         grid = np.zeros(grid_size, dtype=bool)
         atoms = [(atom.ipos(cell), inv_cell.tolist(),
                   atom.ifpos(inv_cell),
                   atom.vdw_radius) for atom in self.atoms]
 
         for x_idx in range(grid_size[0]):
-            print x_idx
+            print(x_idx)
             for y_idx in range(grid_size[1]):
-                print y_idx
-                print grid.sum()
+                print(y_idx)
+                print(grid.sum())
                 for z_idx in range(grid_size[2]):
                     grid_pos = [x_idx*grid_resolution[0],
                                 y_idx*grid_resolution[1],
@@ -2086,7 +2095,7 @@ class Structure(object):
                             grid[x_idx, y_idx, z_idx] = 1
                             break
 
-        print grid.sum()
+        print(grid.sum())
 
     @property
     def types(self):
@@ -2175,7 +2184,10 @@ class Cell(object):
     def to_vector_strings(self, scale=1, bohr=False, fmt="%20.12f"):
         """Generic [Super]cell vectors in Angstrom as a list of strings."""
         out_format = 3 * fmt + "\n"
-        if isinstance(scale, (int, long)):
+        # If the supercell is more than 2147483647 in any direction this
+        # will fail in python 2, but 'long' removed for py3k forward
+        # compatibility
+        if isinstance(scale, int):
             scale = [scale, scale, scale]
             # else assume an iterable 3-vector
         if bohr:
@@ -2299,7 +2311,7 @@ class Atom(object):
         self.uff_type = None
         self.is_fixed = False
         # Sets anything else specified as an attribute
-        for key, val in kwargs.iteritems():
+        for key, val in kwargs.items():
             setattr(self, key, val)
 
     def __str__(self):
@@ -2454,9 +2466,9 @@ class Guest(object):
             script_dir = path.abspath(sys.path[0])
         dot_faps_dir = path.join(path.expanduser('~'), '.faps')
         # A parser for each location
-        job_guests = ConfigParser.SafeConfigParser()
-        dot_faps_guests = ConfigParser.SafeConfigParser()
-        lib_guests = ConfigParser.SafeConfigParser()
+        job_guests = configparser.SafeConfigParser()
+        dot_faps_guests = configparser.SafeConfigParser()
+        lib_guests = configparser.SafeConfigParser()
         # Try and find guest in guests.lib
         job_guests.read(path.join(guest_path, 'guests.lib'))
         dot_faps_guests.read(path.join(dot_faps_dir, 'guests.lib'))

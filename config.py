@@ -12,14 +12,22 @@ the particular job.
 
 __all__ = ['Options']
 
-import ConfigParser
+# Python 3 fix
+try:
+    import configparser
+except ImportError:
+    import ConfigParser as configparser
 import copy
 import logging
 import os
 import re
 import sys
 import textwrap
-from StringIO import StringIO
+# Python 3 fix
+try:
+    from io import StringIO
+except ImportError:
+    from StringIO import StringIO
 from optparse import OptionParser
 from logging import debug, error
 
@@ -46,9 +54,9 @@ class Options(object):
         self.args = []
         self.options = {}
         self.cmdopts = {}
-        self.defaults = ConfigParser.SafeConfigParser()
-        self.site_ini = ConfigParser.SafeConfigParser()
-        self.job_ini = ConfigParser.SafeConfigParser()
+        self.defaults = configparser.SafeConfigParser()
+        self.site_ini = configparser.SafeConfigParser()
+        self.job_ini = configparser.SafeConfigParser()
         # populate options
         self._init_paths()
         self.commandline()
@@ -57,7 +65,7 @@ class Options(object):
         self.load_site_defaults()
         self.load_job_defaults()
         if self.options.job_type:
-            self.job_type_ini = ConfigParser.SafeConfigParser()
+            self.job_type_ini = configparser.SafeConfigParser()
             self.load_job_type(self.options.job_type)
         else:
             self.job_type_ini = NullConfigParser()
@@ -104,7 +112,9 @@ class Options(object):
         value = self.get(item)
         if isinstance(value, bool):
             return value
-        elif isinstance(value, basestring):
+        # Can't use isinstance with basestring to be 2.x and 3.x compatible
+        # fudge it by assuming strings can be lowered
+        elif hasattr(value, 'lower'):
             if value.lower() in ["1", "yes", "true", "on"]:
                 return True
             elif value.lower() in ["0", "no", "false", "off"]:

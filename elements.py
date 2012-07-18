@@ -394,7 +394,8 @@ CCDC_BOND_ORDERS = {
     'A': 1.5,  # alternating normalized ring bond (aromatic)
     'C': 1.0,  # catena-forming bond in crystal structure
     'E': 1.5,  # equivalent (delocalized double) bond
-    'P': 1.0   # pi bond (metal-ligand pi interaction)
+    'P': 1.0,   # pi bond (metal-ligand pi interaction)
+    'Am': 1.41  # Amide bond (non standard)
 }
 
 GULP_BOND_ORDERS = {1: 'single', 1.41: 'amide', 1.5: 'resonant',

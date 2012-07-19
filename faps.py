@@ -16,10 +16,13 @@ doing select parts.
 
 """
 
-__version__ = "$Revision: 236 $"
+__version__ = "$Revision$"
 
 import code
-import ConfigParser
+try:
+    import configparser
+except ImportError:
+    import ConfigParser as configparser
 import glob
 import os
 import pickle
@@ -42,7 +45,8 @@ from numpy.linalg import norm
 
 from config import Options
 from elements import WEIGHT, ATOMIC_NUMBER, UFF, VASP_PSEUDO_PREF
-from elements import UFF_INTRA_CUTOFF, METALS
+from elements import CCDC_BOND_ORDERS, GULP_BOND_ORDERS, METALS
+from elements import UFF_INTRA_CUTOFF
 from job_handler import JobHandler
 from logo import LOGO
 
@@ -58,6 +62,7 @@ RUNNING = 1
 FINISHED = 2
 UPDATED = 3
 SKIPPED = -1
+NOT_SUBMITTED = -2
 
 
 class PyNiss(object):
@@ -79,6 +84,7 @@ class PyNiss(object):
         self.options = options
         self.structure = Structure(options.get('job_name'))
         self.state = {'init': (NOT_RUN, False),
+                      'ff_opt': (NOT_RUN, False),
                       'dft': (NOT_RUN, False),
                       'esp': (NOT_RUN, False),
                       'charges': (NOT_RUN, False),
@@ -91,9 +97,14 @@ class PyNiss(object):
         job_name = self.options.get('job_name')
         info("Writing state file, %s.niss." % job_name)
         os.chdir(self.options.get('job_dir'))
+        # Don't save the job handler in case it changes
+        save_handler = self.job_handler
+        self.job_handler = None
         my_niss = open(job_name + ".niss", "wb")
         pickle.dump(self, my_niss)
         my_niss.close()
+        # put the job handler back and continue
+        self.job_handler = save_handler
 
     def re_init(self, new_options):
         """Re initialize simulation (with updated options)."""
@@ -158,50 +169,11 @@ class PyNiss(object):
             self.state['init'] = (UPDATED, False)
             self.dump_state()
 
-        if self.state['dft'][0] not in [UPDATED, SKIPPED]:
-            if self.options.getbool('no_dft'):
-                info("Skipping DFT step completely")
-                info("Job might fail later if you need the ESP")
-                self.state['dft'] = (SKIPPED, False)
-            elif self.state['dft'][0] == RUNNING:
-                job_state = self.job_handler.jobcheck(self.state['dft'][1])
-                if not job_state:
-                    info("Queue reports DFT step has finished")
-                    # Finished running update positions
-                    self.structure.update_pos(self.options.get('dft_code'))
-                    self.state['dft'] = (UPDATED, False)
-                    self.dump_state()
-                else:
-                    # Still running
-                    info("DFT still in progress")
-                    terminate(0)
+        self.step_force_field()
 
-        if self.state['dft'][0] == NOT_RUN or 'dft' in self.options.args:
-            self.run_dft()
-            self.dump_state()
-            terminate(0)
+        self.step_dft()
 
-        if self.state['charges'][0] not in [UPDATED, SKIPPED]:
-            if self.options.getbool('no_charges'):
-                info("Skipping charge calculation")
-                self.state['charges'] = (SKIPPED, False)
-            elif self.state['charges'][0] == RUNNING:
-                job_state = self.job_handler.jobcheck(self.state['charges'][1])
-                if not job_state:
-                    info("Queue reports charge calculation has finished")
-                    self.structure.update_charges(
-                        self.options.get('charge_method'), self.options)
-                    self.state['charges'] = (UPDATED, False)
-                    self.dump_state()
-                else:
-                    info("Charge calculation still running")
-                    terminate(0)
-
-        if self.state['charges'][0] == NOT_RUN or 'charges' in self.options.args:
-            self.run_charges()
-            info("Running charge calculation")
-            self.dump_state()
-            terminate(0)
+        self.step_charges()
 
         if self.options.getbool('qeq_fit'):
             if not 'qeq_fit' in self.state and self.state['charges'][0] == UPDATED:
@@ -209,30 +181,7 @@ class PyNiss(object):
                 self.run_qeq_gulp(fitting=True)
                 self.dump_state()
 
-        if self.options.getbool('no_gcmc'):
-            info("Skipping GCMC simulation")
-        elif not self.state['gcmc'] or 'gcmc' in self.options.args:
-            # The dictionary is empty before any runs
-            info("Starting gcmc step")
-            self.run_fastmc()
-            self.dump_state()
-            terminate(0)
-        else:
-            unfinished_gcmc = False
-            for tp_point, tp_state in self.state['gcmc'].iteritems():
-                if tp_state[0] == RUNNING:
-                    new_state = self.job_handler.jobcheck(tp_state[1])
-                    if not new_state:
-                        info("Queue reports GCMC %s finished" % (tp_point,))
-                        self.structure.update_gcmc(tp_point, self.options)
-                        self.state['gcmc'][tp_point] = (UPDATED, False)
-                        self.dump_state()
-                    else:
-                        info("GCMC %s still running" % (tp_point,))
-                        unfinished_gcmc = True
-            if not unfinished_gcmc:
-                info("GCMC run has finished")
-                #terminate(0)
+        self.step_gcmc()
 
         if not self.options.getbool('no_properties'):
             self.calculate_properties()
@@ -247,19 +196,20 @@ class PyNiss(object):
                         RUNNING: 'Running',
                         FINISHED: 'Finished',
                         UPDATED: 'Processed',
-                        SKIPPED: 'Skipped'}
+                        SKIPPED: 'Skipped',
+                        NOT_SUBMITTED: 'Not submitted'}
 
         if initial:
             info("Previous system state reported from .niss file "
                  "(running jobs may have already finished):")
         else:
             info("Current system status:")
-        for step, state in self.state.iteritems():
+        for step, state in self.state.items():
             if step == 'gcmc':
                 if not state:
                     info(" * State of GCMC: Not run")
                 else:
-                    for point, job in state.iteritems():
+                    for point, job in state.items():
                         if job[0] is RUNNING:
                             info(" * GCMC %s: Running, jobid: %s" %
                                  (point, job[1]))
@@ -307,7 +257,7 @@ class PyNiss(object):
                     vuptake, vuptake_stdev,
                     hoa[0], hoa[1]) +
                     ",".join("%f" % x for x in tp_point[1]) + "\n")
-            csv_file = file('%s-%s.csv' % (job_name, guest.ident), 'wb')
+            csv_file = open('%s-%s.csv' % (job_name, guest.ident), 'w')
             csv_file.writelines(csv)
             csv_file.close()
         info("======= ======= ======= ======= =======")
@@ -318,12 +268,171 @@ class PyNiss(object):
             info("========= ========= ========= =========")
             info(" radius/A total/A^2  m^2/cm^3     m^2/g")
             info("========= ========= ========= =========")
-            for probe, area in surf_area_results.iteritems():
+            for probe, area in surf_area_results.items():
                 vol_area = 1E4*area/self.structure.volume
                 specific_area = NAVOGADRO*area/(1E20*self.structure.weight)
                 info("%9.3f %9.2f %9.2f %9.2f" %
                      (probe, area, vol_area, specific_area))
             info("========= ========= ========= =========")
+
+    def step_force_field(self):
+        """Check the force field step of the calculation."""
+        end_after = False
+
+        if 'ff_opt' not in self.state:
+            self.state['ff_opt'] = (NOT_RUN, False)
+
+        if self.state['ff_opt'][0] not in [UPDATED, SKIPPED]:
+            if self.options.getbool('no_force_field_opt'):
+                info("Skipping force field optimisation")
+                self.state['ff_opt'] = (SKIPPED, False)
+            elif self.state['ff_opt'][0] == RUNNING:
+                job_state = self.job_handler.jobcheck(self.state['ff_opt'][1])
+                if not job_state:
+                    info("Queue reports force field optimisation has finished")
+                    self.state['ff_opt'] = (FINISHED, False)
+                else:
+                    # Still running
+                    info("Force field optimisation still in progress")
+                    end_after = True
+
+        if self.state['ff_opt'][0] == NOT_RUN or 'ff_opt' in self.options.args:
+            jobid = self.run_ff_opt()
+            end_after = self.postrun(jobid)
+            self.dump_state()
+
+        if self.state['ff_opt'][0] == FINISHED:
+            self.structure.update_pos(self.options.get('ff_opt_code'))
+            self.state['ff_opt_code'] = (UPDATED, False)
+            self.dump_state()
+
+        # If postrun is submitted then this script is done!
+        if end_after:
+            terminate(0)
+
+    def step_dft(self):
+        """Check the DFT step of the calculation."""
+        end_after = False
+
+        if self.state['dft'][0] not in [UPDATED, SKIPPED]:
+            if self.options.getbool('no_dft'):
+                info("Skipping DFT step completely")
+                info("Job might fail later if you need the ESP")
+                self.state['dft'] = (SKIPPED, False)
+            elif self.state['dft'][0] == RUNNING:
+                job_state = self.job_handler.jobcheck(self.state['dft'][1])
+                if not job_state:
+                    info("Queue reports DFT step has finished")
+                    self.state['dft'] = (FINISHED, False)
+                else:
+                    # Still running
+                    info("DFT still in progress")
+                    end_after = True
+
+        if self.state['dft'][0] == NOT_RUN or 'dft' in self.options.args:
+            jobid = self.run_dft()
+            end_after = self.postrun(jobid)
+            self.dump_state()
+
+        if self.state['dft'][0] == FINISHED:
+            self.structure.update_pos(self.options.get('dft_code'))
+            self.state['dft'] = (UPDATED, False)
+            self.dump_state()
+
+        # If postrun is submitted then this script is done!
+        if end_after:
+            terminate(0)
+
+    def step_charges(self):
+        """Check the charge step of the calculation."""
+        end_after = False
+
+        if self.state['charges'][0] not in [UPDATED, SKIPPED]:
+            if self.options.getbool('no_charges'):
+                info("Skipping charge calculation")
+                self.state['charges'] = (SKIPPED, False)
+            elif self.state['charges'][0] == RUNNING:
+                job_state = self.job_handler.jobcheck(self.state['charges'][1])
+                if not job_state:
+                    info("Queue reports charge calculation has finished")
+                    self.state['charges'] = (FINISHED, False)
+                else:
+                    info("Charge calculation still running")
+                    end_after = True
+
+        if self.state['charges'][0] == NOT_RUN or 'charges' in self.options.args:
+            jobid = self.run_charges()
+            end_after = self.postrun(jobid)
+            self.dump_state()
+
+        if self.state['charges'][0] == FINISHED:
+            self.structure.update_charges(self.options.get('charge_method'),
+                                          self.options)
+            self.state['charges'] = (UPDATED, False)
+            self.dump_state()
+
+        # If postrun is submitted then this script is done!
+        if end_after:
+            terminate(0)
+
+    def step_gcmc(self):
+        """Check the GCMC step of the calculation."""
+        end_after = False
+        jobids = {}
+        postrun_ids = []
+
+        if self.options.getbool('no_gcmc'):
+            info("Skipping GCMC simulation")
+            return
+        elif not self.state['gcmc'] or 'gcmc' in self.options.args:
+            # The dictionary is empty before any runs
+            info("Starting gcmc step")
+            jobids = self.run_fastmc()
+            self.dump_state()
+
+        for tp_point, jobid in jobids.items():
+            if jobid is True:
+                self.state['gcmc'][tp_point] = (FINISHED, False)
+            elif jobid is False:
+                self.state['gcmc'][tp_point] = (SKIPPED, False)
+            else:
+                info("FastMC job in queue. Jobid: %s" % jobid)
+                self.state['gcmc'][tp_point] = (RUNNING, jobid)
+                postrun_ids.append(jobid)
+                # unfinished GCMCs
+                end_after = True
+        else:
+            # when the loop completes write out the state
+            self.dump_state()
+
+        for tp_point in self.state['gcmc']:
+            tp_state = self.state['gcmc'][tp_point]
+            if tp_state[0] == RUNNING:
+                new_state = self.job_handler.jobcheck(tp_state[1])
+                if not new_state:
+                    info("Queue reports GCMC %s finished" % (tp_point,))
+                    # need to know we have finished to update below
+                    tp_state = (FINISHED, False)
+                    self.state['gcmc'][tp_point] = tp_state
+                    self.dump_state()
+                else:
+                    info("GCMC %s still running" % (tp_point,))
+                    # unfinished GCMC so exit later
+                    end_after = True
+
+            # any states that need to be updated should have been done by now
+            if tp_state[0] == FINISHED:
+                self.structure.update_gcmc(tp_point, self.options)
+                self.state['gcmc'][tp_point] = (UPDATED, False)
+                self.dump_state()
+
+        if postrun_ids:
+            self.postrun(postrun_ids)
+
+        if end_after:
+            info("GCMC run has not finished completely")
+            terminate(0)
+
 
     def import_old(self):
         """Try and import any data from previous stopped simulation."""
@@ -337,6 +446,11 @@ class PyNiss(object):
             self.state['init'] = (UPDATED, False)
         except IOError:
             info("No initial structure found to import")
+        try:
+            self.structure.update_pos(self.options.get('ff_opt_code'))
+            self.state['ff_opt'] = (UPDATED, False)
+        except IOError:
+            info("No force field optimised structure found to import")
         try:
             self.structure.update_pos(self.options.get('dft_code'))
             self.state['dft'] = (UPDATED, False)
@@ -373,17 +487,67 @@ class PyNiss(object):
         # Reset directory at end
         os.chdir(job_dir)
 
+    def postrun(self, jobid):
+        """Determine if we need the job handler to post submit itself."""
+        # update the job tracker
+        if jobid is not False and jobid is not True:
+            if self.options.getbool('run_all'):
+                debug('Submitting postrun script')
+                os.chdir(self.options.get('job_dir'))
+                self.job_handler.postrun(jobid)
+                return True
+            else:
+                debug('Postrun script not submitted')
+                return False
+        else:
+            return False
+
+
+    def run_ff_opt(self):
+        """Select correct method for running the dft/optim."""
+        ff_opt_code = self.options.get('ff_opt_code')
+        info("Running a %s calculation" % ff_opt_code)
+        if ff_opt_code == 'gulp':
+            jobid = self.run_optimise_gulp()
+        else:
+            critical("Unknown force field method: %s" % ff_opt_code)
+            terminate(91)
+
+        if jobid is True:
+            # job run and finished
+            self.state['ff_opt'] = (FINISHED, False)
+        else:
+            info("Running %s job in queue. Jobid: %s" % (ff_opt_code, jobid))
+            self.state['ff_opt'] = (RUNNING, jobid)
+
+        return jobid
+
+
     def run_dft(self):
         """Select correct method for running the dft/optim."""
         dft_code = self.options.get('dft_code')
         info("Running a %s calculation" % dft_code)
         if dft_code == 'vasp':
-            self.run_vasp()
+            jobid = self.run_vasp()
         elif dft_code == 'siesta':
-            self.run_siesta()
+            jobid = self.run_siesta()
         else:
             critical("Unknown dft method: %s" % dft_code)
             terminate(92)
+
+        # update the job tracker
+        #if jobid is False:
+        #    self.state['dft'] = (NOT_SUBMITTED, False)
+            # submission skipped
+        if jobid is True:
+            # job run and finished
+            self.state['dft'] = (FINISHED, False)
+        else:
+            info("Running %s job in queue. Jobid: %s" % (dft_code, jobid))
+            self.state['dft'] = (RUNNING, jobid)
+
+        return jobid
+
 
     def run_charges(self):
         """Select correct charge processing methods."""
@@ -392,14 +556,56 @@ class PyNiss(object):
         if chg_method == 'repeat':
             # Get ESP
             self.esp_to_cube()
-            self.run_repeat()
+            jobid = self.run_repeat()
         elif chg_method == 'gulp':
-            self.run_qeq_gulp()
+            jobid = self.run_qeq_gulp()
         elif chg_method == 'egulp':
-            self.run_qeq_egulp()
+            jobid = self.run_qeq_egulp()
         else:
             critical("Unknown charge calculation method: %s" % chg_method)
             terminate(93)
+
+        # update the job tracker
+        if jobid is True:
+            # job run and finished
+            self.state['charges'] = (FINISHED, False)
+        else:
+            info("Running %s job in queue. Jobid: %s" % (chg_method, jobid))
+            self.state['charges'] = (RUNNING, jobid)
+
+        return jobid
+
+    ## Methods for specific codes start here
+
+    def run_optimise_gulp(self):
+        """Run GULP to do a UFF optimisation."""
+        job_name = self.options.get('job_name')
+        optim_code = 'gulp'
+        # put an opt in path to distinguish from the charge calculation
+        optim_dir = path.join(self.options.get('job_dir'),
+                                   'faps_%s_%s_opt' % (job_name, optim_code))
+        mkdirs(optim_dir)
+        os.chdir(optim_dir)
+        debug("Running in %s" % optim_dir)
+
+        filetemp = open('%s.gin' % job_name, 'w')
+        filetemp.writelines(self.structure.to_gulp(optimise=True))
+        filetemp.close()
+
+        if 'GULP_LIB' not in os.environ:
+            warning("gulp library directory not set; optimisation might fail")
+
+        if self.options.getbool('no_submit'):
+            info("GULP input files generated; skipping job submission")
+            jobid = False
+        else:
+            jobid = self.job_handler.submit(optim_code, self.options,
+                                            input_file='%s.gin' % job_name)
+
+        # Tidy up at the end
+        os.chdir(self.options.get('job_dir'))
+        return jobid
+
 
     def run_vasp(self):
         """Make inputs and run vasp job."""
@@ -414,13 +620,13 @@ class PyNiss(object):
         debug("Running in %s" % vasp_dir)
         info("Running on %i nodes" % nproc)
 
-        filetemp = open("POSCAR", "wb")
+        filetemp = open("POSCAR", "w")
         filetemp.writelines(self.structure.to_vasp(self.options))
         filetemp.close()
 
         esp_grid = self.esp_grid
 
-        filetemp = open("INCAR", "wb")
+        filetemp = open("INCAR", "w")
         if self.esp_reduced:
             # Let VASP do the grid if we don't need to
             filetemp.writelines(mk_incar(self.options, esp_grid=esp_grid))
@@ -428,12 +634,12 @@ class PyNiss(object):
             filetemp.writelines(mk_incar(self.options))
         filetemp.close()
 
-        filetemp = open("KPOINTS", "wb")
+        filetemp = open("KPOINTS", "w")
         filetemp.writelines(mk_kpoints(self.options.gettuple('kpoints', int)))
         filetemp.close()
 
         potcar_types = unique(self.structure.types)
-        filetemp = open("POTCAR", "wb")
+        filetemp = open("POTCAR", "w")
         potcar_dir = self.options.get('potcar_dir')
         for at_type in potcar_types:
             # Try and get the preferred POTCARS
@@ -447,20 +653,15 @@ class PyNiss(object):
 
         if self.options.getbool('no_submit'):
             info("Vasp input files generated; skipping job submission")
-            self.state['dft'] = (SKIPPED, False)
+            # act as if job completed
+            jobid = False
         else:
             self.job_handler.env(dft_code, options=self.options)
             jobid = self.job_handler.submit(dft_code, self.options)
-            info("Running VASP job in queue. Jobid: %s" % jobid)
-            self.state['dft'] = (RUNNING, jobid)
-            if self.options.getbool('run_all'):
-                debug('Submitting postrun script')
-                os.chdir(self.options.get('job_dir'))
-                self.job_handler.postrun(jobid)
-            else:
-                debug('Postrun script not submitted')
-        # Tidy up at the end
+
+        # Tidy up at the end and pass on job id
         os.chdir(self.options.get('job_dir'))
+        return jobid
 
     def run_siesta(self):
         """Make siesta input and run job."""
@@ -475,7 +676,7 @@ class PyNiss(object):
         debug("Running in %s" % siesta_dir)
         info("Running on %i nodes" % nproc)
 
-        filetemp = open('%s.fdf' % job_name, 'wb')
+        filetemp = open('%s.fdf' % job_name, 'w')
         filetemp.writelines(self.structure.to_siesta(self.options))
         filetemp.close()
 
@@ -495,22 +696,16 @@ class PyNiss(object):
 
         if self.options.getbool('no_submit'):
             info("Siesta input files generated; skipping job submission")
-            self.state['dft'] = (SKIPPED, False)
+            jobid = False
         else:
             # sharcnet does weird things for siesta
             self.job_handler.env(dft_code, options=self.options)
             jobid = self.job_handler.submit(dft_code, self.options,
                                             input_file='%s.fdf' % job_name)
-            info("Running SIESTA job in queue. Jobid: %s" % jobid)
-            self.state['dft'] = (RUNNING, jobid)
-            if self.options.getbool('run_all'):
-                debug('Submitting postrun script')
-                os.chdir(self.options.get('job_dir'))
-                self.job_handler.postrun(jobid)
-            else:
-                debug('Postrun script not submitted')
+
         # Tidy up at the end
         os.chdir(self.options.get('job_dir'))
+        return jobid
 
     def run_qeq_gulp(self, fitting=False):
         """Run GULP to calculate charge equilibration charges."""
@@ -526,13 +721,13 @@ class PyNiss(object):
         os.chdir(qeq_dir)
         debug("Running in %s" % qeq_dir)
 
-        filetemp = open('%s.gin' % job_name, 'wb')
+        filetemp = open('%s.gin' % job_name, 'w')
         filetemp.writelines(self.structure.to_gulp(fitting))
         filetemp.close()
 
         if self.options.getbool('no_submit'):
             info("GULP input files generated; skipping job submission")
-            self.state['charges'] = (SKIPPED, False)
+            jobid = False
         elif fitting:
             jobid = self.job_handler.submit(qeq_code, self.options,
                                             input_file='%s.gin' % job_name)
@@ -541,16 +736,10 @@ class PyNiss(object):
         else:
             jobid = self.job_handler.submit(qeq_code, self.options,
                                             input_file='%s.gin' % job_name)
-            info("Running GULP job in queue. Jobid: %s" % jobid)
-            self.state['charges'] = (RUNNING, jobid)
-            if self.options.getbool('run_all'):
-                debug('Submitting postrun script')
-                os.chdir(self.options.get('job_dir'))
-                self.job_handler.postrun(jobid)
-            else:
-                debug('Postrun script not submitted')
+
         # Tidy up at the end
         os.chdir(self.options.get('job_dir'))
+        return jobid
 
     def run_qeq_egulp(self):
         """Run EGULP to calculate charge equilibration charges."""
@@ -562,7 +751,7 @@ class PyNiss(object):
         os.chdir(qeq_dir)
         debug("Running in %s" % qeq_dir)
 
-        filetemp = open('%s.geo' % job_name, 'wb')
+        filetemp = open('%s.geo' % job_name, 'w')
         filetemp.writelines(self.structure.to_egulp())
         filetemp.close()
 
@@ -570,7 +759,7 @@ class PyNiss(object):
         egulp_parameters = self.options.gettuple('egulp_parameters')
         if egulp_parameters:
             info("Custom EGULP parameters selected")
-            filetemp = open('%s.param' % job_name, 'wb')
+            filetemp = open('%s.param' % job_name, 'w')
             filetemp.writelines(mk_egulp_params(egulp_parameters))
             filetemp.close()
             # job handler needs to know about both these files
@@ -581,20 +770,14 @@ class PyNiss(object):
 
         if self.options.getbool('no_submit'):
             info("EGULP input files generated; skipping job submission")
-            self.state['charges'] = (SKIPPED, False)
+            jobid = False
         else:
             jobid = self.job_handler.submit(qeq_code, self.options,
                                             input_args=egulp_args)
-            info("Running EGULP job in queue. Jobid: %s" % jobid)
-            self.state['charges'] = (RUNNING, jobid)
-            if self.options.getbool('run_all'):
-                debug('Submitting postrun script')
-                os.chdir(self.options.get('job_dir'))
-                self.job_handler.postrun(jobid)
-            else:
-                debug('Postrun script not submitted')
+
         # Tidy up at the end
         os.chdir(self.options.get('job_dir'))
+        return jobid
 
     def esp_to_cube(self):
         """Make the cube for repeat input."""
@@ -663,19 +846,12 @@ class PyNiss(object):
             mk_repeat(cube_name=job_name + '.cube', symmetry=False)
         if self.options.getbool('no_submit'):
             info("REPEAT input files generated; skipping job submission")
-            self.state['charges'] = (SKIPPED, False)
+            jobid = False
         else:
             jobid = self.job_handler.submit(charge_code, self.options)
-            info("Running REPEAT calculation in queue: Jobid %s" % jobid)
-            self.state['charges'] = (RUNNING, jobid)
-            if self.options.getbool('run_all'):
-                debug('Submitting postrun script')
-                os.chdir(self.options.get('job_dir'))
-                self.job_handler.postrun(jobid)
-            else:
-                debug('Postrun script not submitted')
 
         os.chdir(self.options.get('job_dir'))
+        return jobid
 
     def run_fastmc(self):
         """Submit a fastmc job to the queue."""
@@ -701,18 +877,18 @@ class PyNiss(object):
 
         config, field = self.structure.to_fastmc(self.options)
 
-        filetemp = open("CONFIG", "wb")
+        filetemp = open("CONFIG", "w")
         filetemp.writelines(config)
         filetemp.close()
 
-        filetemp = open("FIELD", "wb")
+        filetemp = open("FIELD", "w")
         filetemp.writelines(field)
         filetemp.close()
 
         temps = self.options.gettuple('mc_temperature', float)
         presses = self.options.gettuple('mc_pressure', float)
         indivs = self.options.gettuple('mc_state_points', float)
-        jobids = []
+        jobids = {}
         for tp_point in state_points(temps, presses, indivs, len(guests)):
             temp = tp_point[0]
             press = tp_point[1]
@@ -724,7 +900,7 @@ class PyNiss(object):
             os.chdir(tp_path)
             try_symlink(path.join('..', 'CONFIG'),'CONFIG')
             try_symlink(path.join('..', 'FIELD'), 'FIELD')
-            filetemp = open("CONTROL", "wb")
+            filetemp = open("CONTROL", "w")
             filetemp.writelines(mk_gcmc_control(temp, press, self.options,
                                                 guests, self.structure.gcmc_supercell))
             filetemp.close()
@@ -732,23 +908,14 @@ class PyNiss(object):
             if self.options.getbool('no_submit'):
                 info("FastMC input files generated; "
                      "skipping job submission")
-                self.state['gcmc'][(temp, press)] = (SKIPPED, False)
+                jobids[(temp, press)] = False
             else:
                 jobid = self.job_handler.submit(mc_code, self.options)
-                info("Running FastMC in queue: Jobid %s" % jobid)
-                self.state['gcmc'][(temp, press)] = (RUNNING, jobid)
-                jobids.append(jobid)
+                jobids[(temp, press)] = jobid
             os.chdir('..')
 
-        # Postrun after all submitted so don't have to deal with messy
-        # directory switching
         os.chdir(self.options.get('job_dir'))
-        # jobids will be empty if nothing has been submitted
-        if self.options.getbool('run_all') and jobids:
-            debug('Submitting postrun script')
-            self.job_handler.postrun(jobids)
-        else:
-            debug('Postrun script not submitted')
+        return jobids
 
     def calculate_properties(self):
         """Calculate general structural properties."""
@@ -777,15 +944,15 @@ class PyNiss(object):
         if self.options.getbool('zeo++'):
             zeofiles = self.structure.to_zeoplusplus()
 
-            filetemp = open("%s.cssr" % job_name, 'wb')
+            filetemp = open("%s.cssr" % job_name, 'w')
             filetemp.writelines(zeofiles[0])
             filetemp.close()
 
-            filetemp = open("%s.rad" % job_name, 'wb')
+            filetemp = open("%s.rad" % job_name, 'w')
             filetemp.writelines(zeofiles[1])
             filetemp.close()
 
-            filetemp = open("%s.mass" % job_name, 'wb')
+            filetemp = open("%s.mass" % job_name, 'w')
             filetemp.writelines(zeofiles[2])
             filetemp.close()
 
@@ -1003,6 +1170,9 @@ class Structure(object):
             self.from_vasp(path.join(opt_path, 'CONTCAR'), update=True)
         elif opt_code == 'siesta':
             self.from_siesta(path.join(opt_path, '%s.STRUCT_OUT' % self.name))
+        elif opt_code == 'gulp':
+            opt_path = "%s_opt" % opt_path
+            self.from_gulp_output(path.join(opt_path, '%s.grs' % self.name))
         else:
             error("Unknown positions to import %s" % opt_code)
 
@@ -1072,11 +1242,16 @@ class Structure(object):
         cif_file = strip_blanks(cif_file)
         params = [None, None, None, None, None, None]
         atoms = []
+        cif_bonds = {}
         symmetry = []
         loops = []
         idx = 0
         while idx < len(cif_file):
-            line = cif_file[idx].lower()
+            # line text needs to be manageable; cif guidelines can be
+            # permissive
+            # Can no longer just check for _underscores in lines
+            # as UFF types can have them and mess up parsing
+            line = cif_file[idx].lower().strip()
             if '_cell_length_a' in line:
                 params[0] = ufloat(line.split()[1])
             elif '_cell_length_b' in line:
@@ -1092,14 +1267,16 @@ class Structure(object):
             elif '_symmetry_space_group_name_h-m' in line:
                 self.space_group = line.split()[1]
             elif 'loop_' in line:
-                # loops for _atom_site and _symmetry
+                # loops for _atom_site, _symmetry and _geom
                 heads = []
                 body = []
-                while '_' in line:
+                while line.startswith('_') or 'loop_' in line:
+                    # must keep the loop_ line as this can still contain headers
                     heads.extend(line.split())
                     idx += 1
-                    line = cif_file[idx]
-                while idx < len(cif_file) and '_' not in line:
+                    # don't lower these to keep atomic symbols
+                    line = cif_file[idx].strip()
+                while idx < len(cif_file) and not line.startswith('_') and not 'loop_' in line:
                     # shlex keeps 'quoted items' as one
                     # Some cifs seem to have primed atom symbols
                     # posix=False should help
@@ -1137,9 +1314,16 @@ class Structure(object):
                     symmetry.append(
                         Symmetry(sym_dict['_symmetry_equiv_pos_as_xyz']))
                     body = body[len(heads):]
+            if '_ccdc_geom_bond_type' in heads:
+                while body:
+                    bond_dict = dict(zip(heads, body))
+                    bond = (bond_dict['_geom_bond_atom_site_label_1'],
+                            bond_dict['_geom_bond_atom_site_label_2'])
+                    cif_bonds[bond] = bond_dict['_ccdc_geom_bond_type']
+                    body = body[len(heads):]
 
         if not symmetry:
-            debug('No symmetry found; assuming identity')
+            debug('No symmetry found; assuming identity only')
             symmetry = [Symmetry('x,y,z')]
 
         newatoms = []
@@ -1150,10 +1334,27 @@ class Structure(object):
                 newatoms.append(newatom)
 
         self.atoms = newatoms
+
         if len(symmetry) > 1:
             # can skip if just identity operation as it's slow for big systems
             self.remove_duplicates()
         self.order_by_types()
+
+        bonds = {}
+        # Assign bonds by index
+        for bond, bond_order in cif_bonds.items():
+            for first_index, first_atom in enumerate(self.atoms):
+                if first_atom.site == bond[0]:
+                    for second_index, second_atom in enumerate(self.atoms):
+                        if second_atom.site == bond[1]:
+                            # TODO(tdaff): symmetry implementation for cif bonding
+                            #if min_dist(): ...
+                            bonds[(first_index, second_index)] = CCDC_BOND_ORDERS[bond_order]
+                            if first_atom.is_metal or second_atom.is_metal:
+                                first_atom.is_fixed = True
+                                second_atom.is_fixed = True
+
+        self.bonds = bonds
         self.symmetry = symmetry
 
     def from_vasp(self, filename='CONTCAR', update=False):
@@ -1209,6 +1410,19 @@ class Structure(object):
         for atom, line in zip(self.atoms, struct_out[4:]):
             atom.from_siesta(line, self.cell.cell)
 
+    def from_gulp_output(self, filename):
+        """Update the structure from the gulp optimisation output."""
+        info("Updating positions from file: %s" % filename)
+        grs_out = open(filename)
+        for line in grs_out:
+            if line.strip() == 'cell':
+                params = tuple(float(x) for x in grs_out.next().split()[:6])
+                self.cell.params = params
+            elif line.strip() == 'fractional':
+                cell = self.cell.cell
+                for atom, atom_line in zip(self.atoms, grs_out):
+                    atom.pos = dot([float(x) for x in atom_line.split()[2:5]], cell)
+
     def from_xyz(self, filename, update=False, cell=None):
         """Read a structure from an file."""
         info("Reading positions from xyz file: %s" % filename)
@@ -1261,7 +1475,7 @@ class Structure(object):
             if len(charges) != len(tree):
                 error("Incorrect number of charge sets; check REPEAT output")
                 terminate(97)
-            for symm, charge in zip(sorted(tree.iteritems()), charges):
+            for symm, charge in zip(sorted(tree.items()), charges):
                 for at_idx in symm[1]:
                     self.atoms[at_idx].charge = charge[2]
         else:
@@ -1277,7 +1491,13 @@ class Structure(object):
         filetemp = open(filename)
         gout = filetemp.readlines()
         filetemp.close()
-        start_line = gout.index('  Final charges from QEq :\n') + 7
+        start_line = None
+        for line_num, line in enumerate(gout):
+            if '  Final charges from QEq :' in line:
+                start_line = line_num + 7
+        if start_line is None:
+            error("Final charges not found in gulp output")
+            terminate(184)
         for atom, chg_line in zip(self.atoms, gout[start_line:]):
             atom.charge = float(chg_line.split()[2])
 
@@ -1429,11 +1649,13 @@ class Structure(object):
 
         return fdf
 
-    def to_gulp(self, qeq_fit=False):
+    def to_gulp(self, qeq_fit=False, optimise=False):
         """Return a GULP file to use for the QEq charges."""
         if qeq_fit:
             from elements import QEQ_PARAMS
             keywords = "fitting bulk_noopt qeq\n"
+        elif optimise:
+            return self.to_gulp_optimise()
         else:
             keywords = "single conp qeq\n"
         gin_file = [
@@ -1463,6 +1685,54 @@ class Structure(object):
                                  "%14.7f %14.7f %14.7f\n" % tuple(atom.pos)])
         gin_file.append("\ndump every %s.grs\nprint 1\n" % self.name)
         return gin_file
+
+
+    def to_gulp_optimise(self):
+        """Return a GULP file to optimise with UFF."""
+        # all atoms of the same forcefield type must have the same label
+        # gulp fails if atoms of the same type have different labels!
+        # this only crops up as an error in the 4.0 versions
+        keywords = "opti noautobond bond\n"
+        gin_file = [
+            "# \n# Keywords:\n# \n",
+            keywords,
+            "# \n# Options:\n# \n",
+            "# UFF optimisation by gulp\n"
+            "name %s\n" % self.name,
+            "vectors\n"] + self.cell.to_vector_strings() + [
+            " 1 1 1\n 1 1 1\n 1 1 1\n",  # constant pressure relaxation
+            "cartesian\n"]
+        all_ff_types = {}
+        for at_idx, atom in enumerate(self.atoms):
+            ff_type = atom.uff_type
+            if not ff_type in all_ff_types:
+                all_ff_types[ff_type] = atom.site
+            gin_file.extend(["%-5s core " % all_ff_types[ff_type],
+    #                         "%14.7f %14.7f %14.7f " % tuple(atom.ipos(cell.cell, cell.inverse)),
+                             "%14.7f %14.7f %14.7f " % tuple(atom.pos),
+                             "%f " % atom.charge,
+                             "%f " % 1.0,  # occupancy
+                             "0 0 0\n" if atom.is_fixed else "1 1 1\n"])
+
+        #identify all the individual uff species for the library
+        gin_file.append("\nspecies\n")
+        for ff_type, species in all_ff_types.items():
+            gin_file.append("%-6s core %-6s\n" % (species, ff_type))
+
+        gin_file.append("\n")
+        for bond in sorted(self.bonds):
+            bond_type = GULP_BOND_ORDERS[self.bonds[bond]]
+            gin_file.append("connect %6i %6i %s\n" % (bond[0] + 1, bond[1] + 1, bond_type))
+
+        gin_file.append("\nlibrary uff\n")
+
+        # Restart file is for final structure
+        gin_file.append("\ndump every %s.grs\n" % self.name)
+        # optimization movie useful for debugging mostly
+        gin_file.append("\noutput movie arc %s\nprint 1\n" % self.name)
+
+        return gin_file
+
 
     def to_egulp(self):
         """Generate input files for Eugene's QEq code."""
@@ -1708,8 +1978,14 @@ class Structure(object):
         info("Constructing %s supercell for gcmc." % str(supercell))
 
     def supercell(self, scale):
-        """Iterate over all the atoms of supercell."""
-        if isinstance(scale, (int, long)):
+        """
+        Iterate over all the atoms of supercell where scale is an integer
+        to scale uniformly or triplet with scale factors for each direction.
+
+        """
+        # Beware supercells larger than 2147483647 are not supported in
+        # python 2
+        if isinstance(scale, int):
             scale = (scale, scale, scale)
         for x_super in range(scale[0]):
             for y_super in range(scale[1]):
@@ -1792,21 +2068,21 @@ class Structure(object):
         inv_cell = np.linalg.inv(cell.T)
 
         grid_size = [int(ceil(x/initial_resolution)) for x in params[:3]]
-        print grid_size
+        print(grid_size)
         grid_resolution = [params[0]/grid_size[0],
                            params[1]/grid_size[1],
                            params[2]/grid_size[2]]
-        print grid_resolution
+        print(grid_resolution)
         grid = np.zeros(grid_size, dtype=bool)
         atoms = [(atom.ipos(cell), inv_cell.tolist(),
                   atom.ifpos(inv_cell),
                   atom.vdw_radius) for atom in self.atoms]
 
         for x_idx in range(grid_size[0]):
-            print x_idx
+            print(x_idx)
             for y_idx in range(grid_size[1]):
-                print y_idx
-                print grid.sum()
+                print(y_idx)
+                print(grid.sum())
                 for z_idx in range(grid_size[2]):
                     grid_pos = [x_idx*grid_resolution[0],
                                 y_idx*grid_resolution[1],
@@ -1820,7 +2096,7 @@ class Structure(object):
                             grid[x_idx, y_idx, z_idx] = 1
                             break
 
-        print grid.sum()
+        print(grid.sum())
 
     @property
     def types(self):
@@ -1828,7 +2104,7 @@ class Structure(object):
         return [atom.type for atom in self.atoms]
 
     @property
-    def atominc_numbers(self):
+    def atomic_numbers(self):
         """Ordered list of atomic numbers."""
         return [atom.atomic_number for atom in self.atoms]
 
@@ -1909,7 +2185,10 @@ class Cell(object):
     def to_vector_strings(self, scale=1, bohr=False, fmt="%20.12f"):
         """Generic [Super]cell vectors in Angstrom as a list of strings."""
         out_format = 3 * fmt + "\n"
-        if isinstance(scale, (int, long)):
+        # If the supercell is more than 2147483647 in any direction this
+        # will fail in python 2, but 'long' removed for py3k forward
+        # compatibility
+        if isinstance(scale, int):
             scale = [scale, scale, scale]
             # else assume an iterable 3-vector
         if bohr:
@@ -1984,7 +2263,7 @@ class Cell(object):
 
     @property
     def inverse(self):
-        """Inverse cell for fractional transformations."""
+        """Inverted cell matrix for converting to fractional coordinates."""
         try:
             if self._inverse is None:
                 self._inverse = np.linalg.inv(self.cell.T)
@@ -2061,8 +2340,10 @@ class Atom(object):
         self.site = None
         self.mass = 0.0
         self.molecule = None
+        self.uff_type = None
+        self.is_fixed = False
         # Sets anything else specified as an attribute
-        for key, val in kwargs.iteritems():
+        for key, val in kwargs.items():
             setattr(self, key, val)
 
     def __str__(self):
@@ -2098,6 +2379,9 @@ class Atom(object):
         if re.match('[0-9]', self.site) and idx is not None:
             debug("Site label may not be unique; appending index")
             self.site = "%s%i" % (self.site, idx)
+        if '_atom_type_description' in at_dict:
+            self.uff_type = at_dict['_atom_type_description']
+
 
     def from_pdb(self, line, charges=False):
         """
@@ -2219,9 +2503,9 @@ class Guest(object):
             script_dir = path.abspath(sys.path[0])
         dot_faps_dir = path.join(path.expanduser('~'), '.faps')
         # A parser for each location
-        job_guests = ConfigParser.SafeConfigParser()
-        dot_faps_guests = ConfigParser.SafeConfigParser()
-        lib_guests = ConfigParser.SafeConfigParser()
+        job_guests = configparser.SafeConfigParser()
+        dot_faps_guests = configparser.SafeConfigParser()
+        lib_guests = configparser.SafeConfigParser()
         # Try and find guest in guests.lib
         job_guests.read(path.join(guest_path, 'guests.lib'))
         dot_faps_guests.read(path.join(dot_faps_dir, 'guests.lib'))
@@ -2312,6 +2596,8 @@ class Symmetry(object):
         new_pos = [eval(sym_op.replace('x', str(pos[0]))
                         .replace('y', str(pos[1]))
                         .replace('z', str(pos[2]))) for sym_op in self.sym_ops]
+        # TODO(tdaff): should we translate into cell?
+        new_pos = [x%1.0 for x in new_pos]
         return new_pos
 
 
@@ -2743,7 +3029,7 @@ def main():
     niss_name = main_options.get('job_name') + ".niss"
     if path.exists(niss_name):
         info("Existing simulation found: %s; loading..." % niss_name)
-        load_niss = open(niss_name)
+        load_niss = open(niss_name, 'rb')
         my_simulation = pickle.load(load_niss)
         load_niss.close()
         my_simulation.re_init(main_options)

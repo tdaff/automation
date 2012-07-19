@@ -15,12 +15,21 @@ import subprocess
 import sys
 import time
 from logging import debug, info, warn, error
+from os import path
 from subprocess import Popen, PIPE, STDOUT
 
 
 class JobHandler(object):
     """
     Abstraction of batch scheduler submission.
+
+    Provides a few helper methods for job submission and tracking.
+
+       submit
+          run a job; returns a jobid for a queued job, True for a completed job
+          and False for a failed job
+       postrun
+          submit script to run itself after completion
 
     """
 
@@ -34,11 +43,11 @@ class JobHandler(object):
             self.env = _wooki_env
         elif self.queue == 'sharcnet':
             self.submit = _sharcnet_submit
-            self.postrun = _sharcnet_postrun
+            self.postrun = _mk_sharcnet_postrun(options.get('dedicated_queue'))
             self.jobcheck = _sharcnet_jobcheck
             self.env = _sharcnet_env
-        elif self.queue == 'local':
-            self.submit = _local_run
+        elif self.queue == 'serial':
+            self.submit = _serial_run
             self.postrun = _pass
             self.jobcheck = _pass
             self.env = _pass
@@ -69,7 +78,9 @@ def _sharcnet_submit(job_type, options, input_file=None, input_args=None):
 
     sqsub_args = ['sqsub']
     # Always use the dedicated queue; faster
-    sqsub_args.extend(['-q', 'NRAP_20405'])
+    dedicated_queue = options.get('dedicated_queue')
+    if dedicated_queue:
+        sqsub_args.extend(['-q', dedicated_queue])
     # job_name
     sqsub_args.extend(['-j', 'faps-%s-%s' % (job_name, job_type)])
     # Is it a multiple CPU job?
@@ -138,40 +149,48 @@ def _sharcnet_submit(job_type, options, input_file=None, input_args=None):
 
     return jobid
 
-
 def _sharcnet_postrun(waitid):
-    """
-    Resubmit this script for the postrun on job completion. Will accept
-    a single jobid or a list, as integers or strings.
-    """
+    """Dummy to stop picked jobs failing"""
+    _pass()
 
-    # Magic makes everything into a set of strings
-    if hasattr(waitid, '__iter__'):
-        waitid = frozenset([("%s" % wid).strip() for wid in waitid])
-    else:
-        waitid = frozenset([("%s" % waitid).strip()])
-    # Check that job appears in sqjobs before submitting next one
-    for loop_num in range(10):
-        qstat = Popen(['qstat', '-u', '$USER'], stdout=PIPE, shell=True)
-        if waitid.issubset(re.split('[\s.]', qstat.stdout.read())):
-            # All jobs there
-            break
+def _mk_sharcnet_postrun(dedicated_queue=None):
+    """Return a postrun function for a particular queue."""
+    def _sharcnet_postrun(waitid):
+        """
+        Resubmit this script for the postrun on job completion. Will accept
+        a single jobid or a list, as integers or strings.
+        """
+
+        # Magic makes everything into a set of strings
+        if hasattr(waitid, '__iter__'):
+            waitid = frozenset([("%s" % wid).strip() for wid in waitid])
         else:
-            # Wait longer each time, in case the system is very slow
-            time.sleep(loop_num)
-    # Sumbit here, even if jobs never found in queue
-    sqsub_args = [
-        'sqsub',
-        '-q', 'NRAP_20405',
-        '-r', '20m',
-        '-o', 'faps-post-%s.out' % '-'.join(sorted(waitid)),
-        '--mpp=3g',
-        '--waitfor=%s' % ','.join(waitid),
-        ] + _argstrip(sys.argv)
-    # We can just call this as we don't care about the jobid
-    debug("Postrun command: %s" % " ".join(sqsub_args))
-    subprocess.call(sqsub_args)
-
+            waitid = frozenset([("%s" % waitid).strip()])
+        # Check that job appears in sqjobs before submitting next one
+        for loop_num in range(10):
+            qstat = Popen(['qstat', '-u', '$USER'], stdout=PIPE, shell=True)
+            if waitid.issubset(re.split('[\s.]', qstat.stdout.read())):
+                # All jobs there
+                break
+            else:
+                # Wait longer each time, in case the system is very slow
+                time.sleep(loop_num)
+        # Sumbit here, even if jobs never found in queue
+        sqsub_args = [
+            'sqsub',
+            '-r', '20m',
+            '-o', 'faps-post-%s.out' % '-'.join(sorted(waitid)),
+            '--mpp=3g',
+            '--waitfor=%s' % ','.join(waitid),
+            ]
+        if dedicated_queue:
+            sqsub_args.extend(['-q', dedicated_queue])
+        # Add the submitted program cleaned for instruction commands
+        sqsub_args.extend(_argstrip(sys.argv))
+        # We can just call this as we don't care about the jobid
+        debug("Postrun command: %s" % " ".join(sqsub_args))
+        subprocess.call(sqsub_args)
+    return _sharcnet_postrun
 
 def _sharcnet_jobcheck(jobid):
     """Return true if job is still running or queued, or check fails."""
@@ -246,7 +265,7 @@ def _wooki_submit(job_type, options, *args, **kwargs):
             jobid = line.split(".")[0]
             break
     else:
-        print("Job submission failed?")
+        error("Job submission failed, no jobid received. Faps will crash now")
 
     return jobid
 
@@ -305,32 +324,33 @@ def _wooki_env(code, *args, **kwargs):
     pass
 
 
-def _local_run(job_type, options, input_file=None):
-    """Run the exe in a subprocess."""
-    # Threaded codes have different behaviour
-#    openmp_codes = options.gettuple('threaded_codes')
+def _serial_run(job_type, options, input_file=None, input_args=None):
+    """Run the exe in a subprocess. input_args must be a list if """
 
     # Bind some things locally, so we know what's going on
     job_name = options.get('job_name')
     exe = options.get('%s_exe' % job_type)
-    try:
-        nodes = options.getint('%s_ncpu' % job_type)
-    except AttributeError:
-        nodes = 1
+    serial_args = shlex.split(exe)
+
+    if input_args is not None:
+        serial_args.extend(input_args)
 
     # Some codes need the input file name
     if input_file is not None:
-        sqsub_args.extend(['-i', '%s' % input_file])
+        input_file = open('%s' % input_file)
+
     # Output
     out_file = open('faps-%s.out' % job_name, 'wb')
 
-    run_args = shlex.split(exe)
-
-    submit = Popen(sqsub_args, stdout=out_file)
+    # run the job in process
+    debug("Waiting for command: %s" % " ".join(serial_args))
+    submit = Popen(serial_args, stdin=input_file, stdout=out_file)
     submit.wait()
     finished = submit.returncode
+    info("%s job finished with return code %s" % (exe, finished))
 
-    return None
+    # always return True for a finished job
+    return True
 
 
 def _pass(*args, **kwargs):
@@ -360,7 +380,7 @@ def _check_program(program, mpi=False):
             if re.search('mpi_init', binary.read(), re.IGNORECASE):
                 return True
             else:
-                warn("%s doesn't appear to be an mpi executable, job may fail" % program)
+                warn("%s doesn't appear to be an mpi executable." % program)
                 return False
         except IOError:
             return False
@@ -369,19 +389,21 @@ def _check_program(program, mpi=False):
         return True
 
 
+def is_exe(fpath):
+    """Return executability of a file."""
+    return path.isfile(fpath) and os.access(fpath, os.X_OK)
+
+
 def which(program):
     """Return the equivalent of the 'which' command."""
-    import os
-    def is_exe(fpath):
-        return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
 
-    fpath, fname = os.path.split(program)
+    fpath, _fname = path.split(program)
     if fpath:
         if is_exe(program):
             return program
     else:
-        for path in os.environ["PATH"].split(os.pathsep):
-            exe_file = os.path.join(path, program)
+        for env_path in os.environ["PATH"].split(os.pathsep):
+            exe_file = path.join(env_path, program)
             if is_exe(exe_file):
                 return exe_file
 

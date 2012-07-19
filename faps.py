@@ -256,7 +256,7 @@ class PyNiss(object):
                     vuptake, vuptake_stdev,
                     hoa[0], hoa[1]) +
                     ",".join("%f" % x for x in tp_point[1]) + "\n")
-            csv_file = file('%s-%s.csv' % (job_name, guest.ident), 'wb')
+            csv_file = open('%s-%s.csv' % (job_name, guest.ident), 'w')
             csv_file.writelines(csv)
             csv_file.close()
         info("======= ======= ======= ======= =======")
@@ -587,7 +587,7 @@ class PyNiss(object):
         os.chdir(optim_dir)
         debug("Running in %s" % optim_dir)
 
-        filetemp = open('%s.gin' % job_name, 'wb')
+        filetemp = open('%s.gin' % job_name, 'w')
         filetemp.writelines(self.structure.to_gulp(optimise=True))
         filetemp.close()
 
@@ -619,13 +619,13 @@ class PyNiss(object):
         debug("Running in %s" % vasp_dir)
         info("Running on %i nodes" % nproc)
 
-        filetemp = open("POSCAR", "wb")
+        filetemp = open("POSCAR", "w")
         filetemp.writelines(self.structure.to_vasp(self.options))
         filetemp.close()
 
         esp_grid = self.esp_grid
 
-        filetemp = open("INCAR", "wb")
+        filetemp = open("INCAR", "w")
         if self.esp_reduced:
             # Let VASP do the grid if we don't need to
             filetemp.writelines(mk_incar(self.options, esp_grid=esp_grid))
@@ -633,12 +633,12 @@ class PyNiss(object):
             filetemp.writelines(mk_incar(self.options))
         filetemp.close()
 
-        filetemp = open("KPOINTS", "wb")
+        filetemp = open("KPOINTS", "w")
         filetemp.writelines(mk_kpoints(self.options.gettuple('kpoints', int)))
         filetemp.close()
 
         potcar_types = unique(self.structure.types)
-        filetemp = open("POTCAR", "wb")
+        filetemp = open("POTCAR", "w")
         potcar_dir = self.options.get('potcar_dir')
         for at_type in potcar_types:
             # Try and get the preferred POTCARS
@@ -675,7 +675,7 @@ class PyNiss(object):
         debug("Running in %s" % siesta_dir)
         info("Running on %i nodes" % nproc)
 
-        filetemp = open('%s.fdf' % job_name, 'wb')
+        filetemp = open('%s.fdf' % job_name, 'w')
         filetemp.writelines(self.structure.to_siesta(self.options))
         filetemp.close()
 
@@ -720,7 +720,7 @@ class PyNiss(object):
         os.chdir(qeq_dir)
         debug("Running in %s" % qeq_dir)
 
-        filetemp = open('%s.gin' % job_name, 'wb')
+        filetemp = open('%s.gin' % job_name, 'w')
         filetemp.writelines(self.structure.to_gulp(fitting))
         filetemp.close()
 
@@ -750,7 +750,7 @@ class PyNiss(object):
         os.chdir(qeq_dir)
         debug("Running in %s" % qeq_dir)
 
-        filetemp = open('%s.geo' % job_name, 'wb')
+        filetemp = open('%s.geo' % job_name, 'w')
         filetemp.writelines(self.structure.to_egulp())
         filetemp.close()
 
@@ -758,7 +758,7 @@ class PyNiss(object):
         egulp_parameters = self.options.gettuple('egulp_parameters')
         if egulp_parameters:
             info("Custom EGULP parameters selected")
-            filetemp = open('%s.param' % job_name, 'wb')
+            filetemp = open('%s.param' % job_name, 'w')
             filetemp.writelines(mk_egulp_params(egulp_parameters))
             filetemp.close()
             # job handler needs to know about both these files
@@ -876,11 +876,11 @@ class PyNiss(object):
 
         config, field = self.structure.to_fastmc(self.options)
 
-        filetemp = open("CONFIG", "wb")
+        filetemp = open("CONFIG", "w")
         filetemp.writelines(config)
         filetemp.close()
 
-        filetemp = open("FIELD", "wb")
+        filetemp = open("FIELD", "w")
         filetemp.writelines(field)
         filetemp.close()
 
@@ -899,7 +899,7 @@ class PyNiss(object):
             os.chdir(tp_path)
             try_symlink(path.join('..', 'CONFIG'),'CONFIG')
             try_symlink(path.join('..', 'FIELD'), 'FIELD')
-            filetemp = open("CONTROL", "wb")
+            filetemp = open("CONTROL", "w")
             filetemp.writelines(mk_gcmc_control(temp, press, self.options,
                                                 guests, self.structure.gcmc_supercell))
             filetemp.close()
@@ -943,15 +943,15 @@ class PyNiss(object):
         if self.options.getbool('zeo++'):
             zeofiles = self.structure.to_zeoplusplus()
 
-            filetemp = open("%s.cssr" % job_name, 'wb')
+            filetemp = open("%s.cssr" % job_name, 'w')
             filetemp.writelines(zeofiles[0])
             filetemp.close()
 
-            filetemp = open("%s.rad" % job_name, 'wb')
+            filetemp = open("%s.rad" % job_name, 'w')
             filetemp.writelines(zeofiles[1])
             filetemp.close()
 
-            filetemp = open("%s.mass" % job_name, 'wb')
+            filetemp = open("%s.mass" % job_name, 'w')
             filetemp.writelines(zeofiles[2])
             filetemp.close()
 
@@ -1241,6 +1241,7 @@ class Structure(object):
         cif_file = strip_blanks(cif_file)
         params = [None, None, None, None, None, None]
         atoms = []
+        cif_bonds = {}
         symmetry = []
         loops = []
         idx = 0
@@ -1313,7 +1314,6 @@ class Structure(object):
                         Symmetry(sym_dict['_symmetry_equiv_pos_as_xyz']))
                     body = body[len(heads):]
             if '_ccdc_geom_bond_type' in heads:
-                cif_bonds = {}
                 while body:
                     bond_dict = dict(zip(heads, body))
                     bond = (bond_dict['_geom_bond_atom_site_label_1'],
@@ -2992,7 +2992,7 @@ def main():
     niss_name = main_options.get('job_name') + ".niss"
     if path.exists(niss_name):
         info("Existing simulation found: %s; loading..." % niss_name)
-        load_niss = open(niss_name)
+        load_niss = open(niss_name, 'rb')
         my_simulation = pickle.load(load_niss)
         load_niss.close()
         my_simulation.re_init(main_options)

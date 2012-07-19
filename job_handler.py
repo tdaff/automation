@@ -337,7 +337,7 @@ def _serial_run(job_type, options, input_file=None, input_args=None):
 
     # Some codes need the input file name
     if input_file is not None:
-        input_file = file('%s' % input_file)
+        input_file = open('%s' % input_file)
 
     # Output
     out_file = open('faps-%s.out' % job_name, 'wb')

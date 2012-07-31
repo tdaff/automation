@@ -1900,8 +1900,21 @@ class Structure(object):
         fold = options.getbool('fold')
         find_maxima = options.getbool('find_maxima')
         prob_plot = options.getbool('mc_probability_plot')
+        folded = False
         if prob_plot and (fold or find_maxima):
-            self.fold_and_maxima(fold, find_maxima, tp_point)
+            folded = self.fold_and_maxima(fold, find_maxima, tp_point)
+
+        if folded and options.getbool('fastmc_keep_unfolded_cubes'):
+            debug("Removing unfolded cube files")
+            cubes = glob.glob("prob_guest??_prob_??.cube")
+            remove_files(cubes)
+
+        #TODO(tdaff): absl
+
+        unneeded_files = options.gettuple('fastmc_delete_files')
+        remove_files(unneeded_files)
+        keep_files = options.gettuple('fastmc_compress_files')
+        compress_files(keep_files)
 
         os.chdir(startdir)
 
@@ -1909,6 +1922,7 @@ class Structure(object):
     def fold_and_maxima(self, fold=True, find_maxima=True, tp_point=None):
         """Determine the positions of maxima and produce an xyz xyz file."""
         from cube import Cube
+        folded = False
         if fold:
             fold = self.gcmc_supercell
         else:
@@ -1921,6 +1935,7 @@ class Structure(object):
                 if fold is not None:
                     debug("Folded cube file: %s" % guest_cube.folded_name)
                     guest_cube.write_cube()
+                    folded = True
                 if find_maxima:
                     guest_locations[sites] = guest_cube.maxima()
             if guest_locations:
@@ -1943,6 +1958,8 @@ class Structure(object):
                                 (len(maxima), tp_point))
                 locations.writelines([x[1] for x in sorted(maxima, reverse=True)])
                 locations.close()
+
+        return folded
 
 
     def remove_duplicates(self, epsilon=0.0002):
@@ -2941,6 +2958,7 @@ def compress_files(files, directory='.'):
         debug("compressing %s" % zip_name)
         gzip_command = ['gzip', '-f', zip_name]
         subprocess.call(gzip_command)
+        #TODO(tdaff): internal gzip
 
 
 def strip_blanks(lines):

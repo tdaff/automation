@@ -55,6 +55,8 @@ BOHR2ANG = 0.52917720859
 EV2KCAL = 23.060542301389
 NAVOGADRO = 6.02214129E23
 
+FASTMC_DEFAULT_GRID_SPACING = 0.1
+
 # ID values for system state
 NOT_RUN = 0
 RUNNING = 1
@@ -302,7 +304,7 @@ class PyNiss(object):
 
         if self.state['ff_opt'][0] == FINISHED:
             self.structure.update_pos(self.options.get('ff_opt_code'))
-            self.state['ff_opt_code'] = (UPDATED, False)
+            self.state['ff_opt'] = (UPDATED, False)
             self.dump_state()
 
         # If postrun is submitted then this script is done!
@@ -2724,7 +2726,14 @@ def mk_gcmc_control(temperature, pressures, options, guests, supercell=None):
     elif supercell is not None:
         control.append('\n# grid factors %i %i %i\n' % supercell)
 
-    control.append("finish\n")
+    resolution = options.getfloat('mc_probability_plot_spacing')
+    if resolution != FASTMC_DEFAULT_GRID_SPACING:
+        control.append('\ngrid spacing %f\n' % resolution)
+    else:
+        control.append('\n#grid spacing %f\n' % FASTMC_DEFAULT_GRID_SPACING)
+
+
+    control.append("\nfinish\n")
     return control
 
 

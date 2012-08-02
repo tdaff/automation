@@ -1700,6 +1700,9 @@ class Structure(object):
             "# \n# Options:\n# \n",
             "# UFF optimisation by gulp\n"
             "name %s\n" % self.name,
+            # using an rfo minimiser with a preconditioned hessian from the
+            # BFGS minimiser seems to be the most efficient
+            "switch rfo gnorm 0.1\n",
             "vectors\n"] + self.cell.to_vector_strings() + [
             " 1 1 1\n 1 1 1\n 1 1 1\n",  # constant pressure relaxation
             "cartesian\n"]

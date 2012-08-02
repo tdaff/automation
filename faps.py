@@ -229,12 +229,12 @@ class PyNiss(object):
         info("======= ======= ======= ======= =======")
         nguests = len(self.structure.guests)
         for idx, guest in enumerate(self.structure.guests):
-            csv = ["#T/K,p/bar,mol/uc,mmol/g,stdev,",
+            csv = ["#T/K,p/bar,molc/uc,mmol/g,stdev,",
                    "v/v,stdev,hoa/kcal/mol,stdev,",
                    ",".join("p(g%i)" % gidx for gidx in range(nguests)), "\n"]
             info(guest.name)
             info("---------------------------------------")
-            info(" mol/uc  mmol/g  vstp/v     hoa     T_P")
+            info("molc/uc  mmol/g  vstp/v     hoa     T_P")
             info("======= ======= ======= ======= =======")
             for tp_point in sorted(guest.uptake):
                 # <N>, sd, supercell

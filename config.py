@@ -25,9 +25,9 @@ import sys
 import textwrap
 # Python 3 fix
 try:
-    from io import StringIO
-except ImportError:
     from StringIO import StringIO
+except ImportError:
+    from io import StringIO
 from optparse import OptionParser
 from logging import debug, error
 

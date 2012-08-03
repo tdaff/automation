@@ -1907,7 +1907,7 @@ class Structure(object):
         if prob_plot and (fold or find_maxima):
             folded = self.fold_and_maxima(fold, find_maxima, tp_point)
 
-        if folded and options.getbool('fastmc_keep_unfolded_cubes'):
+        if folded and not options.getbool('fastmc_keep_unfolded_cubes'):
             debug("Removing unfolded cube files")
             cubes = glob.glob("prob_guest??_prob_??.cube")
             remove_files(cubes)

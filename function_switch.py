@@ -15,17 +15,24 @@ import random
 import re
 import textwrap
 from logging import debug, info, warn, error
-from math import factorial
 from itertools import chain, combinations, product
 
 import numpy as np
+import openbabel as ob
+import pybel
 from numpy import array, identity, asarray, dot, cross, outer, sin, cos
 from numpy.linalg import norm
 
 from faps import Structure, Atom
-from faps import unique
+from faps import vecdist3, subgroup
 from config import Options
+from elements import UFF_TYPES
 
+
+GULP_SANITISER = re.compile("([a-zA-Z]+\d*)")
+
+BOND_ORDERS = {1: 'single', 1.41: 'amide', 1.5: 'resonant',
+               2: 'double', 3: 'triple', 4: 'quadruple'}
 
 class ModifiableStructure(Structure):
     """
@@ -74,27 +81,6 @@ class ModifiableStructure(Structure):
             atom.normal = cross(left, right)
 
 
-    def gen_connection_table(self):
-        """
-        Determine connectivity from the neighbour list.
-
-        """
-        self.gen_neighbour_list()
-        self.attachments = []
-        for atom in self.atoms:
-            atom.bonds = []
-            for neighbour in atom.neighbours:
-                if neighbour[0] < 0.5*(atom.vdw_radius + self.atoms[neighbour[1]].vdw_radius):
-                    atom.bonds.append(neighbour)
-                else:
-                    break
-            if atom.type == 'H':
-                neighbour_a = self.atoms[self.atoms[atom.bonds[0][1]].neighbours[0][1]].pos
-                neighbour_b = self.atoms[self.atoms[atom.bonds[0][1]].neighbours[1][1]].pos
-                pivot = self.atoms[atom.bonds[0][1]].pos
-                normal = cross(direction3d(pivot, neighbour_a), direction3d(pivot, neighbour_b))
-                self.attachments.append((self.atoms.index(atom), atom.bonds, normal))
-
     def gen_site_connection_table(self):
         """
         Find connected atoms (bonds) and organise by sites. Symmetry
@@ -102,22 +88,239 @@ class ModifiableStructure(Structure):
 
         """
 
+        atoms = self.atoms
         self.gen_neighbour_list()
         self.attachments = {}
+
         for at_idx, atom in enumerate(self.atoms):
             atom.bonds = []
-            for neighbour in atom.neighbours:
+            neighbours = atom.neighbours
+
+            max_bonds = []
+            for neighbour in neighbours:
                 n_atom = self.atoms[neighbour[1]]
-                if neighbour[0] < 0.5*(atom.vdw_radius + n_atom.vdw_radius):
-                    atom.bonds.append((n_atom.type, neighbour[1]))
-                else:
+                if neighbour[0] < (atom.bond_cutoff + n_atom.bond_cutoff):
+                    max_bonds.append(neighbour[1])
+                elif (neighbour[0] - atom.bond_cutoff) > 2.88:
+                    # some non bonding atoms might be closer than bonding ones
+                    # but francium has largest cutoff; can stop after 2.88
                     break
+
+            if atom.type == 'H':
+                # check if second neighbour is within bridging cutoff
+                if neighbours[1][0] <= 1.1*(0.460 + atoms[neighbours[1][1]].bond_cutoff):
+                    atom.uff_type = 'H_b'
+                    atom.bonds = [neighbours[0][1], neighbours[1][1]]
+                else:
+                    # assume lone hydrogen
+                    atom.uff_type = 'H_'
+                    atom.bonds = [neighbours[0][1]]
+            elif atom.type == 'B':
+                # check if tetrahedral sp3 or sp2
+                if neighbours[3][0] <= 1.1*(0.838 + atoms[neighbours[3][1]].bond_cutoff):
+                    atom.uff_type = 'B_3'
+                    atom.bonds = [x[1] for x in neighbours[:4]]
+                else:
+                    # planar sp2
+                    atom.uff_type = 'B_2'
+                    atom.bonds = [x[1] for x in neighbours[:3]]
+            elif atom.type == 'C':
+                # Four types of Carbon, but C_R and C_2 same params
+                if neighbours[3][0] <= 1.1*(0.757 + atoms[neighbours[3][1]].bond_cutoff):
+                    atom.uff_type = 'C_3'
+                    atom.bonds = [x[1] for x in neighbours[:4]]
+                elif neighbours[2][0] <= 1.1*(0.732 + atoms[neighbours[2][1]].bond_cutoff):
+                    # planar sp2 and aromatic have the same UFF parameters
+                    # TODO(tdaff): make aromatic if necessary
+                    atom.uff_type = 'C_2'
+                    atom.bonds = [x[1] for x in neighbours[:3]]
+                else:
+                    # linear sp
+                    atom.uff_type = 'C_1'
+                    atom.bonds = [x[1] for x in neighbours[:2]]
+            elif atom.type == 'N':
+                # Careful, N_R and N_2 have different angles
+                if neighbours[2][0] <= 1.1*(0.700 + atoms[neighbours[2][1]].bond_cutoff):
+                    atom.uff_type = 'N_3'
+                    atom.bonds = [x[1] for x in neighbours[:3]]
+                elif neighbours[1][0] <= 1.1*(0.699 + atoms[neighbours[1][1]].bond_cutoff):
+                    # FIXME(tdaff): make aromatic if necessary
+                    atom.uff_type = 'N_2'
+                    atom.bonds = [x[1] for x in neighbours[:2]]
+                else:
+                    # sp
+                    atom.uff_type = 'N_1'
+                    atom.bonds = [x[1] for x in neighbours[:1]]
+            elif atom.type == 'O':
+                # UFF has sp3 to sp1 and aromatic oxygen
+                # FIXME(tdaff): might need aromatic check
+                if neighbours[1][0] <= 1.1*(0.680 + atoms[neighbours[1][1]].bond_cutoff):
+                    atom.uff_type = 'O_3'
+                    atom.bonds = [x[1] for x in neighbours[:2]]
+                else:
+                    # terminal oxygen?
+                    atom.uff_type = 'O_2'
+                    atom.bonds = [x[1] for x in neighbours[:1]]
+            elif atom.type == 'P':
+                atom.bonds = max_bonds
+                if len(max_bonds) > 3:
+                    atom.uff_type = "P_3+5"
+                else:
+                    atom.uff_type = "P_3+3"
+            elif atom.type == 'S':
+                warn("Sulphr not checked")
+                atom.uff_type = "S_3"
+                atom.bonds = [x[1] for x in neighbours[:4]]
+
+            else:
+                atom.uff_type = UFF_TYPES[atom.type]
+                atom.bonds = max_bonds
+
             if atom.type == 'H':
                 if atom.site in self.attachments:
                     self.attachments[atom.site].append((self.atoms.index(atom), atom.bonds))
                 else:
                     self.attachments[atom.site] = [(self.atoms.index(atom), atom.bonds)]
 
+    def gen_babel_uff_properties(self):
+        """
+        Process a supercell with babel to calculate UFF atom types and
+        bond orders.
+        """
+        # Pass as free form fractional
+        # make a 2x2x2 supercell with the original atom in the centre
+        cell = self.cell
+        super_cell = (cell.a*2, cell.b*2, cell.c*2,
+                      cell.alpha, cell.beta, cell.gamma)
+        as_fffract = ['generated fractionals\n', '%f %f %f %f %f %f\n' % super_cell]
+        for x_image in [0, 1]:
+            for y_image in [0, 1]:
+                for z_image in [0, 1]:
+                    for atom in self.atoms:
+                        ifpos = atom.cellfpos
+                        if ifpos[0] < 0.5:
+                            new_xpos = (ifpos[0] + x_image)/2.0
+                        else:
+                            new_xpos = (ifpos[0] - x_image)/2.0
+                        if ifpos[1] < 0.5:
+                            new_ypos = (ifpos[1] + y_image)/2.0
+                        else:
+                            new_ypos = (ifpos[1] - y_image)/2.0
+                        if ifpos[2] < 0.5:
+                            new_zpos = (ifpos[2] + z_image)/2.0
+                        else:
+                            new_zpos = (ifpos[2] - z_image)/2.0
+                        ifpos = [new_xpos, new_ypos, new_zpos]
+                        atom_line = ("%s " % atom.type +
+                                     "%f %f %f\n" % tuple(ifpos))
+                        as_fffract.append(atom_line)
+        pybel_string = ''.join(as_fffract)
+        pybel_mol = pybel.readstring('fract', pybel_string)
+        # need to tell the typing system to ignore all atoms in the setup
+        # or it will silently crash with memory issues
+        constraint = ob.OBFFConstraints()
+        for at_idx in range(pybel_mol.OBMol.NumAtoms()):
+            constraint.AddIgnore(at_idx)
+        uff = ob.OBForceField_FindForceField('uff')
+        uff.Setup(pybel_mol.OBMol, constraint)
+        uff.GetAtomTypes(pybel_mol.OBMol)
+        for atom, ob_atom in zip(self.atoms, pybel_mol):
+            atom.uff_type = ob_atom.OBAtom.GetData("FFAtomType").GetValue()
+
+        bonds = {}
+        max_idx = self.natoms
+        # look at all the bonds separately from the atoms
+        for bond in ob.OBMolBondIter(pybel_mol.OBMol):
+            # These rules are translated from ob/forcefielduff.cpp...
+            start_idx = bond.GetBeginAtomIdx()
+            end_idx = bond.GetEndAtomIdx()
+            if start_idx > max_idx and end_idx > max_idx:
+                continue
+            if end_idx > max_idx:
+                end_idx = end_idx % max_idx
+            if start_idx > max_idx:
+                start_idx = start_idx % max_idx
+
+            start_atom = bond.GetBeginAtom()
+            end_atom = bond.GetEndAtom()
+
+            bond_order = bond.GetBondOrder()
+            if bond.IsAromatic():
+                bond_order = 1.5
+            # e.g., in Cp rings, may not be "aromatic" by OB
+            # but check for explicit hydrogen counts
+            #(e.g., biphenyl inter-ring is not aromatic)
+            #FIXME(tdaff): aromatic C from GetType is "Car" is this correct?
+            if start_atom.GetType()[-1] == 'R' and end_atom.GetType()[-1] == 'R' and start_atom.ExplicitHydrogenCount() == 1 and end_atom.ExplicitHydrogenCount() == 1:
+                bond_order = 1.5;
+            if bond.IsAmide():
+                bond_order = 1.41;
+            # save the indicies as zero based
+            bonds[tuple(sorted((start_idx-1, end_idx-1)))] = bond_order
+
+        self.bonds = bonds
+
+
+def to_gulp_bonds(atoms, cell, bonds, name, basename):
+    """Return a GULP file to use for the QEq charges."""
+    # all atoms of the same forcefield type must have the same label
+    # gulp fails if atoms of the same type have different labels!
+    # this only crops up as an error in the 4.0 versions
+    keywords = "opti noautobond bond\n"
+    gin_file = [
+        "# \n# Keywords:\n# \n",
+        keywords,
+        "# \n# Options:\n# \n",
+        "# Functionalised structure generated by lube\n"
+        "name %s\n" % name,
+        "vectors\n"] + cell.to_vector_strings() + [
+        " 1 1 1\n 1 1 1\n 1 1 1\n",  # constant pressure relaxation
+        "cartesian\n"]
+    all_ff_types = {}
+    # generate the translation table for atom numbers in bonds
+    translation_table = {}
+    valid_idx = 0
+    for at_idx, atom in enumerate(atoms):
+        if atom is not None:
+            translation_table[at_idx] = valid_idx
+            valid_idx += 1
+
+    atoms = [atom for atom in atoms if atom is not None]
+    for at_idx, atom in enumerate(atoms):
+        ff_type = atom.uff_type
+        if not ff_type in all_ff_types:
+            all_ff_types[ff_type] = gulp_label(atom.site)
+        gin_file.extend(["%-5s core " % all_ff_types[ff_type],
+                         "%14.7f %14.7f %14.7f " % tuple(atom.ipos(cell.cell, cell.inverse)),
+                         "%f " % atom.charge,
+                         "%f " % 1.0,  # occupancy
+                         "0 0 0\n" if atom.is_metal else "1 1 1\n"])
+
+    #identify all the individual uff species for the library
+    gin_file.append("\nspecies\n")
+    for ff_type, species in all_ff_types.iteritems():
+        gin_file.append("%-6s core %-6s\n" % (species, ff_type))
+
+    gin_file.append("\n")
+    for bond in sorted(bonds):
+        try:
+            fixed_index = (translation_table[bond[0]]+1,
+                           translation_table[bond[1]]+1)
+            bond_type = BOND_ORDERS[bonds[bond]]
+            gin_file.append("connect %6i %6i %s\n" %
+                            (fixed_index + (bond_type, )))
+        except KeyError:
+            # bond to no existent atom
+            debug("bond to non existent atom")
+
+    gin_file.append("\nlibrary uff\n")
+
+    # Restart file is probably useful
+    gin_file.append("\ndump every %s.grs\n" % basename)
+    # optimization movie useful for debugging mostly
+    gin_file.append("\noutput movie arc %s\nprint 1\n" % basename)
+
+    return gin_file
 
 
 class FunctionalGroupLibrary(dict):
@@ -156,8 +359,12 @@ class FunctionalGroup(object):
         self.orientation = string_to_tuple(items.pop('orientation'), float)
         self.normal = string_to_tuple(items.pop('normal'), float)
         self.bond_length = float(items.pop('carbon_bond'))
+        self.bonds = dict(((int(x), int(y)), float(z)) for (x, y, z) in subgroup(items.pop('bonds').split(), width=3))
+        self.idx = 0
+        self.connection_point = 0  # always connect to the first atom
         # Arbitrary attributes can be set
         self.__dict__.update(items)
+        self._gen_neighbours()
 
     def _parse_atoms(self, atom_text):
         """Read atom information from the file."""
@@ -166,9 +373,33 @@ class FunctionalGroup(object):
             atom = atom.strip().split()
             if not atom:
                 continue
-            self.atoms.append(Atom(atom[0], [float(x) for x in atom[1:4]]))
+            new_atom = Atom(atom[0], [float(x) for x in atom[2:5]])
+            new_atom.uff_type = atom[1]
+            new_atom.site = label_atom(new_atom.element)
+            self.atoms.append(new_atom)
 
-    def atoms_attached_to(self, point, direction, normal, bond_length=None):
+    def _gen_neighbours(self):
+        """Update atoms with neighbouring atoms."""
+        # Iterate over all pairs
+        # Assume non periodic and geometries are good
+        # dummy atom at the tether point
+        self.atoms.append(Atom('C', [-self.bond_length*x for x in self.orientation]))
+        for atom in self.atoms:
+            # distance matrix for all neighbours except self
+            neighbours = []
+            for ot_idx, other in enumerate(self.atoms):
+                if atom is other:
+                    continue
+                length = vecdist3(atom.pos, other.pos)
+                neighbours.append((length, ot_idx))
+            # these are expected to be is distance order
+            atom.neighbours = sorted(neighbours)
+        # remove the dummy atom
+        self.atoms.pop()
+        # first atom should be bonded to the tether, flag this as '-1'
+        #self.atoms[0].bonds[self.atoms[0].bonds.index(self.natoms)] = -1
+
+    def atoms_attached_to(self, point, direction, normal, attach_point, start_index, bond_length=None):
         """Return a list of atoms at the specified position."""
         if bond_length is None:
             bond_length = self.bond_length
@@ -176,10 +407,24 @@ class FunctionalGroup(object):
         rotate_matrix = matrix_rotate(self.orientation, direction)
         my_rotated_normal = np.dot(rotate_matrix, self.normal)
         orient_matrix = matrix_rotate(my_rotated_normal, normal)
-        for atom in new_atoms:
+        for index, atom in enumerate(new_atoms):
             atom.pos = np.dot(orient_matrix, np.dot(rotate_matrix, atom.pos))
             atom.pos = (atom.pos + point + bond_length*np.array(direction))
-        return new_atoms
+            atom.idx = start_index + index
+        new_bonds = {}
+        for bond_pair, bond_order in self.bonds.iteritems():
+            new_bond = (bond_pair[0] + start_index, bond_pair[1] + start_index)
+            new_bonds[new_bond] = bond_order
+        # bond to structure
+        new_bonds[(attach_point, self.connection_point)] = 1
+
+        return new_atoms, new_bonds
+
+
+    @property
+    def natoms(self):
+        """The number of atoms in the functional group."""
+        return len(self.atoms)
 
 
 def to_xyz(atoms, charges=True, name=None):
@@ -218,7 +463,9 @@ def to_pdb(atoms, cell, name=None):
             site_number += 1
         pdb.append("ATOM  %5i %-4s UNK A   1    " % (at_idx+1, atom.site) +
                    "%8.3f%8.3f%8.3f" % tuple(atom.pos) +
-                   "%6.2f  0.00%12s  \n" % (atom.charge, atom.type))
+                   #"%6.2f  0.00%12s  \n" % (atom.charge, atom.type))
+                   # charge -> occupancy in vesta
+                   "%6.2f  0.00%12s  \n" % (1.0, atom.type))
 
     if name is not None:
         pdb.extend(["REMARK".ljust(70), "\n",
@@ -323,34 +570,135 @@ def test_collision(test_atom, atoms, cell, overlap=1.3):
             return False
     return True
 
-def all_combinations_replace(structure, groups, rotations=12):
+def gulp_label(text):
+    """Remove trailing letters from an atom label that make gulp fail."""
+    return GULP_SANITISER.search(text).group()
+
+
+def uff_bonds(atom, structure, tolerance=1.01):
+    atom.bonds = []
+    max_bonds = []
+    neighbours = atom.neighbours
+    atoms = structure.atoms
+
+    for neighbour in neighbours:
+        n_atom = atoms[neighbour[1]]
+        if neighbour[0] < tolerance*(atom.bond_cutoff + n_atom.bond_cutoff):
+            max_bonds.append(neighbour[1])
+        elif (neighbour[0] - atom.bond_cutoff) > 2.88:
+            # some non bonding atoms might be closer than bonding ones
+            # but francium has largest cutoff; can stop after 2.88
+            break
+
+    if atom.type == 'H':
+        # check if second neighbour is within bridging cutoff
+        if len(max_bonds) > 1:
+            atom.uff_type = 'H_b'
+            atom.bonds = max_bonds[:2]
+        else:
+            # assume lone hydrogen
+            atom.uff_type = 'H_'
+            atom.bonds = max_bonds
+    elif atom.type == 'B':
+        # check if tetrahedral sp3 or sp2
+        if len(max_bonds) > 3:
+            atom.uff_type = 'B_3'
+            atom.bonds = max_bonds[:4]
+        else:
+            # planar sp2
+            atom.uff_type = 'B_2'
+            atom.bonds = max_bonds[:3]
+    elif atom.type == 'C':
+        # Four types of Carbon, but C_R and C_2 same params
+        if len(max_bonds) > 3:
+            atom.uff_type = 'C_3'
+            atom.bonds = max_bonds[:4]
+        elif len(max_bonds) > 2:
+            # planar sp2 and aromatic have the same UFF parameters
+            # TODO(tdaff): make aromatic if necessary
+            atom.uff_type = 'C_2'
+            atom.bonds = max_bonds[:3]
+        else:
+            # linear sp
+            atom.uff_type = 'C_1'
+            atom.bonds = max_bonds[:2]
+    elif atom.type == 'N':
+        # Careful, N_R and N_2 have different angles
+        if len(max_bonds) > 2:
+            atom.uff_type = 'N_3'
+            atom.bonds = max_bonds[:3]
+        elif len(max_bonds) > 1:
+            # FIXME(tdaff): make aromatic if necessary
+            atom.uff_type = 'N_2'
+            atom.bonds = max_bonds[:2]
+        else:
+            # sp
+            atom.uff_type = 'N_1'
+            atom.bonds = max_bonds[:1]
+    elif atom.type == 'O':
+        # UFF has sp3 to sp1 and aromatic oxygen
+        # FIXME(tdaff): might need aromatic check
+        if len(max_bonds) > 1:
+            atom.uff_type = 'O_3'
+            atom.bonds = max_bonds[:2]
+        else:
+            # terminal oxygen?
+            atom.uff_type = 'O_2'
+            atom.bonds = max_bonds[:1]
+    elif atom.type == 'P':
+        if len(max_bonds) > 3:
+            atom.uff_type = "P_3+5"
+            atom.bonds = max_bonds
+        else:
+            atom.uff_type = "P_3+3"
+            atom.bonds = max_bonds[:3]
+    elif atom.type == 'S':
+        warn("Sulphur not checked")
+        atom.uff_type = "S_3"
+        atom.bonds = max_bonds[:4]
+    else:
+        atom.uff_type = UFF_TYPES[atom.type]
+        atom.bonds = max_bonds
+
+
+
+def all_combinations_replace(structure, groups, rotations=12, replace_only=None):
     """
     Replace every functional point with every combination of functional groups.
 
     """
-    sites = powerset(sorted(structure.attachments))
-    structure.gen_factional_positions()
+    if replace_only is not None:
+        local_attachments = [att_id for att_id in structure.attachments if att_id in replace_only]
+        debug("Replacing only: %s" % list(local_attachments))
+    else:
+        local_attachments = structure.attachments
+        debug("Replacing all sites: %s" % local_attachments.keys())
+    sites = powerset(sorted(local_attachments))
     idx = 0
     rotation_angle = 2*np.pi/rotations
+
     for site_set in sites:
         for group_set in product(groups, repeat=len(site_set)):
             idx += 1
             new_mof_name = []
+            # copy the atoms and bonds so we don't alter the original structure
             new_mof = list(structure.atoms)
+            new_mof_bonds = dict(structure.bonds)
             did_not_attach = False
             for this_site, this_group in zip(site_set, group_set):
-                new_mof_name.append("<%s-%s>" % (this_site, groups[this_group].name))
+                new_mof_name.append("%s-%s" % (this_site, groups[this_group].name))
                 attachment = groups[this_group]
                 for this_point in structure.attachments[this_site]:
                     attach_id = this_point[0]
-                    attach_to = this_point[1][0][1]
+                    attach_to = this_point[1][0]
                     attach_at = structure.atoms[attach_to].pos
                     attach_towards = direction3d(attach_at, structure.atoms[attach_id].pos)
                     attach_normal = structure.atoms[attach_to].normal
-                    extracted_atoms = new_mof[attach_id:attach_id+1]
+                    #extracted_atoms = new_mof[attach_id:attach_id+1]
                     new_mof[attach_id:attach_id+1] = [None]
+                    start_idx = len(new_mof)
                     for _trial_rotation in range(rotations):
-                        incoming_group = attachment.atoms_attached_to(attach_at, attach_towards, attach_normal)
+                        incoming_group, incoming_bonds = attachment.atoms_attached_to(attach_at, attach_towards, attach_normal, attach_to, start_idx)
                         for atom in incoming_group:
                             if not test_collision(atom, new_mof, structure.cell):
                                 debug("Rotating group")
@@ -360,6 +708,7 @@ def all_combinations_replace(structure, groups, rotations=12):
                         else:
                             # Fits, so add and move on
                             new_mof.extend(incoming_group)
+                            new_mof_bonds.update(incoming_bonds)
                             break
                     else:
                         did_not_attach = this_group
@@ -370,67 +719,91 @@ def all_combinations_replace(structure, groups, rotations=12):
             if did_not_attach:
                 error("%i failed: %s from %s" % (idx, this_group, group_set))
                 continue
-            new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
             info("%i: %s" % (idx, new_mof_name))
             job_name = structure.name
-            with open('%s_func_%05i.xyz' % (job_name, idx), 'wb') as output_file:
+            basename = '%s_func_%05i' % (job_name, idx)
+            with open('%s_func_%05i.gin' % (job_name, idx), 'w') as output_file:
+                output_file.writelines(to_gulp_bonds(new_mof, structure.cell, new_mof_bonds, new_mof_name, basename))
+            new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
+            with open('%s_func_%05i.xyz' % (job_name, idx), 'w') as output_file:
                 output_file.writelines(to_xyz(new_mof, name=new_mof_name))
-            with open('%s_func_%05i.pdb' % (job_name, idx), 'wb') as output_file:
+            with open('%s_func_%05i.pdb' % (job_name, idx), 'w') as output_file:
                 output_file.writelines(to_pdb(new_mof, structure.cell, name=new_mof_name))
 
 
-def random_replace(structure, groups, count=None, rotations=36):
+def random_replace(structure, groups, count=None, custom=None, rotations=36):
     """
     Replace a random number of sites.
 
     """
     nsites = sum(len(x) for x in structure.attachments.values())
-    if count is None:
-        count = random.randint(1, nsites)
-    elif count > nsites:
-        warn("too many sites requested")
-        count = nsites
-    func_repr = [random.choice(groups.keys()) for _counter in range(count)] + [None]*(nsites - count)
-    random.shuffle(func_repr)
+    if custom is not None:
+        debug("Processing custom string: %s" % custom)
+        func_repr = custom.strip('{}').split(".")
+        if len(func_repr) != nsites:
+            error("Expected %s sites; got %s" % (nsites, len(func_repr)))
+    else:
+        if count is None:
+            count = random.randint(1, nsites)
+            debug("Randomly replacing %i sites" % count)
+        elif count > nsites:
+            warn("Too many sites requested; changing all %i" % nsites)
+            count = nsites
+        #TODO(tdaff): selected groups only
+        func_repr = [random.choice(groups.keys()) for _counter in range(count)]
+        # Pad to the correct length
+        func_repr.extend([""]*(nsites - count))
+        # Randomise
+        random.shuffle(func_repr)
+    # Unique-ish
     unique_name = hashlib.md5(str(func_repr)).hexdigest()
     new_mof_name = []
     new_mof = list(structure.atoms)
+    new_mof_bonds = dict(structure.bonds)
     for this_point, this_group in zip(chain(*[structure.attachments[x] for x in sorted(structure.attachments)]), func_repr):
-        if this_group is None:
+        if this_group == "":
             new_mof_name.append("")
             continue
         else:
             new_mof_name.append(this_group)
         attachment = groups[this_group]
         attach_id = this_point[0]
-        attach_to = this_point[1][0][1]
+        attach_to = this_point[1][0]
         attach_at = structure.atoms[attach_to].pos
         attach_towards = direction3d(attach_at, structure.atoms[attach_id].pos)
         attach_normal = structure.atoms[attach_to].normal
-        extracted_atoms = new_mof[attach_id:attach_id+1]
+        #extracted_atoms = new_mof[attach_id:attach_id+1]
         new_mof[attach_id:attach_id+1] = [None]
+        start_idx = len(new_mof)
         for trial_rotation in range(rotations):
-            incoming_group = attachment.atoms_attached_to(attach_at, attach_towards, attach_normal)
+            incoming_group, incoming_bonds = attachment.atoms_attached_to(attach_at, attach_towards, attach_normal, attach_to, start_idx)
             for atom in incoming_group:
                 if not test_collision(atom, new_mof, structure.cell):
-                    debug("Rotating group")
+                    debug("Randomly rotating group")
                     attach_normal = dot(rotation_about_angle(attach_towards, random.random()*np.pi*2), attach_normal)
                     break
             else:
+                # Fits, so add and move on
                 new_mof.extend(incoming_group)
+                new_mof_bonds.update(incoming_bonds)
+#                for atom in incoming_group:
+#                    for bond in atom.bonds:
+#                        new_mof_bonds[atom.idx, bond] = 1
                 break
         else:
             # this_point not valid
-            did_not_attach = this_group
             error("Failed to generate: %s" % ".".join([x or "" for x in func_repr]))
             warn("Stopped after: %s" % ".".join(new_mof_name))
 
             return False
 
-    new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
     new_mof_name = "{" + ".".join(new_mof_name) + "}"
     info("Generated: %s" % new_mof_name)
     info("With unique name: %s" % unique_name)
+    basename = 'random-%s' % unique_name
+    with open('random-%s.gin' % unique_name, 'wb') as output_file:
+        output_file.writelines(to_gulp_bonds(new_mof, structure.cell, new_mof_bonds, new_mof_name, basename))
+    new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
     with open('random-%s.xyz' % unique_name, 'wb') as output_file:
         output_file.writelines(to_xyz(new_mof, name=new_mof_name))
     with open('random-%s.pdb' % unique_name, 'wb') as output_file:
@@ -438,6 +811,23 @@ def random_replace(structure, groups, count=None, rotations=36):
 
     # completed sucessfully
     return True
+
+
+def label_atom(element=None, site=None):
+    """Produce unique atom labels."""
+    if not hasattr(label_atom, 'seen'):
+        label_atom.seen = set()
+    if not hasattr(label_atom, 'index'):
+        label_atom.index = 1
+    if element is not None:
+        label = "%s%i" % (element, label_atom.index)
+        while label in label_atom.seen:
+            label_atom.index += 1
+            label = "%s%i" % (element, label_atom.index)
+        label_atom.seen.add(label)
+        return label
+    elif site is not None:
+        label_atom.seen.add(site)
 
 
 def main():
@@ -453,17 +843,44 @@ def main():
     input_structure.from_file(job_name,
                               job_options.get('initial_structure_format'),
                               job_options)
-    #input_structure.from_cif("test_cifs/CALF21.cif")
 
     input_structure.gen_site_connection_table()
     input_structure.gen_normals()
 
+    # label_atom has a global state that
+    for atom in input_structure.atoms:
+        label_atom(site=atom.site)
+
     f_groups = FunctionalGroupLibrary()
     f_groups.from_file()
 
-    all_combinations_replace(input_structure, f_groups)
-#    for _make_some_randoms in range(30):
-#        random_replace(input_structure, f_groups)
+    # Will use selected groups if specified, otherwise use all
+    try:
+        replace_only = job_options.gettuple('lube_replace_only')
+    except AttributeError:
+        replace_only = None
+    if replace_only == ():
+        replace_only = None
+
+    # Ensure that atoms in the structure are properly typed
+    input_structure.gen_factional_positions()
+    input_structure.gen_babel_uff_properties()
+    with open('original.gin', 'w') as output_file:
+        output_file.writelines(to_gulp_bonds(input_structure.atoms, input_structure.cell, input_structure.bonds, 'unfunctionalised', 'original'))
+
+    if job_options.getbool('lube_replace_all'):
+        all_combinations_replace(input_structure, f_groups, replace_only=replace_only)
+
+    custom_strings = job_options.gettuple('lube_custom_strings')
+    for custom_string in custom_strings:
+        random_replace(input_structure, f_groups, custom=custom_string)
+
+    random_count = job_options.getint('lube_random_structure_count')
+    successful_randoms = 0
+    while successful_randoms < random_count:
+        #function returns true if structure is generated
+        if random_replace(input_structure, f_groups):
+            successful_randoms += 1
 
 
 if __name__ == '__main__':

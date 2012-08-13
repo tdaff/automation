@@ -2291,6 +2291,36 @@ class Cell(object):
             self._inverse = np.linalg.inv(self.cell.T)
         return self._inverse
 
+    @property
+    def a(self):
+        """Magnitude of cell a vector."""
+        return self.params[0]
+
+    @property
+    def b(self):
+        """Magnitude of cell b vector."""
+        return self.params[1]
+
+    @property
+    def c(self):
+        """Magnitude of cell c vector."""
+        return self.params[2]
+
+    @property
+    def alpha(self):
+        """Cell angle alpha."""
+        return self.params[3]
+
+    @property
+    def beta(self):
+        """Cell angle beta."""
+        return self.params[4]
+
+    @property
+    def gamma(self):
+        """Cell angle gamma."""
+        return self.params[5]
+
     # Implementation details -- directly access the private _{cell|param}
     # attributes; please don't break.
     def __mkcell(self):

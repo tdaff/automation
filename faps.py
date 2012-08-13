@@ -2250,6 +2250,37 @@ class Cell(object):
             return keys['parallelepiped']
 
     @property
+    def crystal_system(self):
+        """Return the IUCr designation for the crystal system."""
+        #FIXME(tdaff): must be aligned with x to work
+        if self.alpha == self.beta == self.gamma == 90:
+            if self.a == self.b == self.c:
+                return 'cubic'
+            elif self.a == self.b or self.a == self.c or self.b == self.c:
+                return 'tetragonal'
+            else:
+                return 'orthorhombic'
+        elif self.alpha == self.beta == 90:
+            if self.a == self.b and self.gamma == 120:
+                return 'hexagonal'
+            else:
+                return 'monoclinic'
+        elif self.alpha == self.gamma == 90:
+            if self.a == self.c and self.beta == 120:
+                return 'hexagonal'
+            else:
+                return 'monoclinic'
+        elif self.beta == self.gamma == 90:
+            if self.b == self.c and self.alpha == 120:
+                return 'hexagonal'
+            else:
+                return 'monoclinic'
+        elif self.a == self.b == self.c and self.alpha == self.beta == self.gamma:
+            return 'trigonal'
+        else:
+            return 'triclinic'
+
+    @property
     def volume(self):
         """Calculate cell volume a.bxc."""
         b_cross_c = cross(self.cell[1], self.cell[2])

@@ -31,6 +31,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tarfile
 import textwrap
 from copy import copy
 from itertools import count
@@ -3004,13 +3005,23 @@ def vecdist3(coord1, coord2):
 
 
 def remove_files(files, directory='.'):
-    """Delete any of the files if they exist, or ignore if not found."""
+    """
+    Delete any of the files if they exist using standard globbing,
+    remove empty directories, or ignore silently if not found.
+
+    """
     del_list = []
     for file_name in files:
         del_list.extend(glob.glob(path.join(directory, file_name)))
     for del_name in del_list:
         debug("deleting %s" % del_name)
-        os.remove(del_name)
+        try:
+            os.remove(del_name)
+        except OSError:
+            try:
+                os.rmdir(del_name)
+            except OSError:
+                debug("Directory not empty: %s?" % del_name)
 
 
 def compress_files(files, directory='.'):
@@ -3080,7 +3091,9 @@ def main():
     info("Starting faps version 0.999-r%s" % __version__.strip('$Revision: '))
     # try to unpickle the job or
     # fall back to starting a new simulation
-    niss_name = main_options.get('job_name') + ".niss"
+    job_name = main_options.get('job_name')
+    niss_name = "%s.niss" % job_name
+    tar_name = "%s.tar" % job_name
     if path.exists(niss_name):
         info("Existing simulation found: %s; loading..." % niss_name)
         load_niss = open(niss_name, 'rb')
@@ -3093,8 +3106,31 @@ def main():
         info("Starting a new simulation...")
         my_simulation = PyNiss(main_options)
 
+    # Should we extract a previous simulation?
+    if main_options.getbool('tar_extract_before') and path.exists(tar_name):
+        info("Extracting files from %s" % tar_name)
+        faps_tar = tarfile.open(tar_name, 'r')
+        faps_tar.extractall()
+        faps_tar.close()
+        debug("Deleting extracted file %s" % tar_name)
+        os.remove(tar_name)
+
     # run requested jobs
     my_simulation.job_dispatcher()
+
+    # Should we bundle the files after use?
+    if main_options.getbool('tar_after'):
+        info("Bundling calculation into %s" % tar_name)
+        # Similar file names with _underscores_ might match each other
+        directories_produced = glob.glob("faps_%s_*/" % job_name)
+        # We don't overwrite an existing tar
+        faps_tar = tarfile.open(tar_name, 'a')
+        for directory in directories_produced:
+            debug("Adding directory %s" % directory)
+            faps_tar.add(directory)
+            shutil.rmtree(directory)
+        faps_tar.close()
+
     my_simulation.dump_state()
     terminate(0)
 

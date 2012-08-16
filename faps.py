@@ -448,6 +448,17 @@ class PyNiss(object):
             info("GCMC run has not finished completely")
             terminate(0)
 
+    def step_properties(self):
+        """Run the properties calculations if required."""
+
+        if self.state['properties'][0] not in [UPDATED, SKIPPED]:
+            if self.options.getbool('no_properties'):
+                info("Skipping all properties calculations")
+                self.state['properties'] = (SKIPPED, False)
+
+        if self.state['properties'][0] == NOT_RUN or 'properties' in self.options.args:
+            self.calculate_properties()
+            self.dump_state()
 
     def import_old(self):
         """Try and import any data from previous stopped simulation."""
@@ -956,6 +967,7 @@ class PyNiss(object):
             atom.neighbours = None
             del atom.neighbours
 
+        # Zeoplusplus gives fast access to many properties
         if self.options.getbool('zeo++'):
             zeofiles = self.structure.to_zeoplusplus()
 
@@ -971,16 +983,39 @@ class PyNiss(object):
             filetemp.writelines(zeofiles[2])
             filetemp.close()
 
-            zeo_command = shlex.split(self.options.get('zeo++_command'))
-            zeo_command[1:1] = ['-mass', '%s.mass' % job_name,
-                                '-r', '%s.rad' % job_name]
-            zeo_command.append('%s.cssr' % job_name)
-            info("Running zeo++")
+            probes = set([1.0]) # Always have a helium probe
+            for guest in self.structure.guests:
+                if hasttr(guest, 'probe_radius'):
+                    probes.add(guest.probe_radius)
+
+            zeo_exe = shlex.split(self.options.get('zeo++_exe'))
+            rad_file = ['-r', '%s.rad' % job_name]
+            cssr_file = ['%s.cssr' % job_name]
+
+            # incuded sphere, free sphere, included sphere along free path
+            zeo_command = zeo_exe + rad_file + ['-res'] + cssr_file
+            info("Running zeo++ pore diameters")
             debug("Zeo ++ command: '" + " ".join(zeo_command) + "'")
             try:
                 subprocess.call(zeo_command)
             except OSError:
                 error("Error running zeo++, please run manually")
+
+            res_file = open('%s.res' % job_name).read().split()
+            self.structure.pore_diameter = tuple(float(x) for x in res_file[1:])
+
+#            for probe in probes:
+                #network -res -chan 1.72 -sa 0.0 0.0 50000 -vol 0.0 0.0 50000
+#                zeo_command = shlex.split(self.options.get('zeo++_command'))
+#                zeo_command[1:1] = ['-mass', '%s.mass' % job_name,
+#                                    '-r', '%s.rad' % job_name]
+#                zeo_command.append('%s.cssr' % job_name)
+#                info("Running zeo++")
+#                debug("Zeo ++ command: '" + " ".join(zeo_command) + "'")
+#                try:
+#                    subprocess.call(zeo_command)
+#                except OSError:
+#                    error("Error running zeo++, please run manually")
 
         os.chdir(job_dir)
 
@@ -2610,7 +2645,9 @@ class Guest(object):
                 self.probability = [tuple(int(y) for y in x.split())
                                     for x in prob]
             elif key == 'molar volume':
-                self._molar_volume = val
+                self._molar_volume = float(val)
+            elif key == 'probe radius':
+                self.probe_radius = float(val)
             else:
                 # Arbitrary attributes can be set
                 # Might also enable breakage

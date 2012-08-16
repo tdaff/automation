@@ -33,6 +33,7 @@ import subprocess
 import sys
 import tarfile
 import textwrap
+import time
 from copy import copy
 from itertools import count
 from logging import warning, debug, error, info, critical
@@ -424,9 +425,21 @@ class PyNiss(object):
 
             # any states that need to be updated should have been done by now
             if tp_state[0] == FINISHED:
-                self.structure.update_gcmc(tp_point, self.options)
-                self.state['gcmc'][tp_point] = (UPDATED, False)
-                self.dump_state()
+                startdir = os.getcwd()
+                # wooki seems slow to copy output files back
+                # so we give them a few chances to appear
+                max_attempts = 6
+                for attempt_count in range(max_attempts):
+                    time.sleep(attempt_count)
+                    try:
+                        self.structure.update_gcmc(tp_point, self.options)
+                        self.state['gcmc'][tp_point] = (UPDATED, False)
+                        self.dump_state()
+                        break
+                    except IOError:
+                        os.chdir(startdir)
+                else:
+                    error('OUTPUT file never appeared')
 
         if postrun_ids:
             self.postrun(postrun_ids)

@@ -266,6 +266,7 @@ class PyNiss(object):
         info("======= ======= ======= ======= =======")
 
         surf_area_results = self.structure.surface_area()
+#        surf_area_results = self.structure.sub_property('zeo_surface_area')
         if surf_area_results:
             info("Summary of surface areas")
             info("========= ========= ========= =========")
@@ -458,6 +459,7 @@ class PyNiss(object):
 
         if self.state['properties'][0] == NOT_RUN or 'properties' in self.options.args:
             self.calculate_properties()
+            self.state['properties'] = (UPDATED, False)
             self.dump_state()
 
     def import_old(self):
@@ -969,55 +971,77 @@ class PyNiss(object):
 
         # Zeoplusplus gives fast access to many properties
         if self.options.getbool('zeo++'):
-            zeofiles = self.structure.to_zeoplusplus()
-
-            filetemp = open("%s.cssr" % job_name, 'w')
-            filetemp.writelines(zeofiles[0])
-            filetemp.close()
-
-            filetemp = open("%s.rad" % job_name, 'w')
-            filetemp.writelines(zeofiles[1])
-            filetemp.close()
-
-            filetemp = open("%s.mass" % job_name, 'w')
-            filetemp.writelines(zeofiles[2])
-            filetemp.close()
-
-            probes = set([1.0]) # Always have a helium probe
-            for guest in self.structure.guests:
-                if hasttr(guest, 'probe_radius'):
-                    probes.add(guest.probe_radius)
-
-            zeo_exe = shlex.split(self.options.get('zeo++_exe'))
-            rad_file = ['-r', '%s.rad' % job_name]
-            cssr_file = ['%s.cssr' % job_name]
-
-            # incuded sphere, free sphere, included sphere along free path
-            zeo_command = zeo_exe + rad_file + ['-res'] + cssr_file
-            info("Running zeo++ pore diameters")
-            debug("Zeo ++ command: '" + " ".join(zeo_command) + "'")
             try:
-                subprocess.call(zeo_command)
-            except OSError:
-                error("Error running zeo++, please run manually")
-
-            res_file = open('%s.res' % job_name).read().split()
-            self.structure.pore_diameter = tuple(float(x) for x in res_file[1:])
-
-#            for probe in probes:
-                #network -res -chan 1.72 -sa 0.0 0.0 50000 -vol 0.0 0.0 50000
-#                zeo_command = shlex.split(self.options.get('zeo++_command'))
-#                zeo_command[1:1] = ['-mass', '%s.mass' % job_name,
-#                                    '-r', '%s.rad' % job_name]
-#                zeo_command.append('%s.cssr' % job_name)
-#                info("Running zeo++")
-#                debug("Zeo ++ command: '" + " ".join(zeo_command) + "'")
-#                try:
-#                    subprocess.call(zeo_command)
-#                except OSError:
-#                    error("Error running zeo++, please run manually")
+                self.calculate_zeo_properties()
+            except (OSError, IOError):
+                error("Error running zeo++; skipping")
 
         os.chdir(job_dir)
+
+
+    def calculate_zeo_properties(self):
+        """Run the zeo++ and update properties with no error trapping."""
+
+        job_name = self.options.get('job_name')
+        zeofiles = self.structure.to_zeoplusplus()
+
+        filetemp = open("%s.cssr" % job_name, 'w')
+        filetemp.writelines(zeofiles[0])
+        filetemp.close()
+
+        filetemp = open("%s.rad" % job_name, 'w')
+        filetemp.writelines(zeofiles[1])
+        filetemp.close()
+
+        filetemp = open("%s.mass" % job_name, 'w')
+        filetemp.writelines(zeofiles[2])
+        filetemp.close()
+
+        probes = set([1.0]) # Always have a helium probe
+        for guest in self.structure.guests:
+            if hasattr(guest, 'probe_radius'):
+                probes.add(guest.probe_radius)
+
+        zeo_exe = shlex.split(self.options.get('zeo++_exe'))
+        zeo_exe += ['-mass', '%s.mass' % job_name, '-r', '%s.rad' % job_name]
+        cssr_file = ['%s.cssr' % job_name]
+
+        # incuded sphere, free sphere, included sphere along free path
+        zeo_command = zeo_exe + ['-res'] + cssr_file
+        info("Running zeo++ pore diameters")
+        debug("Running command: '" + " ".join(zeo_command) + "'")
+        zeo_process = subprocess.Popen(zeo_command, stdout=subprocess.PIPE)
+        zeo_process.wait()
+
+        res_file = open('%s.res' % job_name).read().split()
+        self.structure.pore_diameter = tuple(float(x) for x in res_file[1:])
+
+        atom_samples = '%i' % 2000
+        volume_samples = '%i' % (20*self.structure.cell.volume)
+
+        for probe in probes:
+            zeo_command = zeo_exe + [
+                '-chan', '%f' % probe,
+                '-sa', '%f' % probe, '%f' % probe, atom_samples,
+                '-vol', '%f' % probe, '%f' % probe, volume_samples] + cssr_file
+
+            debug("Running command: '" + " ".join(zeo_command) + "'")
+            zeo_process = subprocess.Popen(zeo_command, stdout=subprocess.PIPE)
+            zeo_process.wait()
+            # channel dimensionality
+            channels = [int(x) for x in open('%s.chan' % job_name).read().split()[5:]]
+            self.structure.sub_property('dimensionality', probe, channels)
+            # surface area
+            for line in open('%s.sa' % job_name):
+                if 'A^2' in line:
+                    self.structure.sub_property('zeo_surface_area', probe,
+                                                value=float(line.split()[-1]))
+            # accessible volume
+            for line in open('%s.vol' % job_name):
+                if 'A^3' in line:
+                    self.structure.sub_property('void_volume', probe,
+                                                value=float(line.split()[-1]))
+
 
     @property
     def esp_grid(self):
@@ -2129,6 +2153,29 @@ class Structure(object):
             return surface_areas.get(probe, None)
         else:
             return surface_areas
+
+    def sub_property(self, name, probe=None, value=None, delete=False):
+        """
+        Helper:
+          Return all {probe:value} if no arguments given
+          Return the value or None for a given probe
+          Set area if value given
+          Delete value if delete is True
+        Units are based on Angstrom
+        """
+        property_data = self.properties.get(name, {})
+        if value is not None:
+            property_data[probe] = value
+            self.properties[name] = property_data
+        elif delete:
+            # Set it to None to avoid KeyErrors
+            property_data[probe] = None
+            del property_data[probe]
+            self.properties[name] = property_data
+        elif probe is not None:
+            return property_data.get(probe, None)
+        else:
+            return property_data
 
     def void_volume(self):
         """Estimate the void volume based on VdW radii."""

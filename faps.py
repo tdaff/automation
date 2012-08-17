@@ -186,9 +186,7 @@ class PyNiss(object):
 
         self.step_gcmc()
 
-        if not self.options.getbool('no_properties'):
-            self.calculate_properties()
-            self.dump_state()
+        self.step_properties()
 
         self.post_summary()
 

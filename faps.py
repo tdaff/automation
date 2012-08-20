@@ -224,13 +224,27 @@ class PyNiss(object):
 
     def post_summary(self):
         """Summarise any results for GCMC, properties..."""
+        # Also includes excess calculation if void volume calculated
+        # N = pV/RT
+        R_GAS = 8.3144621E25 / NAVOGADRO # A^3 bar K-1 molecule
         job_name = self.options.get('job_name')
         info("Summary of GCMC results")
         info("======= ======= ======= ======= =======")
         nguests = len(self.structure.guests)
         for idx, guest in enumerate(self.structure.guests):
+            # Determine whether we can calulate the excess for
+            # any different probes
+            void_volume = self.structure.sub_property('void_volume')
+            he_excess, guest_excess = "", ""
+            if 1.0 in void_volume:
+                he_excess = 'He-xs-molc/uc,He-xs-mmol/g,He-xs-v/v,He-xs-wt%,'
+            if hasattr(guest, 'probe_radius'):
+                if guest.probe_radius != 1.0 and guest.probe_radius in void_volume:
+                    guest_excess = 'xs-molc/uc,xs-mmol/g,xs-v/v,xs-wt%,'
+            # Generate headers separately
             csv = ["#T/K,p/bar,molc/uc,mmol/g,stdev,",
-                   "v/v,stdev,hoa/kcal/mol,stdev,",
+                   "v/v,stdev,wt%,stdev,hoa/kcal/mol,stdev,",
+                   guest_excess, he_excess,
                    ",".join("p(g%i)" % gidx for gidx in range(nguests)), "\n"]
             info(guest.name)
             info("---------------------------------------")
@@ -239,25 +253,62 @@ class PyNiss(object):
             for tp_point in sorted(guest.uptake):
                 # <N>, sd, supercell
                 uptake = guest.uptake[tp_point]
+                uptake = [uptake[0]/uptake[2], uptake[1]/uptake[2]]
                 hoa = guest.hoa[tp_point]
-                vuptake = (guest.molar_volume*(uptake[0]/uptake[2])/
+                # uptake in mmol/g
+                muptake = 1000*uptake[0]/self.structure.weight
+                muptake_stdev = 1000*uptake[1]/self.structure.weight
+                # volumetric uptake
+                vuptake = (guest.molar_volume*uptake[0]/
                            (6.023E-4*self.structure.volume))
-                vuptake_stdev = (guest.molar_volume*(uptake[1]/uptake[2])/
+                vuptake_stdev = (guest.molar_volume*uptake[1]/
                                  (6.023E-4*self.structure.volume))
+                # weight percent uptake
+                wtpc = 100*(1 - self.structure.weight/
+                            (self.structure.weight + uptake[0]*guest.weight))
+                wtpc_stdev = 100*(1 - self.structure.weight/
+                                  (self.structure.weight + uptake[1]*guest.weight))
                 info("%7.2f %7.2f %7.2f %7.2f %s" % (
-                    uptake[0]/uptake[2],
-                    1000*uptake[0]/(uptake[2]*self.structure.weight),
-                    vuptake,
-                    hoa[0],
+                    uptake[0], muptake, vuptake, hoa[0],
                     ("T=%s" % tp_point[0] +
                      ''.join(['P=%s' % x for x in tp_point[1]]))))
-                csv.append("%f,%f,%f,%f,%f,%f,%f,%f,%f," % (
-                    tp_point[0], tp_point[1][idx], uptake[0]/uptake[2],
-                    1000*uptake[0]/(uptake[2]*self.structure.weight),
-                    1000*uptake[1]/(uptake[2]*self.structure.weight),
+                csv.append("%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f," % (
+                    tp_point[0], tp_point[1][idx], uptake[0],
+                    muptake, muptake_stdev,
                     vuptake, vuptake_stdev,
-                    hoa[0], hoa[1]) +
-                    ",".join("%f" % x for x in tp_point[1]) + "\n")
+                    wtpc, wtpc_stdev,
+                    hoa[0], hoa[1]))
+                if guest_excess:
+                    guest_void = void_volume[guest.probe_radius]
+                    n_bulk = (tp_point[1][idx]*guest_void)/(tp_point[0]*R_GAS)
+                    xs_uptake = uptake[0]-n_bulk
+                    # uptake in mmol/g
+                    muptake = 1000*xs_uptake/self.structure.weight
+                    # volumetric uptake
+                    vuptake = (guest.molar_volume*xs_uptake/
+                               (6.023E-4*self.structure.volume))
+                    # weight percent uptake
+                    wtpc = 100*(1 - self.structure.weight/
+                                (self.structure.weight + xs_uptake*guest.weight))
+                    csv.append("%f,%f,%f,%f," % (
+                        xs_uptake, muptake, vuptake, wtpc,))
+                if he_excess:
+                    guest_void = void_volume[1.0]
+                    n_bulk = (tp_point[1][idx]*guest_void)/(tp_point[0]*R_GAS)
+                    xs_uptake = uptake[0]-n_bulk
+                    # uptake in mmol/g
+                    muptake = 1000*xs_uptake/self.structure.weight
+                    # volumetric uptake
+                    vuptake = (guest.molar_volume*xs_uptake/
+                               (6.023E-4*self.structure.volume))
+                    # weight percent uptake
+                    wtpc = 100*(1 - self.structure.weight/
+                                (self.structure.weight + xs_uptake*guest.weight))
+                    csv.append("%f,%f,%f,%f," % (
+                        xs_uptake, muptake, vuptake, wtpc,))
+                # list all the other guest pressures and start a new line
+                csv.append(",".join("%f" % x for x in tp_point[1]) + "\n")
+
             csv_file = open('%s-%s.csv' % (job_name, guest.ident), 'w')
             csv_file.writelines(csv)
             csv_file.close()
@@ -266,7 +317,7 @@ class PyNiss(object):
         surf_area_results = self.structure.surface_area()
 #        surf_area_results = self.structure.sub_property('zeo_surface_area')
         if surf_area_results:
-            info("Summary of surface areas")
+            info("Summary of faps surface areas")
             info("========= ========= ========= =========")
             info(" radius/A total/A^2  m^2/cm^3     m^2/g")
             info("========= ========= ========= =========")
@@ -276,6 +327,8 @@ class PyNiss(object):
                 info("%9.3f %9.2f %9.2f %9.2f" %
                      (probe, area, vol_area, specific_area))
             info("========= ========= ========= =========")
+
+
 
     def step_force_field(self):
         """Check the force field step of the calculation."""

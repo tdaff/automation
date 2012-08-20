@@ -314,8 +314,10 @@ class PyNiss(object):
             csv_file.close()
         info("======= ======= ======= ======= =======")
 
+        info("Structure properties")
+
+        # Internally calculated surface area
         surf_area_results = self.structure.surface_area()
-#        surf_area_results = self.structure.sub_property('zeo_surface_area')
         if surf_area_results:
             info("Summary of faps surface areas")
             info("========= ========= ========= =========")
@@ -328,6 +330,44 @@ class PyNiss(object):
                      (probe, area, vol_area, specific_area))
             info("========= ========= ========= =========")
 
+        # Messy, but check individual properties that might not be there
+        # and dump them to the screen
+        info("weight (u): %f" % self.structure.weight)
+        if hasattr(self.structure, 'pore_diameter'):
+            info("pores (A): %f %f %f" % self.structure.pore_diameter)
+        channel_results = self.structure.sub_property('dimensionality')
+        if channel_results:
+            for probe, channels in channel_results.items():
+                info(("channels %.2f probe: " % probe) +
+                     " ".join("%i" % x for x in channels))
+        # The table is copied from above as it does some calculating
+        surf_area_results = self.structure.sub_property('zeo_surface_area')
+        if surf_area_results:
+            info("Summary of zeo++ surface areas")
+            info("========= ========= ========= =========")
+            info(" radius/A total/A^2  m^2/cm^3     m^2/g")
+            info("========= ========= ========= =========")
+            for probe, area in surf_area_results.items():
+                vol_area = 1E4*area/self.structure.volume
+                specific_area = NAVOGADRO*area/(1E20*self.structure.weight)
+                info("%9.3f %9.2f %9.2f %9.2f" %
+                     (probe, area, vol_area, specific_area))
+            info("========= ========= ========= =========")
+
+        info("volume (A^3): %f" % self.structure.volume)
+
+        void_volume_results = self.structure.sub_property('void_volume')
+        if surf_area_results:
+            info("Summary of zeo++ void volumes")
+            info("========= ========= ========= =========")
+            info(" radius/A total/A^3  fraction    cm^3/g")
+            info("========= ========= ========= =========")
+            for probe, void in void_volume_results.items():
+                void_fraction = void/self.structure.volume
+                specific_area = NAVOGADRO*void/(1E24*self.structure.weight)
+                info("%9.3f %9.2f %9.5f %9.4f" %
+                     (probe, void, void_fraction, specific_area))
+            info("========= ========= ========= =========")
 
 
     def step_force_field(self):

@@ -368,9 +368,9 @@ def to_cif(atoms, cell, bonds, name, basename):
         "%-33s %s\n" % ("_cell_length_a", cell.a),
         "%-33s %s\n" % ("_cell_length_b", cell.b),
         "%-33s %s\n" % ("_cell_length_c", cell.c),
-        "%-33s %s\n" % ("_cell_length_alpha", cell.alpha),
-        "%-33s %s\n" % ("_cell_length_beta", cell.beta),
-        "%-33s %s\n" % ("_cell_length_gamma", cell.gamma),
+        "%-33s %s\n" % ("_cell_angle_alpha", cell.alpha),
+        "%-33s %s\n" % ("_cell_angle_beta", cell.beta),
+        "%-33s %s\n" % ("_cell_angle_gamma", cell.gamma),
         # start of atom loops
         "\nloop_\n",
         "_atom_site_label\n",

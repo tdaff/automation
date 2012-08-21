@@ -18,6 +18,7 @@ from logging import debug, info, warn, error
 from os import path
 from subprocess import Popen, PIPE, STDOUT
 
+MAX_RETRY = 5
 
 class JobHandler(object):
     """
@@ -139,13 +140,19 @@ def _sharcnet_submit(job_type, options, input_file=None, input_args=None):
         sqsub_args.extend(input_args)
 
     debug("Submission command: %s" % " ".join(sqsub_args))
-    submit = Popen(sqsub_args, stdout=PIPE)
-    for line in submit.stdout.readlines():
-        if 'submitted as' in line:
-            jobid = int(line.split()[-1])
-            break
-    else:
-        error("Job submission failed, no jobid received. Faps will crash now")
+    submitted = False
+    submit_count = 0
+    while not submitted and submit_count <= MAX_RETRY:
+        submit = Popen(sqsub_args, stdout=PIPE)
+        for line in submit.stdout.readlines():
+            if 'submitted as' in line:
+                jobid = int(line.split()[-1])
+                submitted = True
+                break
+        else:
+            submit_count += 1
+            error("Job submission attempt %i failed." % submit_count)
+            time.sleep(submit_count)
 
     return jobid
 
@@ -259,13 +266,19 @@ def _wooki_submit(job_type, options, *args, **kwargs):
         submit_args.append("%i" % nodes)
 
     debug("Submission command: %s" % " ".join(submit_args))
-    submit = Popen(submit_args, stdout=subprocess.PIPE)
-    for line in submit.stdout.readlines():
-        if "wooki" in line:
-            jobid = line.split(".")[0]
-            break
-    else:
-        error("Job submission failed, no jobid received. Faps will crash now")
+    submitted = False
+    submit_count = 0
+    while not submitted and submit_count <= MAX_RETRY:
+        submit = Popen(submit_args, stdout=subprocess.PIPE)
+        for line in submit.stdout.readlines():
+            if "wooki" in line:
+                jobid = line.split(".")[0]
+                submitted = True
+                break
+        else:
+            submit_count += 1
+            error("Job submission attempt %i failed." % submit_count)
+            time.sleep(submit_count)
 
     return jobid
 

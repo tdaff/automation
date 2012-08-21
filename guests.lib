@@ -21,6 +21,9 @@ probability =
     atom_id1 atom_id2 ... atom_idN
     0  # 0 is centre of mass
     2  3
+# optional values
+probe radius = 1.4  # probe to use for void volumes, suface areas, etc
+molar volume = 22.414  # used for volumetric uptake (defaults to ideal gas)
 
 [CO2]
 name = Carbon Dioxide
@@ -35,6 +38,7 @@ potentials =
 probability =
     1
     2  3
+probe radius = 1.71
 
 [TIP5P]
 name = TIP5P Water
@@ -53,6 +57,7 @@ probability =
     0
     1
     2 3
+probe radius = 1.4
 
 [TIP5P-Ew]
 name = TIP5P-Ew Water for Ewald sums
@@ -71,6 +76,7 @@ probability =
     0
     1
     2 3
+probe radius = 1.4
 
 [TIP4P-Ew]
 name = TIP4P-Ew four-site water model for biomolecular simulations
@@ -88,6 +94,7 @@ probability =
     0
     1
     2 3
+probe radius = 1.4
 
 [CH4-TraPPE]
 name = TraPPE Methane; Single Site
@@ -98,6 +105,7 @@ potentials =
     CM  3.7300  0.294106
 probability =
     0
+probe radius = 1.8
 
 [CH4-5s]
 name = Methane 5 Site
@@ -113,6 +121,7 @@ potentials =
     H_M  2.84600  0.01522
 probability =
     0
+probe radius = 1.8
 
 [N2]
 name = Nitrogen based on Etters potential
@@ -127,6 +136,7 @@ potentials =
 probability =
     0
     1 2
+probe radius = 1.8
 
 [H2S]
 name = Hydrogen Sulphide for vapor-liquid equilibria
@@ -141,5 +151,6 @@ potentials =
 probability =
     1
     2 3
+probe radius = 1.8
 
 # vim:ft=dosini:set paste:

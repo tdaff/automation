@@ -31,7 +31,9 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tarfile
 import textwrap
+import time
 from copy import copy
 from itertools import count
 from logging import warning, debug, error, info, critical
@@ -185,9 +187,7 @@ class PyNiss(object):
 
         self.step_gcmc()
 
-        if not self.options.getbool('no_properties'):
-            self.calculate_properties()
-            self.dump_state()
+        self.step_properties()
 
         self.post_summary()
 
@@ -225,13 +225,27 @@ class PyNiss(object):
 
     def post_summary(self):
         """Summarise any results for GCMC, properties..."""
+        # Also includes excess calculation if void volume calculated
+        # N = pV/RT
+        R_GAS = 8.3144621E25 / NAVOGADRO # A^3 bar K-1 molecule
         job_name = self.options.get('job_name')
         info("Summary of GCMC results")
         info("======= ======= ======= ======= =======")
         nguests = len(self.structure.guests)
         for idx, guest in enumerate(self.structure.guests):
+            # Determine whether we can calulate the excess for
+            # any different probes
+            void_volume = self.structure.sub_property('void_volume')
+            he_excess, guest_excess = "", ""
+            if 1.0 in void_volume:
+                he_excess = 'He-xs-molc/uc,He-xs-mmol/g,He-xs-v/v,He-xs-wt%,'
+            if hasattr(guest, 'probe_radius'):
+                if guest.probe_radius != 1.0 and guest.probe_radius in void_volume:
+                    guest_excess = 'xs-molc/uc,xs-mmol/g,xs-v/v,xs-wt%,'
+            # Generate headers separately
             csv = ["#T/K,p/bar,molc/uc,mmol/g,stdev,",
-                   "v/v,stdev,hoa/kcal/mol,stdev,",
+                   "v/v,stdev,wt%,stdev,hoa/kcal/mol,stdev,",
+                   guest_excess, he_excess,
                    ",".join("p(g%i)" % gidx for gidx in range(nguests)), "\n"]
             info(guest.name)
             info("---------------------------------------")
@@ -240,33 +254,73 @@ class PyNiss(object):
             for tp_point in sorted(guest.uptake):
                 # <N>, sd, supercell
                 uptake = guest.uptake[tp_point]
+                uptake = [uptake[0]/uptake[2], uptake[1]/uptake[2]]
                 hoa = guest.hoa[tp_point]
-                vuptake = (guest.molar_volume*(uptake[0]/uptake[2])/
+                # uptake in mmol/g
+                muptake = 1000*uptake[0]/self.structure.weight
+                muptake_stdev = 1000*uptake[1]/self.structure.weight
+                # volumetric uptake
+                vuptake = (guest.molar_volume*uptake[0]/
                            (6.023E-4*self.structure.volume))
-                vuptake_stdev = (guest.molar_volume*(uptake[1]/uptake[2])/
+                vuptake_stdev = (guest.molar_volume*uptake[1]/
                                  (6.023E-4*self.structure.volume))
+                # weight percent uptake
+                wtpc = 100*(1 - self.structure.weight/
+                            (self.structure.weight + uptake[0]*guest.weight))
+                wtpc_stdev = 100*(1 - self.structure.weight/
+                                  (self.structure.weight + uptake[1]*guest.weight))
                 info("%7.2f %7.2f %7.2f %7.2f %s" % (
-                    uptake[0]/uptake[2],
-                    1000*uptake[0]/(uptake[2]*self.structure.weight),
-                    vuptake,
-                    hoa[0],
+                    uptake[0], muptake, vuptake, hoa[0],
                     ("T=%s" % tp_point[0] +
                      ''.join(['P=%s' % x for x in tp_point[1]]))))
-                csv.append("%f,%f,%f,%f,%f,%f,%f,%f,%f," % (
-                    tp_point[0], tp_point[1][idx], uptake[0]/uptake[2],
-                    1000*uptake[0]/(uptake[2]*self.structure.weight),
-                    1000*uptake[1]/(uptake[2]*self.structure.weight),
+                csv.append("%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f," % (
+                    tp_point[0], tp_point[1][idx], uptake[0],
+                    muptake, muptake_stdev,
                     vuptake, vuptake_stdev,
-                    hoa[0], hoa[1]) +
-                    ",".join("%f" % x for x in tp_point[1]) + "\n")
+                    wtpc, wtpc_stdev,
+                    hoa[0], hoa[1]))
+                if guest_excess:
+                    guest_void = void_volume[guest.probe_radius]
+                    n_bulk = (tp_point[1][idx]*guest_void)/(tp_point[0]*R_GAS)
+                    xs_uptake = uptake[0]-n_bulk
+                    # uptake in mmol/g
+                    muptake = 1000*xs_uptake/self.structure.weight
+                    # volumetric uptake
+                    vuptake = (guest.molar_volume*xs_uptake/
+                               (6.023E-4*self.structure.volume))
+                    # weight percent uptake
+                    wtpc = 100*(1 - self.structure.weight/
+                                (self.structure.weight + xs_uptake*guest.weight))
+                    csv.append("%f,%f,%f,%f," % (
+                        xs_uptake, muptake, vuptake, wtpc,))
+                if he_excess:
+                    guest_void = void_volume[1.0]
+                    n_bulk = (tp_point[1][idx]*guest_void)/(tp_point[0]*R_GAS)
+                    xs_uptake = uptake[0]-n_bulk
+                    # uptake in mmol/g
+                    muptake = 1000*xs_uptake/self.structure.weight
+                    # volumetric uptake
+                    vuptake = (guest.molar_volume*xs_uptake/
+                               (6.023E-4*self.structure.volume))
+                    # weight percent uptake
+                    wtpc = 100*(1 - self.structure.weight/
+                                (self.structure.weight + xs_uptake*guest.weight))
+                    csv.append("%f,%f,%f,%f," % (
+                        xs_uptake, muptake, vuptake, wtpc,))
+                # list all the other guest pressures and start a new line
+                csv.append(",".join("%f" % x for x in tp_point[1]) + "\n")
+
             csv_file = open('%s-%s.csv' % (job_name, guest.ident), 'w')
             csv_file.writelines(csv)
             csv_file.close()
         info("======= ======= ======= ======= =======")
 
+        info("Structure properties")
+
+        # Internally calculated surface area
         surf_area_results = self.structure.surface_area()
         if surf_area_results:
-            info("Summary of surface areas")
+            info("Summary of faps surface areas")
             info("========= ========= ========= =========")
             info(" radius/A total/A^2  m^2/cm^3     m^2/g")
             info("========= ========= ========= =========")
@@ -276,6 +330,46 @@ class PyNiss(object):
                 info("%9.3f %9.2f %9.2f %9.2f" %
                      (probe, area, vol_area, specific_area))
             info("========= ========= ========= =========")
+
+        # Messy, but check individual properties that might not be there
+        # and dump them to the screen
+        info("weight (u): %f" % self.structure.weight)
+        if hasattr(self.structure, 'pore_diameter'):
+            info("pores (A): %f %f %f" % self.structure.pore_diameter)
+        channel_results = self.structure.sub_property('dimensionality')
+        if channel_results:
+            for probe, channels in channel_results.items():
+                info(("channels %.2f probe: " % probe) +
+                     " ".join("%i" % x for x in channels))
+        # The table is copied from above as it does some calculating
+        surf_area_results = self.structure.sub_property('zeo_surface_area')
+        if surf_area_results:
+            info("Summary of zeo++ surface areas")
+            info("========= ========= ========= =========")
+            info(" radius/A total/A^2  m^2/cm^3     m^2/g")
+            info("========= ========= ========= =========")
+            for probe, area in surf_area_results.items():
+                vol_area = 1E4*area/self.structure.volume
+                specific_area = NAVOGADRO*area/(1E20*self.structure.weight)
+                info("%9.3f %9.2f %9.2f %9.2f" %
+                     (probe, area, vol_area, specific_area))
+            info("========= ========= ========= =========")
+
+        info("volume (A^3): %f" % self.structure.volume)
+
+        void_volume_results = self.structure.sub_property('void_volume')
+        if surf_area_results:
+            info("Summary of zeo++ void volumes")
+            info("========= ========= ========= =========")
+            info(" radius/A total/A^3  fraction    cm^3/g")
+            info("========= ========= ========= =========")
+            for probe, void in void_volume_results.items():
+                void_fraction = void/self.structure.volume
+                specific_area = NAVOGADRO*void/(1E24*self.structure.weight)
+                info("%9.3f %9.2f %9.5f %9.4f" %
+                     (probe, void, void_fraction, specific_area))
+            info("========= ========= ========= =========")
+
 
     def step_force_field(self):
         """Check the force field step of the calculation."""
@@ -424,9 +518,21 @@ class PyNiss(object):
 
             # any states that need to be updated should have been done by now
             if tp_state[0] == FINISHED:
-                self.structure.update_gcmc(tp_point, self.options)
-                self.state['gcmc'][tp_point] = (UPDATED, False)
-                self.dump_state()
+                startdir = os.getcwd()
+                # wooki seems slow to copy output files back
+                # so we give them a few chances to appear
+                max_attempts = 6
+                for attempt_count in range(max_attempts):
+                    time.sleep(attempt_count)
+                    try:
+                        self.structure.update_gcmc(tp_point, self.options)
+                        self.state['gcmc'][tp_point] = (UPDATED, False)
+                        self.dump_state()
+                        break
+                    except IOError:
+                        os.chdir(startdir)
+                else:
+                    error('OUTPUT file never appeared')
 
         if postrun_ids:
             self.postrun(postrun_ids)
@@ -435,6 +541,18 @@ class PyNiss(object):
             info("GCMC run has not finished completely")
             terminate(0)
 
+    def step_properties(self):
+        """Run the properties calculations if required."""
+
+        if self.state['properties'][0] not in [UPDATED, SKIPPED]:
+            if self.options.getbool('no_properties'):
+                info("Skipping all properties calculations")
+                self.state['properties'] = (SKIPPED, False)
+
+        if self.state['properties'][0] == NOT_RUN or 'properties' in self.options.args:
+            self.calculate_properties()
+            self.state['properties'] = (UPDATED, False)
+            self.dump_state()
 
     def import_old(self):
         """Try and import any data from previous stopped simulation."""
@@ -943,33 +1061,79 @@ class PyNiss(object):
             atom.neighbours = None
             del atom.neighbours
 
+        # Zeoplusplus gives fast access to many properties
         if self.options.getbool('zeo++'):
-            zeofiles = self.structure.to_zeoplusplus()
-
-            filetemp = open("%s.cssr" % job_name, 'w')
-            filetemp.writelines(zeofiles[0])
-            filetemp.close()
-
-            filetemp = open("%s.rad" % job_name, 'w')
-            filetemp.writelines(zeofiles[1])
-            filetemp.close()
-
-            filetemp = open("%s.mass" % job_name, 'w')
-            filetemp.writelines(zeofiles[2])
-            filetemp.close()
-
-            zeo_command = shlex.split(self.options.get('zeo++_command'))
-            zeo_command[1:1] = ['-mass', '%s.mass' % job_name,
-                                '-r', '%s.rad' % job_name]
-            zeo_command.append('%s.cssr' % job_name)
-            info("Running zeo++")
-            debug("Zeo ++ command: '" + " ".join(zeo_command) + "'")
             try:
-                subprocess.call(zeo_command)
-            except OSError:
-                error("Error running zeo++, please run manually")
+                self.calculate_zeo_properties()
+            except (OSError, IOError):
+                error("Error running zeo++; skipping")
 
         os.chdir(job_dir)
+
+
+    def calculate_zeo_properties(self):
+        """Run the zeo++ and update properties with no error trapping."""
+
+        job_name = self.options.get('job_name')
+        zeofiles = self.structure.to_zeoplusplus()
+
+        filetemp = open("%s.cssr" % job_name, 'w')
+        filetemp.writelines(zeofiles[0])
+        filetemp.close()
+
+        filetemp = open("%s.rad" % job_name, 'w')
+        filetemp.writelines(zeofiles[1])
+        filetemp.close()
+
+        filetemp = open("%s.mass" % job_name, 'w')
+        filetemp.writelines(zeofiles[2])
+        filetemp.close()
+
+        probes = set([1.0]) # Always have a helium probe
+        for guest in self.structure.guests:
+            if hasattr(guest, 'probe_radius'):
+                probes.add(guest.probe_radius)
+
+        zeo_exe = shlex.split(self.options.get('zeo++_exe'))
+        zeo_exe += ['-mass', '%s.mass' % job_name, '-r', '%s.rad' % job_name]
+        cssr_file = ['%s.cssr' % job_name]
+
+        # incuded sphere, free sphere, included sphere along free path
+        zeo_command = zeo_exe + ['-res'] + cssr_file
+        info("Running zeo++ pore diameters")
+        debug("Running command: '" + " ".join(zeo_command) + "'")
+        zeo_process = subprocess.Popen(zeo_command, stdout=subprocess.PIPE)
+        zeo_process.wait()
+
+        res_file = open('%s.res' % job_name).read().split()
+        self.structure.pore_diameter = tuple(float(x) for x in res_file[1:])
+
+        atom_samples = '%i' % 2000
+        volume_samples = '%i' % (20*self.structure.cell.volume)
+
+        for probe in probes:
+            zeo_command = zeo_exe + [
+                '-chan', '%f' % probe,
+                '-sa', '%f' % probe, '%f' % probe, atom_samples,
+                '-vol', '%f' % probe, '%f' % probe, volume_samples] + cssr_file
+
+            debug("Running command: '" + " ".join(zeo_command) + "'")
+            zeo_process = subprocess.Popen(zeo_command, stdout=subprocess.PIPE)
+            zeo_process.wait()
+            # channel dimensionality
+            channels = [int(x) for x in open('%s.chan' % job_name).read().split()[5:]]
+            self.structure.sub_property('dimensionality', probe, channels)
+            # surface area
+            for line in open('%s.sa' % job_name):
+                if 'A^2' in line:
+                    self.structure.sub_property('zeo_surface_area', probe,
+                                                value=float(line.split()[-1]))
+            # accessible volume
+            for line in open('%s.vol' % job_name):
+                if 'A^3' in line:
+                    self.structure.sub_property('void_volume', probe,
+                                                value=float(line.split()[-1]))
+
 
     @property
     def esp_grid(self):
@@ -1712,12 +1876,15 @@ class Structure(object):
             ff_type = atom.uff_type
             if not ff_type in all_ff_types:
                 all_ff_types[ff_type] = atom.site
+            if atom.is_fixed:
+                fixed_flags = "0 0 0"
+            else:
+                fixed_flags = "1 1 1"
             gin_file.extend(["%-5s core " % all_ff_types[ff_type],
-    #                         "%14.7f %14.7f %14.7f " % tuple(atom.ipos(cell.cell, cell.inverse)),
                              "%14.7f %14.7f %14.7f " % tuple(atom.pos),
                              "%f " % atom.charge,
                              "%f " % 1.0,  # occupancy
-                             "0 0 0\n" if atom.is_fixed else "1 1 1\n"])
+                             fixed_flags, "\n"])
 
         #identify all the individual uff species for the library
         gin_file.append("\nspecies\n")
@@ -2081,6 +2248,29 @@ class Structure(object):
             return surface_areas.get(probe, None)
         else:
             return surface_areas
+
+    def sub_property(self, name, probe=None, value=None, delete=False):
+        """
+        Helper:
+          Return all {probe:value} if no arguments given
+          Return the value or None for a given probe
+          Set area if value given
+          Delete value if delete is True
+        Units are based on Angstrom
+        """
+        property_data = self.properties.get(name, {})
+        if value is not None:
+            property_data[probe] = value
+            self.properties[name] = property_data
+        elif delete:
+            # Set it to None to avoid KeyErrors
+            property_data[probe] = None
+            del property_data[probe]
+            self.properties[name] = property_data
+        elif probe is not None:
+            return property_data.get(probe, None)
+        else:
+            return property_data
 
     def void_volume(self):
         """Estimate the void volume based on VdW radii."""
@@ -2603,7 +2793,9 @@ class Guest(object):
                 self.probability = [tuple(int(y) for y in x.split())
                                     for x in prob]
             elif key == 'molar volume':
-                self._molar_volume = val
+                self._molar_volume = float(val)
+            elif key == 'probe radius':
+                self.probe_radius = float(val)
             else:
                 # Arbitrary attributes can be set
                 # Might also enable breakage
@@ -3011,13 +3203,23 @@ def vecdist3(coord1, coord2):
 
 
 def remove_files(files, directory='.'):
-    """Delete any of the files if they exist, or ignore if not found."""
+    """
+    Delete any of the files if they exist using standard globbing,
+    remove empty directories, or ignore silently if not found.
+
+    """
     del_list = []
     for file_name in files:
         del_list.extend(glob.glob(path.join(directory, file_name)))
     for del_name in del_list:
         debug("deleting %s" % del_name)
-        os.remove(del_name)
+        try:
+            os.remove(del_name)
+        except OSError:
+            try:
+                os.rmdir(del_name)
+            except OSError:
+                debug("Directory not empty: %s?" % del_name)
 
 
 def compress_files(files, directory='.'):
@@ -3087,7 +3289,9 @@ def main():
     info("Starting faps version 0.999-r%s" % __version__.strip('$Revision: '))
     # try to unpickle the job or
     # fall back to starting a new simulation
-    niss_name = main_options.get('job_name') + ".niss"
+    job_name = main_options.get('job_name')
+    niss_name = "%s.niss" % job_name
+    tar_name = "%s.tar" % job_name
     if path.exists(niss_name):
         info("Existing simulation found: %s; loading..." % niss_name)
         load_niss = open(niss_name, 'rb')
@@ -3100,8 +3304,31 @@ def main():
         info("Starting a new simulation...")
         my_simulation = PyNiss(main_options)
 
+    # Should we extract a previous simulation?
+    if main_options.getbool('tar_extract_before') and path.exists(tar_name):
+        info("Extracting files from %s" % tar_name)
+        faps_tar = tarfile.open(tar_name, 'r')
+        faps_tar.extractall()
+        faps_tar.close()
+        debug("Deleting extracted file %s" % tar_name)
+        os.remove(tar_name)
+
     # run requested jobs
     my_simulation.job_dispatcher()
+
+    # Should we bundle the files after use?
+    if main_options.getbool('tar_after'):
+        info("Bundling calculation into %s" % tar_name)
+        # Similar file names with _underscores_ might match each other
+        directories_produced = glob.glob("faps_%s_*/" % job_name)
+        # We don't overwrite an existing tar
+        faps_tar = tarfile.open(tar_name, 'a')
+        for directory in directories_produced:
+            debug("Adding directory %s" % directory)
+            faps_tar.add(directory)
+            shutil.rmtree(directory)
+        faps_tar.close()
+
     my_simulation.dump_state()
     terminate(0)
 

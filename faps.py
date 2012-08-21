@@ -1875,12 +1875,15 @@ class Structure(object):
             ff_type = atom.uff_type
             if not ff_type in all_ff_types:
                 all_ff_types[ff_type] = atom.site
+            if atom.is_fixed:
+                fixed_flags = "0 0 0"
+            else:
+                fixed_flags = "1 1 1"
             gin_file.extend(["%-5s core " % all_ff_types[ff_type],
-    #                         "%14.7f %14.7f %14.7f " % tuple(atom.ipos(cell.cell, cell.inverse)),
                              "%14.7f %14.7f %14.7f " % tuple(atom.pos),
                              "%f " % atom.charge,
                              "%f " % 1.0,  # occupancy
-                             "0 0 0\n" if atom.is_fixed else "1 1 1\n"])
+                             fixed_flags, "\n"])
 
         #identify all the individual uff species for the library
         gin_file.append("\nspecies\n")

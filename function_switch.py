@@ -14,6 +14,7 @@ import hashlib
 import random
 import re
 import textwrap
+import time
 from logging import debug, info, warn, error
 from itertools import chain, combinations, product
 
@@ -26,7 +27,7 @@ from numpy.linalg import norm
 from faps import Structure, Atom
 from faps import vecdist3, subgroup
 from config import Options
-from elements import UFF_TYPES
+from elements import UFF_TYPES, CCDC_BOND_ORDERS
 
 
 GULP_SANITISER = re.compile("([a-zA-Z]+\d*)")
@@ -323,6 +324,71 @@ def to_gulp_bonds(atoms, cell, bonds, name, basename):
     return gin_file
 
 
+def to_cif(atoms, cell, bonds, name, basename):
+    """Return a CIF file with bonding and atom types."""
+
+    inv_cell = cell.inverse
+
+    type_count = {}
+
+    atom_part = []
+    for idx, atom in enumerate(atoms):
+        if atom is None:
+            # blanks are left in here
+            continue
+        if hasattr(atom, 'uff_type') and atom.uff_type is not None:
+            uff_type = atom.uff_type
+        else:
+            uff_type = '?'
+        if atom.element in type_count:
+            type_count[atom.element] += 1
+        else:
+            type_count[atom.element] = 1
+        atom.site = "%s%i" % (atom.element, type_count[atom.element])
+        atom_part.append("%-5s %-5s %-5s " % (atom.site, atom.element, uff_type))
+        atom_part.append("%f %f %f\n" % tuple(atom.ifpos(inv_cell)))
+
+    bond_part = []
+    for bond, order in bonds.items():
+        try:
+            bond_part.append("%-5s %-5s %-5s\n" %
+                             (atoms[bond[0]].site, atoms[bond[1]].site,
+                              CCDC_BOND_ORDERS[order]))
+        except AttributeError:
+            # one of the atoms is None so skip
+            debug("cif NoneType atom")
+
+    cif_file = [
+        "data_%s\n" % name.replace(' ', '_'),
+        "%-33s %s\n" % ("_audit_creation_date", time.strftime('%Y-%m-%dT%H:%M:%S%z')),
+        "%-33s %s\n" % ("_audit_creation_method", "LUBE"),
+        "%-33s %s\n" % ("_symmetry_space_group_name_H-M", "P1"),
+        "%-33s %s\n" % ("_symmetry_Int_Tables_number", "1"),
+        "%-33s %s\n" % ("_space_group_crystal_system", cell.crystal_system),
+        "%-33s %s\n" % ("_cell_length_a", cell.a),
+        "%-33s %s\n" % ("_cell_length_b", cell.b),
+        "%-33s %s\n" % ("_cell_length_c", cell.c),
+        "%-33s %s\n" % ("_cell_length_alpha", cell.alpha),
+        "%-33s %s\n" % ("_cell_length_beta", cell.beta),
+        "%-33s %s\n" % ("_cell_length_gamma", cell.gamma),
+        # start of atom loops
+        "\nloop_\n",
+        "_atom_site_label\n",
+        "_atom_site_type_symbol\n",
+        "_atom_type_description\n",
+        "_atom_site_fract_x\n",
+        "_atom_site_fract_y\n",
+        "_atom_site_fract_z\n"] + atom_part + [
+        # bonding loop
+        "\nloop_\n",
+        "_geom_bond_atom_site_label_1\n",
+        "_geom_bond_atom_site_label_2\n",
+#        "_geom_bond_distance\n",
+        "_ccdc_geom_bond_type\n"] + bond_part
+
+    return cif_file
+
+
 class FunctionalGroupLibrary(dict):
     """
     Container for all the available functional groups just subclasses
@@ -416,7 +482,7 @@ class FunctionalGroup(object):
             new_bond = (bond_pair[0] + start_index, bond_pair[1] + start_index)
             new_bonds[new_bond] = bond_order
         # bond to structure
-        new_bonds[(attach_point, self.connection_point)] = 1
+        new_bonds[(attach_point, self.connection_point + start_index)] = 1
 
         return new_atoms, new_bonds
 
@@ -724,6 +790,8 @@ def all_combinations_replace(structure, groups, rotations=12, replace_only=None)
             basename = '%s_func_%05i' % (job_name, idx)
             with open('%s_func_%05i.gin' % (job_name, idx), 'w') as output_file:
                 output_file.writelines(to_gulp_bonds(new_mof, structure.cell, new_mof_bonds, new_mof_name, basename))
+            with open('%s_func_%05i.cif' % (job_name, idx), 'w') as output_file:
+                output_file.writelines(to_cif(new_mof, structure.cell, new_mof_bonds, new_mof_name, basename))
             new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
             with open('%s_func_%05i.xyz' % (job_name, idx), 'w') as output_file:
                 output_file.writelines(to_xyz(new_mof, name=new_mof_name))
@@ -803,6 +871,8 @@ def random_replace(structure, groups, count=None, custom=None, rotations=36):
     basename = 'random-%s' % unique_name
     with open('random-%s.gin' % unique_name, 'wb') as output_file:
         output_file.writelines(to_gulp_bonds(new_mof, structure.cell, new_mof_bonds, new_mof_name, basename))
+    with open('random-%s.cif' % unique_name, 'wb') as output_file:
+        output_file.writelines(to_cif(new_mof, structure.cell, new_mof_bonds, new_mof_name, basename))
     new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
     with open('random-%s.xyz' % unique_name, 'wb') as output_file:
         output_file.writelines(to_xyz(new_mof, name=new_mof_name))

@@ -12,7 +12,7 @@ import sys
 import time
 
 # faps is in the parent directory of this script
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 from faps import Structure
 
 

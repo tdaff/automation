@@ -11,12 +11,14 @@ Alter a known structure with new functional groups ready for fapping.
 import copy
 import ConfigParser
 import hashlib
+import pickle
 import random
 import re
 import textwrap
 import time
-from logging import debug, info, warn, error
 from itertools import chain, combinations, product
+from logging import debug, info, warn, error
+from os import path
 
 import numpy as np
 import openbabel as ob
@@ -854,9 +856,6 @@ def random_replace(structure, groups, count=None, custom=None, rotations=36):
                 # Fits, so add and move on
                 new_mof.extend(incoming_group)
                 new_mof_bonds.update(incoming_bonds)
-#                for atom in incoming_group:
-#                    for bond in atom.bonds:
-#                        new_mof_bonds[atom.idx, bond] = 1
                 break
         else:
             # this_point not valid
@@ -909,13 +908,27 @@ def main():
     job_options = Options()
     job_name = job_options.get('job_name')
 
-    input_structure = ModifiableStructure(job_name)
-    input_structure.from_file(job_name,
-                              job_options.get('initial_structure_format'),
-                              job_options)
+    # Load an existing pickled structure or generate a new one
+    pickle_file = "__%s.lube_structure" % job_name
+    if path.exists(pickle_file):
+        info("Existing structure found: %s; loading..." % pickle_file)
+        with open(pickle_file, 'rb') as load_structure:
+            input_structure = pickle.load(load_structure)
+    else:
+        info("Initialising a new structure. This may take some time.")
+        input_structure = ModifiableStructure(job_name)
+        input_structure.from_file(job_name,
+                                  job_options.get('initial_structure_format'),
+                                  job_options)
 
-    input_structure.gen_site_connection_table()
-    input_structure.gen_normals()
+        input_structure.gen_site_connection_table()
+        input_structure.gen_normals()
+
+        # Ensure that atoms in the structure are properly typed
+        input_structure.gen_factional_positions()
+        input_structure.gen_babel_uff_properties()
+        with open(pickle_file, 'wb') as save_structure:
+            pickle.dump(input_structure, save_structure)
 
     # label_atom has a global state that
     for atom in input_structure.atoms:
@@ -931,12 +944,6 @@ def main():
         replace_only = None
     if replace_only == ():
         replace_only = None
-
-    # Ensure that atoms in the structure are properly typed
-    input_structure.gen_factional_positions()
-    input_structure.gen_babel_uff_properties()
-    with open('original.gin', 'w') as output_file:
-        output_file.writelines(to_gulp_bonds(input_structure.atoms, input_structure.cell, input_structure.bonds, 'unfunctionalised', 'original'))
 
     if job_options.getbool('lube_replace_all'):
         all_combinations_replace(input_structure, f_groups, replace_only=replace_only)

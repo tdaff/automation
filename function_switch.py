@@ -650,57 +650,56 @@ def all_combinations_replace(structure, groups, rotations=12, replace_only=None)
         debug("Replacing all sites: %s" % local_attachments.keys())
     sites = powerset(sorted(local_attachments))
     idx = 0
-    rotation_angle = 2*np.pi/rotations
-
     for site_set in sites:
         for group_set in product(groups, repeat=len(site_set)):
             idx += 1
-            new_mof_name = []
-            # copy the atoms and bonds so we don't alter the original structure
-            new_mof = list(structure.atoms)
-            new_mof_bonds = dict(structure.bonds)
-            did_not_attach = False
-            for this_site, this_group in zip(site_set, group_set):
-                new_mof_name.append("%s-%s" % (this_site, groups[this_group].name))
-                attachment = groups[this_group]
-                for this_point in structure.attachments[this_site]:
-                    attach_id = this_point[0]
-                    attach_to = this_point[1][0]
-                    attach_at = structure.atoms[attach_to].pos
-                    attach_towards = direction3d(attach_at, structure.atoms[attach_id].pos)
-                    attach_normal = structure.atoms[attach_to].normal
-                    #extracted_atoms = new_mof[attach_id:attach_id+1]
-                    new_mof[attach_id:attach_id+1] = [None]
-                    start_idx = len(new_mof)
-                    for _trial_rotation in range(rotations):
-                        incoming_group, incoming_bonds = attachment.atoms_attached_to(attach_at, attach_towards, attach_normal, attach_to, start_idx)
-                        for atom in incoming_group:
-                            if not test_collision(atom, new_mof, structure.cell):
-                                debug("Rotating group")
-                                attach_normal = dot(rotation_about_angle(attach_towards, rotation_angle), attach_normal)
-                                # Don't need to test more atoms
-                                break
-                        else:
-                            # Fits, so add and move on
-                            new_mof.extend(incoming_group)
-                            new_mof_bonds.update(incoming_bonds)
-                            break
-                    else:
-                        did_not_attach = this_group
-                        error("%i failed: %s from %s" % (idx, this_group, group_set))
+            site_replace(structure, groups, site_set, group_set, idx, rotations=12)
+
+def site_replace(structure, groups, site_set, group_set, idx, rotations=12):
+    rotation_angle = 2*np.pi/rotations
+    new_mof_name = []
+    new_mof_friendly_name = []
+    # copy the atoms and bonds so we don't alter the original structure
+    new_mof = list(structure.atoms)
+    new_mof_bonds = dict(structure.bonds)
+    for this_site, this_group in zip(site_set, group_set):
+        attachment = groups[this_group]
+        new_mof_name.append("%s-%s" % (this_site, this_group))
+        new_mof_friendly_name.append("%s-%s" % (this_site, attachment.name))
+        for this_point in structure.attachments[this_site]:
+            attach_id = this_point[0]
+            attach_to = this_point[1][0]
+            attach_at = structure.atoms[attach_to].pos
+            attach_towards = direction3d(attach_at, structure.atoms[attach_id].pos)
+            attach_normal = structure.atoms[attach_to].normal
+            new_mof[attach_id:attach_id+1] = [None]
+            start_idx = len(new_mof)
+            for _trial_rotation in range(rotations):
+                incoming_group, incoming_bonds = attachment.atoms_attached_to(attach_at, attach_towards, attach_normal, attach_to, start_idx)
+                for atom in incoming_group:
+                    if not test_collision(atom, new_mof, structure.cell):
+                        debug("Rotating group")
+                        attach_normal = dot(rotation_about_angle(attach_towards, rotation_angle), attach_normal)
+                        # Don't need to test more atoms
                         break
-                if did_not_attach:
+                else:
+                    # Fits, so add and move on
+                    new_mof.extend(incoming_group)
+                    new_mof_bonds.update(incoming_bonds)
                     break
-            new_mof_name = "".join(new_mof_name)
-            if did_not_attach:
-                continue
-            info("%i: %s" % (idx, new_mof_name))
-            job_name = structure.name
-            with open('%s_func_%05i.cif' % (job_name, idx), 'w') as output_file:
-                output_file.writelines(to_cif(new_mof, structure.cell, new_mof_bonds, new_mof_name))
-            new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
-            with open('%s_func_%05i.pdb' % (job_name, idx), 'w') as output_file:
-                output_file.writelines(to_pdb(new_mof, structure.cell, name=new_mof_name))
+            else:
+                # Did not attach
+                error("%i failed: %s from %s" % (idx, this_group, group_set))
+                return
+    new_mof_name = ".".join(new_mof_name)
+    new_mof_friendly_name = ".".join(new_mof_friendly_name)
+    info("%i: %s" % (idx, new_mof_friendly_name))
+    job_name = structure.name
+    with open('%s_func_%05i.cif' % (job_name, idx), 'w') as output_file:
+        output_file.writelines(to_cif(new_mof, structure.cell, new_mof_bonds, new_mof_name))
+    new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
+    with open('%s_func_%05i.pdb' % (job_name, idx), 'w') as output_file:
+        output_file.writelines(to_pdb(new_mof, structure.cell, name=new_mof_name))
 
 
 def random_replace(structure, groups, count=None, custom=None, rotations=36):

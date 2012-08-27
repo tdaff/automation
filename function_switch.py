@@ -714,7 +714,7 @@ def site_replace(structure, groups, replace_list, rotations=12):
         output_file.writelines(to_pdb(new_mof, structure.cell, name=new_mof_name))
 
 
-def random_replace(structure, groups, count=None, custom=None, rotations=36):
+def random_replace(structure, groups, num_groups=None, custom=None, rotations=36):
     """
     Replace a random number of sites.
 
@@ -726,16 +726,16 @@ def random_replace(structure, groups, count=None, custom=None, rotations=36):
         if len(func_repr) != nsites:
             error("Expected %s sites; got %s" % (nsites, len(func_repr)))
     else:
-        if count is None:
-            count = random.randint(1, nsites)
-            debug("Randomly replacing %i sites" % count)
-        elif count > nsites:
+        if num_groups is None:
+            num_groups = random.randint(1, nsites)
+            debug("Randomly replacing %i sites" % num_groups)
+        elif num_groups > nsites:
             warn("Too many sites requested; changing all %i" % nsites)
-            count = nsites
+            num_groups = nsites
         #TODO(tdaff): selected groups only
-        func_repr = [random.choice(groups.keys()) for _counter in range(count)]
+        func_repr = [random.choice(groups.keys()) for _counter in range(num_groups)]
         # Pad to the correct length
-        func_repr.extend([""]*(nsites - count))
+        func_repr.extend([""]*(nsites - num_groups))
         # Randomise
         random.shuffle(func_repr)
     # Unique-ish
@@ -778,7 +778,7 @@ def random_replace(structure, groups, count=None, custom=None, rotations=36):
             return False
 
     new_mof_name = "{" + ".".join(new_mof_name) + "}"
-    info("Generated: %s" % new_mof_name)
+    info("Generated (%i): %s" %  (count(), new_mof_name))
     info("With unique name: %s" % unique_name)
     with open('random-%s.cif' % unique_name, 'wb') as output_file:
         output_file.writelines(to_cif(new_mof, structure.cell, new_mof_bonds, new_mof_name))
@@ -808,7 +808,7 @@ def label_atom(element=None, site=None):
 
 
 def count(reset=False):
-    """Return the next itneger."""
+    """Return the next itneger from a global state."""
     if not hasattr(count, 'idx') or reset is True:
         count.idx = 0
     elif reset:

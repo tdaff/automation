@@ -658,7 +658,7 @@ def all_combinations_replace(structure, groups, rotations=12, replace_only=None)
     sites = powerset(sorted(local_attachments))
     for site_set in sites:
         for group_set in product(groups, repeat=len(site_set)):
-            replace_list = zip(site_set, group_set)
+            replace_list = zip(group_set, site_set)
             site_replace(structure, groups, replace_list, rotations=12)
 
 def site_replace(structure, groups, replace_list, rotations=12):
@@ -674,7 +674,7 @@ def site_replace(structure, groups, replace_list, rotations=12):
     # copy the atoms and bonds so we don't alter the original structure
     new_mof = list(structure.atoms)
     new_mof_bonds = dict(structure.bonds)
-    for this_site, this_group in replace_list:
+    for this_group, this_site in replace_list:
         attachment = groups[this_group]
         new_mof_name.append("%s@%s" % (this_group, this_site))
         new_mof_friendly_name.append("%s@%s" % (attachment.name, this_site))
@@ -707,7 +707,7 @@ def site_replace(structure, groups, replace_list, rotations=12):
     new_mof_friendly_name = ".".join(new_mof_friendly_name)
     info("Generated (%i): [%s]" % (count(), new_mof_friendly_name))
     job_name = structure.name
-    with open('%s__func_%s.cif' % (job_name, new_mof_name), 'w') as output_file:
+    with open('%s_func_%s.cif' % (job_name, new_mof_name), 'w') as output_file:
         output_file.writelines(to_cif(new_mof, structure.cell, new_mof_bonds, new_mof_name))
     new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
     with open('%s_func_%s.pdb' % (job_name, new_mof_name), 'w') as output_file:

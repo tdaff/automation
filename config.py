@@ -218,6 +218,8 @@ class Options(object):
                           help="create input files only, do not run any jobs")
         parser.add_option("-j", "--job-type", dest="job_type",
                           help="user preconfigured job settings")
+        parser.add_option("-d", "--daemon", action="store_true", dest="daemon",
+                          help="run [lube] as a server and await input")
         (local_options, local_args) = parser.parse_args()
 
         # job_name may or may not be passed or set initially

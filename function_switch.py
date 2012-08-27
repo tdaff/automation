@@ -14,6 +14,7 @@ import hashlib
 import pickle
 import random
 import re
+import sys
 import textwrap
 import time
 from itertools import chain, combinations, product
@@ -335,9 +336,15 @@ class FunctionalGroupLibrary(dict):
         # just a standard ConfigParser conversion to a dict of
         # FunctionalGroup objects
         library_file = ConfigParser.SafeConfigParser()
+        debug("Reading groups from %s" % library_file_name)
         library_file.read(library_file_name)
         for group_name in library_file.sections():
             self[group_name] = FunctionalGroup(library_file.items(group_name))
+
+    @property
+    def group_list(self):
+        """Compile a soretd list of all the available groups."""
+        return sorted(list(self))
 
 
 class FunctionalGroup(object):
@@ -649,23 +656,28 @@ def all_combinations_replace(structure, groups, rotations=12, replace_only=None)
         local_attachments = structure.attachments
         debug("Replacing all sites: %s" % local_attachments.keys())
     sites = powerset(sorted(local_attachments))
-    idx = 0
     for site_set in sites:
         for group_set in product(groups, repeat=len(site_set)):
-            idx += 1
-            site_replace(structure, groups, site_set, group_set, idx, rotations=12)
+            replace_list = zip(site_set, group_set)
+            site_replace(structure, groups, replace_list, rotations=12)
 
-def site_replace(structure, groups, site_set, group_set, idx, rotations=12):
+def site_replace(structure, groups, replace_list, rotations=12):
+    """
+    Replace atoms at site_set with corresponding items from group_set.
+
+    Will write files on success, and return 1 for failed attempt.
+
+    """
     rotation_angle = 2*np.pi/rotations
     new_mof_name = []
     new_mof_friendly_name = []
     # copy the atoms and bonds so we don't alter the original structure
     new_mof = list(structure.atoms)
     new_mof_bonds = dict(structure.bonds)
-    for this_site, this_group in zip(site_set, group_set):
+    for this_site, this_group in replace_list:
         attachment = groups[this_group]
-        new_mof_name.append("%s-%s" % (this_site, this_group))
-        new_mof_friendly_name.append("%s-%s" % (this_site, attachment.name))
+        new_mof_name.append("%s@%s" % (this_group, this_site))
+        new_mof_friendly_name.append("%s@%s" % (attachment.name, this_site))
         for this_point in structure.attachments[this_site]:
             attach_id = this_point[0]
             attach_to = this_point[1][0]
@@ -689,16 +701,16 @@ def site_replace(structure, groups, site_set, group_set, idx, rotations=12):
                     break
             else:
                 # Did not attach
-                error("%i failed: %s from %s" % (idx, this_group, group_set))
-                return
+                error("Failed: %s from %s" % (this_group, group_set))
+                return 1
     new_mof_name = ".".join(new_mof_name)
     new_mof_friendly_name = ".".join(new_mof_friendly_name)
-    info("%i: %s" % (idx, new_mof_friendly_name))
+    info("Generated (%i): [%s]" % (count(), new_mof_friendly_name))
     job_name = structure.name
-    with open('%s_func_%05i.cif' % (job_name, idx), 'w') as output_file:
+    with open('%s__func_%s.cif' % (job_name, new_mof_name), 'w') as output_file:
         output_file.writelines(to_cif(new_mof, structure.cell, new_mof_bonds, new_mof_name))
     new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
-    with open('%s_func_%05i.pdb' % (job_name, idx), 'w') as output_file:
+    with open('%s_func_%s.pdb' % (job_name, new_mof_name), 'w') as output_file:
         output_file.writelines(to_pdb(new_mof, structure.cell, name=new_mof_name))
 
 
@@ -795,6 +807,17 @@ def label_atom(element=None, site=None):
         label_atom.seen.add(site)
 
 
+def count(reset=False):
+    """Return the next itneger."""
+    if not hasattr(count, 'idx') or reset is True:
+        count.idx = 0
+    elif reset:
+        count.idx = reset
+    else:
+        count.idx += 1
+    return count.idx
+
+
 def main():
     """
     Run the substitution for an input structure.
@@ -823,6 +846,9 @@ def main():
         # Ensure that atoms in the structure are properly typed
         input_structure.gen_factional_positions()
         input_structure.gen_babel_uff_properties()
+
+        # Cache the results
+        info("Dumping cache of structure connectivity.")
         with open(pickle_file, 'wb') as save_structure:
             pickle.dump(input_structure, save_structure)
 
@@ -832,6 +858,42 @@ def main():
 
     f_groups = FunctionalGroupLibrary()
     f_groups.from_file()
+    debug("Groups in library: %s" % str(f_groups.group_list))
+
+    if job_options.getbool('daemon'):
+
+        # We need to process inputs as the come in; regex out the strings
+        info("Waiting for user input....")
+
+        line = raw_input('fswitch >>> ')
+        while line:
+        #for line in sys.stdin.readlines():
+            if 'help' in line.lower():
+                info("Fapswitch daemon mode:")
+                info("Random strings: dot separated between curly braces")
+                info("e.g. {.Me...F..Cl.Cl.Cl..}")
+                info("Site replacements: dot separated between square brackets")
+                info("e.g. [Me@H7.COOH@H8.F@H12]")
+                info("Multiple structures can be input on a single line")
+                info("Blank line exits interative mode")
+
+            # randoms are in braces {}, no spaces
+            randoms = re.findall('\{(.*?)\}', line)
+            debug("Random strings: %s" % str(randoms))
+            for random_string in randoms:
+                random_replace(input_structure, f_groups, custom=random_string)
+
+            # sites need unpairing into two zippable lists
+            site_strings = re.findall('\[(.*?)\]', line)
+            debug("Site replacement strings: %s" % str(site_strings))
+            for site_string in site_strings:
+                site_list = [x.split('@') for x in site_string.split('.') if x]
+                debug(str(site_list))
+                site_replace(input_structure, f_groups, site_list)
+
+            # Next line of input
+            line = raw_input('fswitch >>> ')
+
 
     # Will use selected groups if specified, otherwise use all
     try:

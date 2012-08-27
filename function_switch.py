@@ -643,23 +643,32 @@ def uff_bonds(atom, structure, tolerance=1.01):
         atom.bonds = max_bonds
 
 
-
-def all_combinations_replace(structure, groups, rotations=12, replace_only=None):
+def all_combinations_replace(structure, groups, rotations=12, replace_only=None, groups_only=None):
     """
     Replace every functional point with every combination of functional groups.
 
     """
+
     if replace_only is not None:
         local_attachments = [att_id for att_id in structure.attachments if att_id in replace_only]
         debug("Replacing only: %s" % list(local_attachments))
     else:
         local_attachments = structure.attachments
-        debug("Replacing all sites: %s" % local_attachments.keys())
+        debug("Replacing all sites: %s" % list(local_attachments))
     sites = powerset(sorted(local_attachments))
+
+    if groups_only is not None:
+        local_groups = [x for x in groups if x in groups_only]
+        debug("Using only: %s" % local_groups)
+    else:
+        local_groups = list(groups)
+        debug("Using all groups: %s" % local_groups)
+
     for site_set in sites:
-        for group_set in product(groups, repeat=len(site_set)):
+        for group_set in product(local_groups, repeat=len(site_set)):
             replace_list = zip(group_set, site_set)
             site_replace(structure, groups, replace_list, rotations=12)
+
 
 def site_replace(structure, groups, replace_list, rotations=12):
     """
@@ -714,17 +723,34 @@ def site_replace(structure, groups, replace_list, rotations=12):
         output_file.writelines(to_pdb(new_mof, structure.cell, name=new_mof_name))
 
 
-def random_replace(structure, groups, num_groups=None, custom=None, rotations=36):
+def random_replace(structure, groups, replace_only=None, groups_only=None, num_groups=None, custom=None, rotations=36):
     """
     Replace a random number of sites.
 
     """
-    nsites = sum(len(x) for x in structure.attachments.values())
+    # Assume that the replace only is passed as a list or iterable
+    if replace_only is None:
+        replace_only = list(structure.attachments)
+    # Valid list is True where allowed to attach
+    valid_list = []
+    for attachment, points in structure.attachments.items():
+        if attachment in replace_only:
+            valid_list.extend([True]*len(points))
+        else:
+            valid_list.extend([False]*len(points))
+
+    debug("Attachment mask %s" % valid_list)
+
+    nsites = sum(valid_list)
+
     if custom is not None:
         debug("Processing custom string: %s" % custom)
         func_repr = custom.strip('{}').split(".")
         if len(func_repr) != nsites:
             error("Expected %s sites; got %s" % (nsites, len(func_repr)))
+        for unmasked, site in zip(valid_list, func_repr):
+            if unmasked is False and site != '':
+                warn("Replacing masked site")
     else:
         if num_groups is None:
             num_groups = random.randint(1, nsites)
@@ -738,6 +764,14 @@ def random_replace(structure, groups, num_groups=None, custom=None, rotations=36
         func_repr.extend([""]*(nsites - num_groups))
         # Randomise
         random.shuffle(func_repr)
+        # These need to be put in the unmasked slots
+        masked_func_repr = []
+        for unmasked in valid_list:
+            if unmasked:
+                masked_func_repr.append(func_repr.pop(0))
+            else:
+                masked_func_repr.append('')
+        func_repr = masked_func_repr
     # Unique-ish
     unique_name = hashlib.md5(str(func_repr)).hexdigest()
     new_mof_name = []
@@ -828,7 +862,7 @@ def main():
     job_name = job_options.get('job_name')
 
     # Load an existing pickled structure or generate a new one
-    pickle_file = "__%s.lube_structure" % job_name
+    pickle_file = "__%s.fapswitch" % job_name
     if path.exists(pickle_file):
         info("Existing structure found: %s; loading..." % pickle_file)
         with open(pickle_file, 'rb') as load_structure:
@@ -842,6 +876,8 @@ def main():
 
         input_structure.gen_site_connection_table()
         input_structure.gen_normals()
+
+        info("Structure attachment sites: %s" % list(input_structure.attachments))
 
         # Ensure that atoms in the structure are properly typed
         input_structure.gen_factional_positions()
@@ -865,7 +901,7 @@ def main():
         # We need to process inputs as the come in; regex out the strings
         info("Waiting for user input....")
 
-        line = raw_input('fswitch >>> ')
+        line = raw_input('fapswitch >>> ')
         while line:
         #for line in sys.stdin.readlines():
             if 'help' in line.lower():
@@ -883,7 +919,7 @@ def main():
             for random_string in randoms:
                 random_replace(input_structure, f_groups, custom=random_string)
 
-            # sites need unpairing into two zippable lists
+            # site replacements in square brackets [], no spaces
             site_strings = re.findall('\[(.*?)\]', line)
             debug("Site replacement strings: %s" % str(site_strings))
             for site_string in site_strings:
@@ -892,30 +928,45 @@ def main():
                 site_replace(input_structure, f_groups, site_list)
 
             # Next line of input
-            line = raw_input('fswitch >>> ')
+            line = raw_input('fapswitch >>> ')
 
 
+    custom_strings = job_options.get('fapswitch_custom_strings')
+    # Same pattern matching as above
+    # randoms are in braces {}, no spaces
+    randoms = re.findall('\{(.*?)\}', custom_strings)
+    debug("Random option strings: %s" % str(randoms))
+    for random_string in randoms:
+        random_replace(input_structure, f_groups, custom=random_string)
+    # site replacements in square brackets [], no spaces
+    site_strings = re.findall('\[(.*?)\]', custom_strings)
+    debug("Site replacement options strings: %s" % str(site_strings))
+    for site_string in site_strings:
+        # These should be functional_group1@site1.functional_group2@site2
+        site_list = [x.split('@') for x in site_string.split('.') if x]
+        debug(str(site_list))
+        site_replace(input_structure, f_groups, site_list)
+
+
+    # Systematic replacements start here
     # Will use selected groups if specified, otherwise use all
-    try:
-        replace_only = job_options.gettuple('lube_replace_only')
-    except AttributeError:
-        replace_only = None
+    replace_only = job_options.gettuple('fapswitch_replace_only')
     if replace_only == ():
         replace_only = None
 
-    if job_options.getbool('lube_replace_all'):
-        all_combinations_replace(input_structure, f_groups, replace_only=replace_only)
+    # Only use these functional groups for replacements
+    replace_groups = job_options.gettuple('fapswitch_replace_groups')
 
-    custom_strings = job_options.gettuple('lube_custom_strings')
-    for custom_string in custom_strings:
-        random_replace(input_structure, f_groups, custom=custom_string)
+    if job_options.getbool('fapswitch_replace_all_sites'):
+        all_combinations_replace(input_structure, f_groups, replace_only=replace_only, groups_only=replace_groups)
 
-    random_count = job_options.getint('lube_random_structure_count')
+    random_count = job_options.getint('fapswitch_random_structure_count')
     successful_randoms = 0
     while successful_randoms < random_count:
         #function returns true if structure is generated
         if random_replace(input_structure, f_groups):
             successful_randoms += 1
+            info("Generated %i of %i random structures" % (successful_randoms, random_count))
 
 
 if __name__ == '__main__':

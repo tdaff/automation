@@ -56,6 +56,7 @@ DEG2RAD = pi / 180.0
 BOHR2ANG = 0.52917720859
 EV2KCAL = 23.060542301389
 NAVOGADRO = 6.02214129E23
+INFINITY = float('inf')
 
 FASTMC_DEFAULT_GRID_SPACING = 0.1
 
@@ -1657,12 +1658,19 @@ class Structure(object):
         gout = filetemp.readlines()
         filetemp.close()
         start_line = None
+        failures = 0
         for line_num, line in enumerate(gout):
             if '  Final charges from QEq :' in line:
+                # Take the last set of charges
                 start_line = line_num + 7
+            elif 'Failed to converge' in line:
+                # This will occur twice in the output for complete failure
+                failures += 1
         if start_line is None:
             error("Final charges not found in gulp output")
             terminate(184)
+        elif failures > 1:
+            warn("Gulp charges may not be converged")
         for atom, chg_line in zip(self.atoms, gout[start_line:]):
             atom.charge = float(chg_line.split()[2])
 
@@ -1675,6 +1683,17 @@ class Structure(object):
         # charges.dat file only has list of charges in it
         for atom, chg_line in zip(self.atoms, gout):
             atom.charge = float(chg_line.split()[2])
+            if atom.charge != atom.charge:
+                # These are 'nan'; should not continue or fastmc will mess up
+                error("Egulp charges did not converge, check structure")
+                terminate(107)
+            elif abs(atom.charge) == INFINITY:
+                error("Egulp gave infinite charges, check structure")
+                terminate(108)
+            elif abs(atom.charge) > 10:
+                warn("Very high charge from egulp: %s %f"
+                     (atom.site, atom.charge))
+
 
     def to_vasp(self, options):
         """Return a vasp5 poscar as a list of lines."""

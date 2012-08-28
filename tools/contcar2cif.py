@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
 """
-function_switch.py
+contcar2cif.py
 
-Alter a known structure with new functional groups ready for fapping.
+Example script to read a file and output a different format
 
 """
 

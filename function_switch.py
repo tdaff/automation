@@ -545,6 +545,7 @@ def test_collision(test_atom, atoms, cell, overlap=1.3):
     Does atom intersect with any others?
 
     """
+    #TODO(tdaff): ignore bonded atom
     pos = test_atom.ipos(cell.cell, cell.inverse)
     ipos = test_atom.ifpos(cell.inverse)
     for atom in atoms:
@@ -710,7 +711,8 @@ def site_replace(structure, groups, replace_list, rotations=12):
                     break
             else:
                 # Did not attach
-                error("Failed: %s from %s" % (this_group, group_set))
+                fail_name = ".".join(["@".join(x) for x in replace_list])
+                error("Failed: %s@%s from %s" % (this_group, this_site, fail_name))
                 return 1
     new_mof_name = ".".join(new_mof_name)
     new_mof_friendly_name = ".".join(new_mof_friendly_name)

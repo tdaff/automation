@@ -14,6 +14,7 @@ import hashlib
 import pickle
 import random
 import re
+import socket
 import sys
 import textwrap
 import time
@@ -31,7 +32,6 @@ from faps import Structure, Atom
 from faps import vecdist3, subgroup
 from config import Options
 from elements import UFF_TYPES, CCDC_BOND_ORDERS
-
 
 class ModifiableStructure(Structure):
     """
@@ -713,7 +713,8 @@ def site_replace(structure, groups, replace_list, rotations=12):
                 # Did not attach
                 fail_name = ".".join(["@".join(x) for x in replace_list])
                 error("Failed: %s@%s from %s" % (this_group, this_site, fail_name))
-                return 1
+                return False
+
     new_mof_name = ".".join(new_mof_name)
     new_mof_friendly_name = ".".join(new_mof_friendly_name)
     info("Generated (%i): [%s]" % (count(), new_mof_friendly_name))
@@ -723,6 +724,9 @@ def site_replace(structure, groups, replace_list, rotations=12):
     new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
     with open('%s_func_%s.pdb' % (job_name, new_mof_name), 'w') as output_file:
         output_file.writelines(to_pdb(new_mof, structure.cell, name=new_mof_name))
+
+    # successful
+    return True
 
 
 def random_replace(structure, groups, replace_only=None, groups_only=None, num_groups=None, custom=None, rotations=36):
@@ -810,7 +814,6 @@ def random_replace(structure, groups, replace_only=None, groups_only=None, num_g
             # this_point not valid
             error("Failed to generate: %s" % ".".join([x or "" for x in func_repr]))
             warn("Stopped after: %s" % ".".join(new_mof_name))
-
             return False
 
     new_mof_name = "{" + ".".join(new_mof_name) + "}"
@@ -899,27 +902,30 @@ def main():
     debug("Groups in library: %s" % str(f_groups.group_list))
 
     if job_options.getbool('daemon'):
-
-        # We need to process inputs as the come in; regex out the strings
-        info("Waiting for user input....")
-
-        line = raw_input('fapswitch >>> ')
-        while line:
-        #for line in sys.stdin.readlines():
-            if 'help' in line.lower():
-                info("Fapswitch daemon mode:")
-                info("Random strings: dot separated between curly braces")
-                info("e.g. {.Me...F..Cl.Cl.Cl..}")
-                info("Site replacements: dot separated between square brackets")
-                info("e.g. [Me@H7.COOH@H8.F@H12]")
-                info("Multiple structures can be input on a single line")
-                info("Blank line exits interative mode")
+        # set this to zero for random available port
+        port = job_options.getint("fapswitch_port")
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # no host as this is running locally
+        listener.bind(('', port))
+        port = listener.getsockname()[1]
+        info("Listening on port %i" % port)
+        listener.listen(1)
+        conn, addr = listener.accept()
+        info('Connected by %s' % str(addr))
+        while 1:
+            line = conn.recv(1024)
+            if not line:
+                break
+            # send information about what has been done back
+            processed = []
 
             # randoms are in braces {}, no spaces
             randoms = re.findall('\{(.*?)\}', line)
             debug("Random strings: %s" % str(randoms))
             for random_string in randoms:
-                random_replace(input_structure, f_groups, custom=random_string)
+                complete = random_replace(input_structure, f_groups, custom=random_string)
+                processed.append('{%s}' % random_string)
+                processed.append('%s' % complete)
 
             # site replacements in square brackets [], no spaces
             site_strings = re.findall('\[(.*?)\]', line)
@@ -927,10 +933,13 @@ def main():
             for site_string in site_strings:
                 site_list = [x.split('@') for x in site_string.split('.') if x]
                 debug(str(site_list))
-                site_replace(input_structure, f_groups, site_list)
+                complete = site_replace(input_structure, f_groups, site_list)
+                processed.append('[%s]' % site_string)
+                processed.append('%s' % complete)
 
-            # Next line of input
-            line = raw_input('fapswitch >>> ')
+            conn.sendall(':'.join(processed))
+
+        conn.close()
 
 
     custom_strings = job_options.get('fapswitch_custom_strings')

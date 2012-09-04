@@ -908,7 +908,7 @@ def main():
         # no host as this is running locally
         listener.bind(('', port))
         port = listener.getsockname()[1]
-        info("Listening on port %i" % port)
+        info("Listening on port %i ..." % port)
         listener.listen(1)
         conn, addr = listener.accept()
         info('Connected by %s' % str(addr))

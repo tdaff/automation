@@ -861,6 +861,51 @@ def count(reset=False):
     return count.idx
 
 
+def fapswitch_deamon(options, structure, f_groups):
+    """
+    Use sockets to listen and receive structures.
+
+    """
+    # set this to zero for random available port
+    port = options.getint("fapswitch_port")
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # no host as this is running locally
+    listener.bind(('', port))
+    port = listener.getsockname()[1]
+    info("Listening on port %i ..." % port)
+    listener.listen(1)
+    conn, addr = listener.accept()
+    info('Connected by %s' % str(addr))
+    while 1:
+        line = conn.recv(1024)
+        if not line:
+            break
+        # send information about what has been done back
+        processed = []
+
+        # randoms are in braces {}, no spaces
+        randoms = re.findall('\{(.*?)\}', line)
+        debug("Random strings: %s" % str(randoms))
+        for random_string in randoms:
+            complete = random_replace(structure, f_groups, custom=random_string)
+            processed.append('{%s}' % random_string)
+            processed.append('%s' % complete)
+
+        # site replacements in square brackets [], no spaces
+        site_strings = re.findall('\[(.*?)\]', line)
+        debug("Site replacement strings: %s" % str(site_strings))
+        for site_string in site_strings:
+            site_list = [x.split('@') for x in site_string.split('.') if x]
+            debug(str(site_list))
+            complete = site_replace(structure, f_groups, site_list)
+            processed.append('[%s]' % site_string)
+            processed.append('%s' % complete)
+
+        conn.sendall(':'.join(processed))
+
+    conn.close()
+
+
 def main():
     """
     Run the substitution for an input structure.
@@ -905,46 +950,9 @@ def main():
     f_groups.from_file()
     debug("Groups in library: %s" % str(f_groups.group_list))
 
+    # Run the server mode
     if job_options.getbool('daemon'):
-        # set this to zero for random available port
-        port = job_options.getint("fapswitch_port")
-        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # no host as this is running locally
-        listener.bind(('', port))
-        port = listener.getsockname()[1]
-        info("Listening on port %i ..." % port)
-        listener.listen(1)
-        conn, addr = listener.accept()
-        info('Connected by %s' % str(addr))
-        while 1:
-            line = conn.recv(1024)
-            if not line:
-                break
-            # send information about what has been done back
-            processed = []
-
-            # randoms are in braces {}, no spaces
-            randoms = re.findall('\{(.*?)\}', line)
-            debug("Random strings: %s" % str(randoms))
-            for random_string in randoms:
-                complete = random_replace(input_structure, f_groups, custom=random_string)
-                processed.append('{%s}' % random_string)
-                processed.append('%s' % complete)
-
-            # site replacements in square brackets [], no spaces
-            site_strings = re.findall('\[(.*?)\]', line)
-            debug("Site replacement strings: %s" % str(site_strings))
-            for site_string in site_strings:
-                site_list = [x.split('@') for x in site_string.split('.') if x]
-                debug(str(site_list))
-                complete = site_replace(input_structure, f_groups, site_list)
-                processed.append('[%s]' % site_string)
-                processed.append('%s' % complete)
-
-            conn.sendall(':'.join(processed))
-
-        conn.close()
-
+        fapswitch_deamon(job_options, input_structure, f_groups)
 
     custom_strings = job_options.get('fapswitch_custom_strings')
     # Same pattern matching as above

@@ -188,8 +188,11 @@ class Options(object):
         logging.addLevelName(40, '!!')
         logging.addLevelName(50, 'XX')
 
-        # Use nice coloured console output
-        console = ColouredConsoleHandler(sys.stdout)
+        if self.options.plain:
+            console = logging.StreamHandler(sys.stdout)
+        else:
+            # Use nice coloured console output
+            console = ColouredConsoleHandler(sys.stdout)
         console.setLevel(stdout_level)
         formatter = logging.Formatter('%(levelname)s %(message)s')
         console.setFormatter(formatter)
@@ -207,6 +210,8 @@ class Options(object):
                           help="output extra debugging information")
         parser.add_option("-q", "--quiet", action="store_true",
                           dest="quiet", help="silence all terminal output")
+        parser.add_option("-p", "--plain", action="store_true",
+                          dest="plain", help="do not colourise or wrap output")
         parser.add_option("-o", "--option", action="append", dest="cmdopts",
                           help="set custom options as key=value pairs")
         parser.add_option("-i", "--interactive", action="store_true",

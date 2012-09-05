@@ -164,7 +164,10 @@ class Options(object):
         """
 
         # Quiet always overrides verbose; always at least INFO in .flog
-        if self.options.quiet:
+        if self.options.silent:
+            stdout_level = logging.CRITICAL
+            file_level = logging.INFO
+        elif self.options.quiet:
             stdout_level = logging.ERROR
             file_level = logging.INFO
         elif self.options.verbose:
@@ -209,7 +212,9 @@ class Options(object):
                           dest="verbose",
                           help="output extra debugging information")
         parser.add_option("-q", "--quiet", action="store_true",
-                          dest="quiet", help="silence all terminal output")
+                          dest="quiet", help="only output warnings and errors")
+        parser.add_option("-s", "--silent", action="store_true",
+                          dest="silent", help="no terminal output")
         parser.add_option("-p", "--plain", action="store_true",
                           dest="plain", help="do not colourise or wrap output")
         parser.add_option("-o", "--option", action="append", dest="cmdopts",

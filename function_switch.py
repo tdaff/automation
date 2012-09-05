@@ -339,7 +339,10 @@ class FunctionalGroupLibrary(dict):
         debug("Reading groups from %s" % library_file_name)
         library_file.read(library_file_name)
         for group_name in library_file.sections():
-            self[group_name] = FunctionalGroup(library_file.items(group_name))
+            try:
+                self[group_name] = FunctionalGroup(library_file.items(group_name))
+            except KeyError:
+                error("Group %s is missing data; update library" % group_name)
 
     @property
     def group_list(self):
@@ -367,7 +370,8 @@ class FunctionalGroup(object):
         self.orientation = string_to_tuple(items.pop('orientation'), float)
         self.normal = string_to_tuple(items.pop('normal'), float)
         self.bond_length = float(items.pop('carbon_bond'))
-        self.bonds = dict(((int(x), int(y)), float(z)) for (x, y, z) in subgroup(items.pop('bonds').split(), width=3))
+        self.bonds = dict(((int(x), int(y)), float(z)) for (x, y, z) in
+                          subgroup(items.pop('bonds').split(), width=3))
         self.idx = 0
         self.connection_point = 0  # always connect to the first atom
         # Arbitrary attributes can be set
@@ -908,7 +912,7 @@ def main():
         # no host as this is running locally
         listener.bind(('', port))
         port = listener.getsockname()[1]
-        info("Listening on port %i" % port)
+        info("Listening on port %i ..." % port)
         listener.listen(1)
         conn, addr = listener.accept()
         info('Connected by %s' % str(addr))

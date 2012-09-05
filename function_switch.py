@@ -866,6 +866,7 @@ def fapswitch_deamon(options, structure, f_groups):
     Use sockets to listen and receive structures.
 
     """
+    timeout = 7200
     # set this to zero for random available port
     port = options.getint("fapswitch_port")
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -873,14 +874,31 @@ def fapswitch_deamon(options, structure, f_groups):
     listener.bind(('', port))
     port = listener.getsockname()[1]
     info("Listening on port %i ..." % port)
+    listener.settimeout(timeout)
     listener.listen(1)
-    conn, addr = listener.accept()
+    # We only wait for a little bit so that process doesn't zombie forever
+    try:
+        conn, addr = listener.accept()
+    except socket.timeout:
+        error("No connection within %i seconds; exiting" % timeout)
+        listener.close()
+        return False
     info('Connected by %s' % str(addr))
+
+    # Server will continue until an empty input is sent or something times out
+    conn.settimeout(timeout)
     while 1:
-        line = conn.recv(1024)
+        try:
+            line = conn.recv(1024)
+        except socket.timeout:
+            error("Timed out after %i sconds waiting for input" % timeout)
+            return False
+
+        # Empty input closes server
         if not line:
             break
-        # send information about what has been done back
+
+        # collect information to send what has been done back
         processed = []
 
         # randoms are in braces {}, no spaces
@@ -901,9 +919,14 @@ def fapswitch_deamon(options, structure, f_groups):
             processed.append('[%s]' % site_string)
             processed.append('%s' % complete)
 
-        conn.sendall(':'.join(processed))
+        try:
+            conn.sendall(':'.join(processed))
+        except conn.timeout:
+            error("Timed out sending status after %i seconds" % timeout)
+            return False
 
     conn.close()
+    return True
 
 
 def main():
@@ -952,7 +975,10 @@ def main():
 
     # Run the server mode
     if job_options.getbool('daemon'):
-        fapswitch_deamon(job_options, input_structure, f_groups)
+        # Make the program die if the daemon is called unsuccessfully
+        success = fapswitch_deamon(job_options, input_structure, f_groups)
+        if success is False:
+            raise SystemExit
 
     custom_strings = job_options.get('fapswitch_custom_strings')
     # Same pattern matching as above

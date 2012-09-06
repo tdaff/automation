@@ -48,6 +48,7 @@ from numpy.linalg import norm
 from config import Options
 from elements import WEIGHT, ATOMIC_NUMBER, UFF, VASP_PSEUDO_PREF
 from elements import CCDC_BOND_ORDERS, GULP_BOND_ORDERS, METALS
+from elements import COVALENT_RADII
 from job_handler import JobHandler
 from logo import LOGO
 
@@ -1483,9 +1484,17 @@ class Structure(object):
             if '_ccdc_geom_bond_type' in heads:
                 while body:
                     bond_dict = dict(zip(heads, body))
+                    # bond is sorted so there are no duplicates
+                    # and tuple so it can be hashed
                     bond = (bond_dict['_geom_bond_atom_site_label_1'],
                             bond_dict['_geom_bond_atom_site_label_2'])
-                    cif_bonds[bond] = bond_dict['_ccdc_geom_bond_type']
+                    bond = tuple(sorted(bond))
+                    # bond distance and type defualts to None if not specified
+                    distance = bond_dict.get('_geom_bond_distance')
+                    if distance is not None:
+                        distance = float(distance)
+                    bond_type = bond_dict.get('_ccdc_geom_bond_type')
+                    cif_bonds[bond] = (distance, bond_type)
                     body = body[len(heads):]
 
         if not symmetry:
@@ -1495,7 +1504,7 @@ class Structure(object):
         newatoms = []
         for site_idx, atom in enumerate(atoms):
             for sym_op in symmetry:
-                newatom = Atom()
+                newatom = Atom(parent=self)
                 newatom.from_cif(atom, self.cell.cell, sym_op, site_idx)
                 newatoms.append(newatom)
 
@@ -1507,18 +1516,27 @@ class Structure(object):
         self.order_by_types()
 
         bonds = {}
+        # TODO(tdaff): this works for the one tested MOF; 0.1 was not enough
+        bond_tolerence = 0.2
         # Assign bonds by index
-        for bond, bond_order in cif_bonds.items():
+        for bond, bond_data in cif_bonds.items():
             for first_index, first_atom in enumerate(self.atoms):
                 if first_atom.site == bond[0]:
                     for second_index, second_atom in enumerate(self.atoms):
                         if second_atom.site == bond[1]:
                             # TODO(tdaff): symmetry implementation for cif bonding
-                            #if min_dist(): ...
-                            bonds[(first_index, second_index)] = CCDC_BOND_ORDERS[bond_order]
-                            if first_atom.is_metal or second_atom.is_metal:
-                                first_atom.is_fixed = True
-                                second_atom.is_fixed = True
+                            distance = min_distance(first_atom, second_atom)
+                            bond_dist = bond_data[0]
+                            if bond_dist is None:
+                                bond_dist = first_atom.covalent_radius + second_atom.covalent_radius
+                            if abs(distance - bond_dist) < bond_tolerence:
+                                # use the sorted index as bonds between the
+                                # same type are doubly specified
+                                bond_id = tuple(sorted((first_index, second_index)))
+                                bonds[bond_id] = CCDC_BOND_ORDERS[bond_data[1]]
+                                if first_atom.is_metal or second_atom.is_metal:
+                                    first_atom.is_fixed = True
+                                    second_atom.is_fixed = True
 
         self.bonds = bonds
         self.symmetry = symmetry
@@ -2591,8 +2609,10 @@ class Cell(object):
 class Atom(object):
     """Base atom object."""
 
-    def __init__(self, at_type=False, pos=False, **kwargs):
+    def __init__(self, at_type=False, pos=False, parent=None, **kwargs):
         """Accept arbritary kwargs as attributes."""
+        if parent is not None:
+            self._parent = parent
         self.type = at_type
         self.pos = pos
         self.charge = 0.0
@@ -2707,6 +2727,31 @@ class Atom(object):
 
     atomic_number = property(get_atomic_number, set_atomic_number)
 
+    def get_fractional_coordinate(self):
+        """Retrieve the fractional coordinates or calculate from the parent."""
+        try:
+            # Hopefully the attribute is just set
+            return self._fractional
+        except AttributeError:
+            # Not set yet
+            try:
+                self._fractional = self.fpos(self._parent.cell.inverse)
+                return self._fractional
+            except AttributeError:
+                return None
+
+    def set_fractional_coordinate(self, value):
+        """Set the position using the fractional coordinates."""
+        fractional = [x % 1.0 for x in value]
+        self._fractional = fractional
+        self.pos = dot(fractional, self._parent.cell.cell)
+
+    def del_fractional_coordinate(self):
+        """Remove the fractional coordinate; run after updating cell."""
+        del self._fractional
+
+    fractional = property(get_fractional_coordinate, set_fractional_coordinate, del_fractional_coordinate)
+
     @property
     def element(self):
         """Guess the element from the type, fall back to type."""
@@ -2722,6 +2767,11 @@ class Atom(object):
     def vdw_radius(self):
         """Get the vdw radius from the UFF parameters."""
         return UFF[self.type][0]/2.0
+
+    @property
+    def covalent_radius(self):
+        """Get the covalent radius from the library parameters."""
+        return COVALENT_RADII[self.type]
 
     @property
     def is_metal(self):
@@ -3173,6 +3223,17 @@ def frac_near(pos_a, pos_b, epsilon=0.0002):
 def dot3(vec1, vec2):
     """Calculate dot product for two 3d vectors."""
     return vec1[0]*vec2[0] + vec1[1]*vec2[1] + vec1[2]*vec2[2]
+
+
+def min_distance(first_atom, second_atom, cell=None):
+    """Helper to find mimimum image criterion distance."""
+    if cell is None:
+        cell = first_atom._parent.cell.cell
+    return min_dist(first_atom.pos,
+                    first_atom.fractional,
+                    second_atom.pos,
+                    second_atom.fractional,
+                    cell)
 
 
 def min_dist(c_coa, f_coa, c_cob, f_cob_in, box):

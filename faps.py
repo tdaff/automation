@@ -48,6 +48,7 @@ from numpy.linalg import norm
 from config import Options
 from elements import WEIGHT, ATOMIC_NUMBER, UFF, VASP_PSEUDO_PREF
 from elements import CCDC_BOND_ORDERS, GULP_BOND_ORDERS, METALS
+from elements import UFF_INTRA_CUTOFF
 from job_handler import JobHandler
 from logo import LOGO
 
@@ -2501,7 +2502,8 @@ class Cell(object):
 
     def set_cell(self, value):
         """Set cell and params from the cell representation."""
-        self._cell = value
+        # Class internally expects an array
+        self._cell = array(value).reshape((3,3))
         self.__mkparam()
         self._inverse = np.linalg.inv(self.cell.T)
 
@@ -2722,6 +2724,11 @@ class Atom(object):
     def vdw_radius(self):
         """Get the vdw radius from the UFF parameters."""
         return UFF[self.type][0]/2.0
+
+    @property
+    def bond_cutoff(self):
+        """Approximate cutoff for bond searching in the UFF."""
+        return UFF_INTRA_CUTOFF[self.type]
 
     @property
     def is_metal(self):

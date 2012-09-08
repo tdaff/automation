@@ -153,4 +153,17 @@ probability =
     2 3
 probe radius = 1.8
 
+[I2]
+name = Iodine Diatom with UFF parameters
+source = doi://10.1021/ja204757x
+atoms =
+    Ix   126.90447 0.000  1.33 0.00 0.00
+    Ix   126.90447 0.000 -1.33 0.00 0.00
+potentials =
+    Ix     4.0090 0.3390
+probability =
+    0
+    1 2
+probe radius = 2.0
+
 # vim:ft=dosini:set paste:

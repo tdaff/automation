@@ -23,8 +23,6 @@ from logging import debug, info, warn, error, critical
 from os import path
 
 import numpy as np
-import openbabel as ob
-import pybel
 from numpy import array, identity, asarray, dot, cross, outer, sin, cos
 from numpy.linalg import norm
 
@@ -186,33 +184,17 @@ class ModifiableStructure(Structure):
         Process a supercell with babel to calculate UFF atom types and
         bond orders.
         """
+        # import these locally so we can run fapswitch without them
+        import openbabel as ob
+        import pybel
         # Pass as free form fractional
-        # make a 2x2x2 supercell with the original atom in the centre
+        # GG's periodic should take care of bonds
+        warn("Assuming periodic openbabel; not generating supercell")
         cell = self.cell
-        super_cell = (cell.a*2, cell.b*2, cell.c*2,
-                      cell.alpha, cell.beta, cell.gamma)
-        as_fffract = ['generated fractionals\n', '%f %f %f %f %f %f\n' % super_cell]
-        for x_image in [0, 1]:
-            for y_image in [0, 1]:
-                for z_image in [0, 1]:
-                    for atom in self.atoms:
-                        ifpos = atom.cellfpos
-                        if ifpos[0] < 0.5:
-                            new_xpos = (ifpos[0] + x_image)/2.0
-                        else:
-                            new_xpos = (ifpos[0] - x_image)/2.0
-                        if ifpos[1] < 0.5:
-                            new_ypos = (ifpos[1] + y_image)/2.0
-                        else:
-                            new_ypos = (ifpos[1] - y_image)/2.0
-                        if ifpos[2] < 0.5:
-                            new_zpos = (ifpos[2] + z_image)/2.0
-                        else:
-                            new_zpos = (ifpos[2] - z_image)/2.0
-                        ifpos = [new_xpos, new_ypos, new_zpos]
-                        atom_line = ("%s " % atom.type +
-                                     "%f %f %f\n" % tuple(ifpos))
-                        as_fffract.append(atom_line)
+        as_fffract = ['generated fractionals\n', '%f %f %f %f %f %f\n' % cell.params]
+        for atom in self.atoms:
+            atom_line = ("%s " % atom.type + "%f %f %f\n" % tuple(atom.cellfpos))
+            as_fffract.append(atom_line)
         pybel_string = ''.join(as_fffract)
         pybel_mol = pybel.readstring('fract', pybel_string)
         # need to tell the typing system to ignore all atoms in the setup

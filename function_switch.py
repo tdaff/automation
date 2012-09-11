@@ -806,6 +806,8 @@ def main():
                 error("Zero bonds found, will fail")
             elif not hasattr(input_structure.atoms[0], 'uff_type'):
                 warn("Atoms not properly typed, expect errors")
+            else:
+                info("Bonding from input file used")
         elif bonding_src == 'openbabel':
             input_structure.gen_babel_uff_properties()
 

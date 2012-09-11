@@ -507,6 +507,42 @@ def all_combinations_replace(structure, groups, rotations=12, replace_only=None,
             site_replace(structure, groups, replace_list, rotations=12)
 
 
+def random_combination_replace(structure, groups, rotations=12, replace_only=None, groups_only=None, max_different=0, prob_unfunc=0.5):
+    """
+    Make a random structure in the site symmetry constrained sample space.
+
+    """
+
+    if replace_only is not None:
+        local_attachments = [att_id for att_id in structure.attachments if att_id in replace_only]
+        debug("Replacing only: %s" % list(local_attachments))
+    else:
+        local_attachments = structure.attachments
+        debug("Replacing all sites: %s" % list(local_attachments))
+
+    if groups_only is not None:
+        local_groups = [x for x in groups if x in groups_only]
+        debug("Using only: %s" % local_groups)
+    else:
+        local_groups = list(groups)
+        debug("Using all groups: %s" % local_groups)
+
+    # Limit mixing chemistry with many groups
+    if len(local_groups) > max_different > 0:
+        local_groups = random.sample(local_groups, max_different)
+        debug("Restricted to: %s" % local_groups)
+
+    replace_list = []
+    for site in sorted(local_attachments):
+        if random.random() < prob_unfunc:
+            # no functional group here
+            continue
+        else:
+            replace_list.append((random.choice(local_groups), site))
+    # Do the replacement
+    return site_replace(structure, groups, replace_list, rotations=12)
+
+
 def site_replace(structure, groups, replace_list, rotations=12):
     """
     Replace atoms at site_set with corresponding items from group_set.
@@ -562,7 +598,7 @@ def site_replace(structure, groups, replace_list, rotations=12):
     return True
 
 
-def random_replace(structure, groups, replace_only=None, groups_only=None, num_groups=None, custom=None, rotations=36):
+def random_replace(structure, groups, replace_only=None, groups_only=None, num_groups=None, custom=None, rotations=36, max_different=0, prob_unfunc=0.5):
     """
     Replace a random number of sites.
 
@@ -582,6 +618,17 @@ def random_replace(structure, groups, replace_only=None, groups_only=None, num_g
 
     nsites = sum(valid_list)
 
+    if groups_only is not None:
+        local_groups = [x for x in groups if x in groups_only]
+        debug("Using only: %s" % local_groups)
+    else:
+        local_groups = list(groups)
+        debug("Using all groups: %s" % local_groups)
+
+    if len(local_groups) > max_different > 0:
+        local_groups = random.sample(local_groups, max_different)
+        debug("Restricted to: %s" % local_groups)
+
     if custom is not None:
         debug("Processing custom string: %s" % custom)
         func_repr = custom.strip('{}').split(".")
@@ -598,7 +645,7 @@ def random_replace(structure, groups, replace_only=None, groups_only=None, num_g
             warn("Too many sites requested; changing all %i" % nsites)
             num_groups = nsites
         #TODO(tdaff): selected groups only
-        func_repr = [random.choice(groups.keys()) for _counter in range(num_groups)]
+        func_repr = [random.choice(local_groups) for _counter in range(num_groups)]
         # Pad to the correct length
         func_repr.extend([""]*(nsites - num_groups))
         # Randomise
@@ -812,6 +859,7 @@ def main():
             else:
                 info("Bonding from input file used")
         elif bonding_src == 'openbabel':
+            info("Generating topology with Open Babel")
             input_structure.gen_babel_uff_properties()
 
         # Cache the results
@@ -857,7 +905,6 @@ def main():
         debug(str(site_list))
         site_replace(input_structure, f_groups, site_list)
 
-
     # Full systematic replacement of everything start here
     # Will use selected groups if specified, otherwise use all
     replace_only = job_options.gettuple('fapswitch_replace_only')
@@ -866,17 +913,31 @@ def main():
 
     # Only use these functional groups for replacements
     replace_groups = job_options.gettuple('fapswitch_replace_groups')
+    if replace_groups == ():
+        replace_groups = None
+
+    max_different = job_options.getint('fapswitch_max_different')
+
+    prob_unfunc = job_options.getfloat('fapswitch_unfunctionalised_probability')
 
     if job_options.getbool('fapswitch_replace_all_sites'):
-        all_combinations_replace(input_structure, f_groups, replace_only=replace_only, groups_only=replace_groups)
+        all_combination_replace(input_structure, f_groups, replace_only=replace_only, groups_only=replace_groups)
 
-    random_count = job_options.getint('fapswitch_random_structure_count')
+    random_count = job_options.getint('fapswitch_site_random_count')
     successful_randoms = 0
     while successful_randoms < random_count:
         #function returns true if structure is generated
-        if random_replace(input_structure, f_groups):
+        if random_combination_replace(input_structure, f_groups, replace_only=replace_only, groups_only=replace_groups, max_different=max_different, prob_unfunc=prob_unfunc):
             successful_randoms += 1
-            info("Generated %i of %i random structures" % (successful_randoms, random_count))
+            info("Generated %i of %i site random structures" % (successful_randoms, random_count))
+
+    random_count = job_options.getint('fapswitch_full_random_count')
+    successful_randoms = 0
+    while successful_randoms < random_count:
+        #function returns true if structure is generated
+        if random_replace(input_structure, f_groups, replace_only=replace_only, groups_only=replace_groups, max_different=max_different, prob_unfunc=prob_unfunc):
+            successful_randoms += 1
+            info("Generated %i of %i fully random structures" % (successful_randoms, random_count))
 
 
 if __name__ == '__main__':

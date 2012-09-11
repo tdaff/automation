@@ -11,7 +11,10 @@ Alter a known structure with new functional groups ready for fapping.
 import copy
 import ConfigParser
 import hashlib
-import pickle
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 import random
 import re
 import socket
@@ -455,8 +458,22 @@ def matrix_rotate(source, target):
     source = asarray(source)/norm(source)
     target = asarray(target)/norm(target)
     v = cross(source, target)
+    vlen = dot(v, v)
+    if vlen == 0.0:
+        # parallel or antiparallel vectors need an arbritaty normal
+        if source[0] != 0.0:
+            vlen = (source[0]**2 + source[1]**2)**0.5
+            other = asarray([-source[1]/vlen, source[0]/vlen, source[2]])
+        elif source[1] != 0.0:
+            vlen = (source[1]**2 + source[2]**2)**0.5
+            other = asarry([source[0], -source[2]/vlen, source[1]/vlen])
+        elif source[2] != 0.0:
+            vlen = (source[2]**2 + source[0]**2)**0.5
+            other = asarray([source[2]/vlen, source[1], -source[0]/vlen])
+        v = cross(other, target)
+        vlen = dot(v, v)
     c = dot(source, target)
-    h = (1 - c)/(np.dot(v, v))
+    h = (1 - c)/vlen
     return array([[c + h*v[0]*v[0], h*v[0]*v[1] - v[2], h*v[0]*v[2] + v[1]],
                   [h*v[0]*v[1] + v[2], c + h*v[1]*v[1], h*v[1]*v[2] - v[0]],
                   [h*v[0]*v[2] - v[1], h*v[1]*v[2] + v[0], c + h*v[2]*v[2]]])

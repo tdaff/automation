@@ -316,7 +316,22 @@ class FunctionalGroupLibrary(dict):
     the standard dict adding some new methods.
 
     """
-    def from_file(self, library_file_name='functional_groups.lib'):
+    def __init__(self, *args, **kwargs):
+        """Initialise a standard dict and update with functional groups."""
+        # Make sure that the dict is properly initilaised
+        dict.__init__(self, *args, **kwargs)
+
+        # Functional groups can be put in several places
+        # Defaults from code directory always loaded
+        script_path = path.dirname(path.realpath(__file__))
+        self._from_file(path.join(script_path, 'functional_groups.lib'))
+        # Custom user groups stored in .faps
+        faps_dir = path.join(path.expanduser('~'), '.faps')
+        self._from_file(path.join(faps_dir, 'functional_groups.lib'))
+        # Job specific groups in the working directory
+        self._from_file()
+
+    def _from_file(self, library_file_name='functional_groups.lib'):
         """Parse groups from the ConfigParser .ini style file."""
         # just a standard ConfigParser conversion to a dict of
         # FunctionalGroup objects
@@ -325,6 +340,8 @@ class FunctionalGroupLibrary(dict):
         library_file.read(library_file_name)
         for group_name in library_file.sections():
             try:
+                if group_name in self:
+                    debug("Overriding group %s" % group_name)
                 self[group_name] = FunctionalGroup(library_file.items(group_name))
             except KeyError:
                 error("Group %s is missing data; update library" % group_name)
@@ -971,8 +988,8 @@ def main():
     for atom in input_structure.atoms:
         label_atom(site=atom.site)
 
+    # Self initialising
     f_groups = FunctionalGroupLibrary()
-    f_groups.from_file()
     debug("Groups in library: %s" % str(f_groups.group_list))
 
     # Run the server mode

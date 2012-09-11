@@ -34,6 +34,9 @@ from faps import vecdist3, subgroup
 from config import Options
 from elements import UFF_TYPES, CCDC_BOND_ORDERS
 
+
+DOT_FAPSWITCH_VERSION = (2, 1)
+
 class ModifiableStructure(Structure):
     """
     Derivative of Structure with methods to facilitate function group
@@ -81,7 +84,7 @@ class ModifiableStructure(Structure):
             atom.normal = cross(left, right)
 
 
-    def gen_site_connection_table(self):
+    def gen_attachment_sites(self):
         """
         Find connected atoms (bonds) and organise by sites. Symmetry
         equivalent atoms have the same site.
@@ -93,94 +96,19 @@ class ModifiableStructure(Structure):
         self.attachments = {}
 
         for at_idx, atom in enumerate(self.atoms):
-            atom.bonds = []
-            neighbours = atom.neighbours
-
-            max_bonds = []
-            for neighbour in neighbours:
-                n_atom = self.atoms[neighbour[1]]
-                if neighbour[0] < (atom.bond_cutoff + n_atom.bond_cutoff):
-                    max_bonds.append(neighbour[1])
-                elif (neighbour[0] - atom.bond_cutoff) > 2.88:
-                    # some non bonding atoms might be closer than bonding ones
-                    # but francium has largest cutoff; can stop after 2.88
-                    break
-
             if atom.type == 'H':
-                # check if second neighbour is within bridging cutoff
-                if neighbours[1][0] <= 1.1*(0.460 + atoms[neighbours[1][1]].bond_cutoff):
-                    atom.uff_type = 'H_b'
-                    atom.bonds = [neighbours[0][1], neighbours[1][1]]
+                h_index = self.atoms.index(atom)
+                for bond in self.bonds:
+                    if h_index in bond:
+                        o_index = bond[0] if bond[1] == h_index else bond[1]
+                        break
                 else:
-                    # assume lone hydrogen
-                    atom.uff_type = 'H_'
-                    atom.bonds = [neighbours[0][1]]
-            elif atom.type == 'B':
-                # check if tetrahedral sp3 or sp2
-                if neighbours[3][0] <= 1.1*(0.838 + atoms[neighbours[3][1]].bond_cutoff):
-                    atom.uff_type = 'B_3'
-                    atom.bonds = [x[1] for x in neighbours[:4]]
-                else:
-                    # planar sp2
-                    atom.uff_type = 'B_2'
-                    atom.bonds = [x[1] for x in neighbours[:3]]
-            elif atom.type == 'C':
-                # Four types of Carbon, but C_R and C_2 same params
-                if neighbours[3][0] <= 1.1*(0.757 + atoms[neighbours[3][1]].bond_cutoff):
-                    atom.uff_type = 'C_3'
-                    atom.bonds = [x[1] for x in neighbours[:4]]
-                elif neighbours[2][0] <= 1.1*(0.732 + atoms[neighbours[2][1]].bond_cutoff):
-                    # planar sp2 and aromatic have the same UFF parameters
-                    # TODO(tdaff): make aromatic if necessary
-                    atom.uff_type = 'C_2'
-                    atom.bonds = [x[1] for x in neighbours[:3]]
-                else:
-                    # linear sp
-                    atom.uff_type = 'C_1'
-                    atom.bonds = [x[1] for x in neighbours[:2]]
-            elif atom.type == 'N':
-                # Careful, N_R and N_2 have different angles
-                if neighbours[2][0] <= 1.1*(0.700 + atoms[neighbours[2][1]].bond_cutoff):
-                    atom.uff_type = 'N_3'
-                    atom.bonds = [x[1] for x in neighbours[:3]]
-                elif neighbours[1][0] <= 1.1*(0.699 + atoms[neighbours[1][1]].bond_cutoff):
-                    # FIXME(tdaff): make aromatic if necessary
-                    atom.uff_type = 'N_2'
-                    atom.bonds = [x[1] for x in neighbours[:2]]
-                else:
-                    # sp
-                    atom.uff_type = 'N_1'
-                    atom.bonds = [x[1] for x in neighbours[:1]]
-            elif atom.type == 'O':
-                # UFF has sp3 to sp1 and aromatic oxygen
-                # FIXME(tdaff): might need aromatic check
-                if neighbours[1][0] <= 1.1*(0.680 + atoms[neighbours[1][1]].bond_cutoff):
-                    atom.uff_type = 'O_3'
-                    atom.bonds = [x[1] for x in neighbours[:2]]
-                else:
-                    # terminal oxygen?
-                    atom.uff_type = 'O_2'
-                    atom.bonds = [x[1] for x in neighbours[:1]]
-            elif atom.type == 'P':
-                atom.bonds = max_bonds
-                if len(max_bonds) > 3:
-                    atom.uff_type = "P_3+5"
-                else:
-                    atom.uff_type = "P_3+3"
-            elif atom.type == 'S':
-                warn("Sulphr not checked")
-                atom.uff_type = "S_3"
-                atom.bonds = [x[1] for x in neighbours[:4]]
-
-            else:
-                atom.uff_type = UFF_TYPES[atom.type]
-                atom.bonds = max_bonds
-
-            if atom.type == 'H':
+                    error("Unbonded hydrogen")
                 if atom.site in self.attachments:
-                    self.attachments[atom.site].append((self.atoms.index(atom), atom.bonds))
+                    self.attachments[atom.site].append((h_index, o_index))
                 else:
-                    self.attachments[atom.site] = [(self.atoms.index(atom), atom.bonds)]
+                    self.attachments[atom.site] = [(h_index, o_index)]
+
 
     def gen_babel_uff_properties(self):
         """
@@ -595,7 +523,7 @@ def site_replace(structure, groups, replace_list, rotations=12):
         new_mof_friendly_name.append("%s@%s" % (attachment.name, this_site))
         for this_point in structure.attachments[this_site]:
             attach_id = this_point[0]
-            attach_to = this_point[1][0]
+            attach_to = this_point[1]
             attach_at = structure.atoms[attach_to].pos
             attach_towards = direction3d(attach_at, structure.atoms[attach_id].pos)
             attach_normal = structure.atoms[attach_to].normal
@@ -693,7 +621,7 @@ def random_replace(structure, groups, replace_only=None, groups_only=None, num_g
             new_mof_name.append(this_group)
         attachment = groups[this_group]
         attach_id = this_point[0]
-        attach_to = this_point[1][0]
+        attach_to = this_point[1]
         attach_at = structure.atoms[attach_to].pos
         attach_towards = direction3d(attach_at, structure.atoms[attach_id].pos)
         attach_normal = structure.atoms[attach_to].normal
@@ -838,48 +766,78 @@ def main():
 
     # Load an existing pickled structure or generate a new one
     pickle_file = "__%s.fapswitch" % job_name
+    loaded = False
     if path.exists(pickle_file):
         info("Existing structure found: %s; loading..." % pickle_file)
         with open(pickle_file, 'rb') as load_structure:
             input_structure = pickle.load(load_structure)
-    else:
+        # Negative versions ensure that very old caches will be removed
+        if not hasattr(input_structure, 'fapswitch_version'):
+            input_structure.fapswitch_version = (-1, -1)
+        # Need to make sure it is still valid
+        if input_structure.fapswitch_version[0] < DOT_FAPSWITCH_VERSION[0]:
+            error("Old dot-fapswitch detected, re-initialising")
+            loaded = False
+        elif input_structure.fapswitch_version[1] < DOT_FAPSWITCH_VERSION[1]:
+            warn("Cached file %s may be out of date" % pickle_file)
+            loaded = True
+        else:
+            debug("Finished loading")
+            loaded = True
+
+    if not loaded:
         info("Initialising a new structure. This may take some time.")
         input_structure = ModifiableStructure(job_name)
         input_structure.from_file(job_name,
                                   job_options.get('initial_structure_format'),
                                   job_options)
 
-        input_structure.gen_site_connection_table()
+        input_structure.gen_attachment_sites()
         input_structure.gen_normals()
-
-        info("Structure attachment sites: %s" % list(input_structure.attachments))
 
         # Ensure that atoms in the structure are properly typed
         input_structure.gen_factional_positions()
-        input_structure.gen_babel_uff_properties()
+        bonding_src = job_options.get('fapswitch_connectivity')
+        if bonding_src == 'file':
+            # Rudimentary checks for poor structures
+            if not hasattr(input_structure, 'bonds'):
+                error("No bonding in input structure, will probably fail")
+            elif len(input_structure.bonds) == 0:
+                error("Zero bonds found, will fail")
+            elif not hasattr(input_structure.atoms[0], 'uff_type'):
+                warn("Atoms not properly typed, expect errors")
+        elif bonding_src == 'openbabel':
+            input_structure.gen_babel_uff_properties()
 
         # Cache the results
-        info("Dumping cache of structure connectivity.")
+        info("Dumping cache of structure connectivity to %s" % pickle_file)
+        debug("dot-fapswitch version %i.%i" % DOT_FAPSWITCH_VERSION)
+        input_structure.fapswitch_version = DOT_FAPSWITCH_VERSION
         with open(pickle_file, 'wb') as save_structure:
             pickle.dump(input_structure, save_structure)
+
+    # Structure is ready!
+    # Begin processing
+    info("Structure attachment sites: %s" % list(input_structure.attachments))
 
     # label_atom has a global state that
     for atom in input_structure.atoms:
         label_atom(site=atom.site)
 
-    # Self initialising
+    # Functional group library is self initialising
     f_groups = FunctionalGroupLibrary()
-    debug("Groups in library: %s" % str(f_groups.group_list))
+    info("Groups in library: %s" % str(f_groups.group_list))
 
-    # Run the server mode
+    # Decide if we should run the server mode
     if job_options.getbool('daemon'):
         # Make the program die if the daemon is called unsuccessfully
         success = fapswitch_deamon(job_options, input_structure, f_groups)
         if success is False:
             raise SystemExit
 
+    # User defined, single-shot functionalisations
     custom_strings = job_options.get('fapswitch_custom_strings')
-    # Same pattern matching as above
+    # Pattern matching same as in the daemon
     # randoms are in braces {}, no spaces
     randoms = re.findall('\{(.*?)\}', custom_strings)
     debug("Random option strings: %s" % str(randoms))
@@ -895,7 +853,7 @@ def main():
         site_replace(input_structure, f_groups, site_list)
 
 
-    # Systematic replacements start here
+    # Full systematic replacement of everything start here
     # Will use selected groups if specified, otherwise use all
     replace_only = job_options.gettuple('fapswitch_replace_only')
     if replace_only == ():

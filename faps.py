@@ -2519,7 +2519,8 @@ class Cell(object):
 
     def set_cell(self, value):
         """Set cell and params from the cell representation."""
-        self._cell = value
+        # Class internally expects an array
+        self._cell = array(value).reshape((3,3))
         self.__mkparam()
         self._inverse = np.linalg.inv(self.cell.T)
 

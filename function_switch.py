@@ -440,35 +440,6 @@ class FunctionalGroup(object):
         return len(self.atoms)
 
 
-def to_pdb(atoms, cell, name=None):
-    """
-    Return a pdb compatible file representation.
-
-    """
-    pdb = [
-        "TITLE  faps functional group switching\n",
-        "CRYST1%9.3f%9.3f%9.3f%7.2f%7.2f%7.2f P 1           0\n" % cell.params]
-    site_number = 1
-    for at_idx, atom in enumerate(atoms):
-        if atom.site is None:
-            atom.site = "%s%i" % (atom.type, site_number)
-            site_number += 1
-        pdb.append("ATOM  %5i %-4s UNK A   1    " % (at_idx+1, atom.site) +
-                   "%8.3f%8.3f%8.3f" % tuple(atom.pos) +
-                   #"%6.2f  0.00%12s  \n" % (atom.charge, atom.type))
-                   # charge -> occupancy in vesta
-                   "%6.2f  0.00%12s  \n" % (1.0, atom.type))
-
-    if name is not None:
-        pdb.extend(["REMARK".ljust(70), "\n",
-                    textwrap.fill(name, initial_indent="REMARK     ",
-                                  subsequent_indent="REMARK     ",
-                                  break_long_words=True), "\n",
-                    "REMARK".ljust(70), "\n"])
-
-    return pdb
-
-
 def matrix_rotate(source, target):
     """Create a rotation matrix that will rotate source on to target."""
     # Normalise so there is no scaling in the array
@@ -741,9 +712,6 @@ def site_replace(structure, groups, replace_list, rotations=12):
     job_name = structure.name
     with open('%s_func_%s.cif' % (job_name, new_mof_name), 'w') as output_file:
         output_file.writelines(to_cif(new_mof, structure.cell, new_mof_bonds, new_mof_name))
-    new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
-    with open('%s_func_%s.pdb' % (job_name, new_mof_name), 'w') as output_file:
-        output_file.writelines(to_pdb(new_mof, structure.cell, name=new_mof_name))
 
     # successful
     return True
@@ -841,9 +809,6 @@ def random_replace(structure, groups, replace_only=None, groups_only=None, num_g
     info("With unique name: %s" % unique_name)
     with open('random-%s.cif' % unique_name, 'wb') as output_file:
         output_file.writelines(to_cif(new_mof, structure.cell, new_mof_bonds, new_mof_name))
-    new_mof = [an_atom for an_atom in new_mof if an_atom is not None]
-    with open('random-%s.pdb' % unique_name, 'wb') as output_file:
-        output_file.writelines(to_pdb(new_mof, structure.cell, name=new_mof_name))
 
     # completed sucessfully
     return True

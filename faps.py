@@ -69,6 +69,11 @@ UPDATED = 3
 SKIPPED = -1
 NOT_SUBMITTED = -2
 
+# Possible folder names; need these so that similar_ones_with_underscores are
+# not globbed
+FOLDER_SUFFIXES = ['gulp', 'gulp_opt', 'gulp_fit', 'siesta', 'vasp', 'egulp',
+                   'repeat', 'fastmc', 'properties']
+
 
 class PyNiss(object):
     """
@@ -3392,14 +3397,16 @@ def main():
     # Should we bundle the files after use?
     if main_options.getbool('tar_after'):
         info("Bundling calculation into %s" % tar_name)
-        # Similar file names with _underscores_ might match each other
-        directories_produced = glob.glob("faps_%s_*/" % job_name)
         # We don't overwrite an existing tar
         faps_tar = tarfile.open(tar_name, 'a')
-        for directory in directories_produced:
-            debug("Adding directory %s" % directory)
-            faps_tar.add(directory)
-            shutil.rmtree(directory)
+        # Similar file names with _underscores_ might match each other so
+        # cannot just glob for them
+        for suffix in FOLDER_SUFFIXES:
+            directory = "faps_%s_%s/" % (job_name, suffix)
+            if path.isdir(directory):
+               debug("Adding directory %s" % directory)
+               faps_tar.add(directory)
+               shutil.rmtree(directory)
         faps_tar.close()
 
     my_simulation.dump_state()

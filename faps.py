@@ -1517,7 +1517,9 @@ class Structure(object):
 
         if len(symmetry) > 1:
             # can skip if just identity operation as it's slow for big systems
-            self.remove_duplicates()
+            # Some of pete's symmetrised mofs need a higher tolerence
+            duplicate_tolerance = 0.2  # Angstroms
+            self.remove_duplicates(duplicate_tolerance)
         self.order_by_types()
 
         bonds = {}
@@ -2174,20 +2176,19 @@ class Structure(object):
         return folded
 
 
-    def remove_duplicates(self, epsilon=0.0002):
+    def remove_duplicates(self, tolerance=0.02):
         """Find overlapping atoms and remove them."""
         uniq_atoms = []
         found_atoms = []
-        inv_cell = self.cell.inverse
         for atom in self.atoms:
-            ifpos = atom.ifpos(inv_cell)
-            for found_atom in found_atoms:
-                if frac_near(ifpos, found_atom, epsilon=epsilon):
+            for uniq_atom in uniq_atoms:
+                if atom.type != uniq_atom.type:
+                    continue
+                elif min_distance(atom, uniq_atom) < tolerance:
                     break
             # else excutes when not found here
             else:
                 uniq_atoms.append(atom)
-                found_atoms.append(ifpos)
         debug("Found %i unique atoms in %i" % (len(uniq_atoms), self.natoms))
         self.atoms = uniq_atoms
 
@@ -3211,18 +3212,6 @@ def prod(seq):
     for item in seq:
         product *= item
     return product
-
-
-def frac_near(pos_a, pos_b, epsilon=0.0002):
-    """Return true if fractional points are close."""
-    if epsilon < abs(pos_a[0] - pos_b[0]) < (1 - epsilon):
-        return False
-    elif epsilon < abs(pos_a[1] - pos_b[1]) < (1 - epsilon):
-        return False
-    elif epsilon < abs(pos_a[2] - pos_b[2]) < (1 - epsilon):
-        return False
-    else:
-        return True
 
 
 def dot3(vec1, vec2):

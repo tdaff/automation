@@ -124,8 +124,36 @@ probability =
 probe radius = 1.8
 
 [N2]
+name = Three Site Nitrogen Based on TraPPE
+source = http://dx.doi.org/10.1002/aic.690470719
+atoms =
+    Nx      14.0067     -0.482     -0.55    0       0
+    Nx      14.0067     -0.482      0.55    0       0
+    COM      0.0000     +0.964      0       0       0
+potentials =
+    Nx      3.3100      0.07154
+    COM     0.0000      0.00000
+probability =
+    0
+    1 2
+probe radius = 1.8
+
+[N2-2site]
+name = Two Site, Chargeless Nitrogen
+source = http://dx.doi.org/10.1080/00268978000103611
+atoms =
+    Nx      14.0067     0.000       -0.55   0       0
+    Nx      14.0067     0.000        0.55   0       0
+potentials =
+    Nx      3.3180      0.07233
+probability =
+    0
+    1 2
+probe radius = 1.8
+
+[N2-Etters]
 name = Nitrogen based on Etters potential
-source = doi://10.1063/1.1352078
+source = http://dx.doi.org/10.1063/1.1352078
 atoms =
     Nx   14.0067 -0.4954 -0.556 0.000 0.000
     Nx   14.0067 -0.4954  0.556 0.000 0.000
@@ -140,7 +168,7 @@ probe radius = 1.8
 
 [H2S]
 name = Hydrogen Sulphide for vapor-liquid equilibria
-source = doi://10.1063/1.2049278
+source = http://dx.doi.org/10.1063/1.2049278
 atoms =
     SX    32.065 -0.380  0.000000  0.000000  0.000000
     HS     1.008 +0.190  0.967967 -0.926600  0.000000
@@ -155,7 +183,7 @@ probe radius = 1.8
 
 [I2]
 name = Iodine Diatom with UFF parameters
-source = doi://10.1021/ja204757x
+source = http://dx.doi.org/10.1021/ja204757x
 atoms =
     Ix   126.90447 0.000  1.33 0.00 0.00
     Ix   126.90447 0.000 -1.33 0.00 0.00

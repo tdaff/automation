@@ -1524,6 +1524,7 @@ class Structure(object):
 
         bonds = {}
         # TODO(tdaff): this works for the one tested MOF; 0.1 was not enough
+        # only check for bonds that are too long, not too short.
         bond_tolerence = 0.2
         # Assign bonds by index
         for bond, bond_data in cif_bonds.items():
@@ -1536,7 +1537,7 @@ class Structure(object):
                             bond_dist = bond_data[0]
                             if bond_dist is None:
                                 bond_dist = first_atom.covalent_radius + second_atom.covalent_radius
-                            if abs(distance - bond_dist) < bond_tolerence:
+                            if distance < (bond_dist + bond_tolerence):
                                 # use the sorted index as bonds between the
                                 # same type are doubly specified
                                 bond_id = tuple(sorted((first_index, second_index)))

@@ -699,7 +699,8 @@ def random_replace(structure, groups, replace_only=None, groups_only=None, num_g
     new_mof_name = "{" + ".".join(new_mof_name) + "}"
     info("Generated (%i): %s" %  (count(), new_mof_name))
     info("With unique name: %s" % unique_name)
-    with open('random-%s.cif' % unique_name, 'wb') as output_file:
+    job_name = structure.name
+    with open('%s_rand_%s.cif' % (job_name, unique_name), 'w') as output_file:
         output_file.writelines(to_cif(new_mof, structure.cell, new_mof_bonds, new_mof_name))
 
     # completed sucessfully
@@ -842,9 +843,6 @@ def main():
                                   job_options.get('initial_structure_format'),
                                   job_options)
 
-        input_structure.gen_attachment_sites()
-        input_structure.gen_normals()
-
         # Ensure that atoms in the structure are properly typed
         input_structure.gen_factional_positions()
         bonding_src = job_options.get('fapswitch_connectivity')
@@ -861,6 +859,10 @@ def main():
         elif bonding_src == 'openbabel':
             info("Generating topology with Open Babel")
             input_structure.gen_babel_uff_properties()
+
+        # Initialise the sites after bonds are perceived
+        input_structure.gen_attachment_sites()
+        input_structure.gen_normals()
 
         # Cache the results
         info("Dumping cache of structure connectivity to %s" % pickle_file)

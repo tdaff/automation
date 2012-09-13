@@ -923,7 +923,7 @@ def main():
     prob_unfunc = job_options.getfloat('fapswitch_unfunctionalised_probability')
 
     if job_options.getbool('fapswitch_replace_all_sites'):
-        all_combination_replace(input_structure, f_groups, replace_only=replace_only, groups_only=replace_groups)
+        all_combinations_replace(input_structure, f_groups, replace_only=replace_only, groups_only=replace_groups)
 
     random_count = job_options.getint('fapswitch_site_random_count')
     successful_randoms = 0

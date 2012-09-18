@@ -35,7 +35,7 @@ from config import Options
 from elements import CCDC_BOND_ORDERS
 
 
-DOT_FAPSWITCH_VERSION = (2, 1)
+DOT_FAPSWITCH_VERSION = (2, 2)
 
 class ModifiableStructure(Structure):
     """
@@ -210,7 +210,7 @@ def to_cif(atoms, cell, bonds, name):
     cif_file = [
         "data_%s\n" % name.replace(' ', '_'),
         "%-33s %s\n" % ("_audit_creation_date", time.strftime('%Y-%m-%dT%H:%M:%S%z')),
-        "%-33s %s\n" % ("_audit_creation_method", "LUBE"),
+        "%-33s %s\n" % ("_audit_creation_method", "fapswitch %i.%i" % DOT_FAPSWITCH_VERSION),
         "%-33s %s\n" % ("_symmetry_space_group_name_H-M", "P1"),
         "%-33s %s\n" % ("_symmetry_Int_Tables_number", "1"),
         "%-33s %s\n" % ("_space_group_crystal_system", cell.crystal_system),
@@ -480,7 +480,7 @@ def test_collision(test_atom, atoms, cell, overlap=1.3, ignore=()):
     return True
 
 
-def all_combinations_replace(structure, groups, rotations=12, replace_only=None, groups_only=None):
+def all_combinations_replace(structure, groups, rotations=12, replace_only=None, groups_only=None, backends=()):
     """
     Replace every functional point with every combination of functional groups.
 
@@ -504,10 +504,10 @@ def all_combinations_replace(structure, groups, rotations=12, replace_only=None,
     for site_set in sites:
         for group_set in product(local_groups, repeat=len(site_set)):
             replace_list = zip(group_set, site_set)
-            site_replace(structure, groups, replace_list, rotations=12)
+            site_replace(structure, groups, replace_list, backends=backends)
 
 
-def random_combination_replace(structure, groups, rotations=12, replace_only=None, groups_only=None, max_different=0, prob_unfunc=0.5):
+def random_combination_replace(structure, groups, rotations=12, replace_only=None, groups_only=None, max_different=0, prob_unfunc=0.5, backends=()):
     """
     Make a random structure in the site symmetry constrained sample space.
 
@@ -540,14 +540,14 @@ def random_combination_replace(structure, groups, rotations=12, replace_only=Non
         else:
             replace_list.append((random.choice(local_groups), site))
     # Do the replacement
-    return site_replace(structure, groups, replace_list, rotations=12)
+    return site_replace(structure, groups, replace_list, backends=backends)
 
 
-def site_replace(structure, groups, replace_list, rotations=12):
+def site_replace(structure, groups, replace_list, rotations=12, backends=()):
     """
-    Replace atoms at site_set with corresponding items from group_set.
+    Use replace list to modify the structure with (group, site) pairs.
 
-    Will write files on success, and return 1 for failed attempt.
+    Will dump a cif to the backends on success, and return 1 for failed attempt.
 
     """
     rotation_angle = 2*np.pi/rotations
@@ -590,15 +590,17 @@ def site_replace(structure, groups, replace_list, rotations=12):
     new_mof_name = ".".join(new_mof_name)
     new_mof_friendly_name = ".".join(new_mof_friendly_name)
     info("Generated (%i): [%s]" % (count(), new_mof_friendly_name))
-    job_name = structure.name
-    with open('%s_func_%s.cif' % (job_name, new_mof_name), 'w') as output_file:
-        output_file.writelines(to_cif(new_mof, structure.cell, new_mof_bonds, new_mof_name))
+
+    cif_file = to_cif(new_mof, structure.cell, new_mof_bonds, new_mof_name)
+
+    for backend in backends:
+        backend.add_symmetry_structure(structure.name, replace_list, cif_file)
 
     # successful
     return True
 
 
-def random_replace(structure, groups, replace_only=None, groups_only=None, num_groups=None, custom=None, rotations=36, max_different=0, prob_unfunc=0.5):
+def random_replace(structure, groups, replace_only=None, groups_only=None, num_groups=None, custom=None, rotations=36, max_different=0, prob_unfunc=0.5, backends=()):
     """
     Replace a random number of sites.
 
@@ -735,7 +737,7 @@ def count(reset=False):
     return count.idx
 
 
-def fapswitch_deamon(options, structure, f_groups):
+def fapswitch_deamon(options, structure, f_groups, backends):
     """
     Use sockets to listen and receive structures.
 
@@ -782,7 +784,7 @@ def fapswitch_deamon(options, structure, f_groups):
         randoms = re.findall('\{(.*?)\}', line)
         debug("Random strings: %s" % str(randoms))
         for random_string in randoms:
-            complete = random_replace(structure, f_groups, custom=random_string)
+            complete = random_replace(structure, f_groups, custom=random_string, backends=backends)
             processed.append('{%s}' % random_string)
             processed.append('%s' % complete)
 
@@ -792,7 +794,7 @@ def fapswitch_deamon(options, structure, f_groups):
         for site_string in site_strings:
             site_list = [x.split('@') for x in site_string.split('.') if x]
             debug(str(site_list))
-            complete = site_replace(structure, f_groups, site_list)
+            complete = site_replace(structure, f_groups, site_list, backends=backends)
             processed.append('[%s]' % site_string)
             processed.append('%s' % complete)
 
@@ -883,10 +885,33 @@ def main():
     f_groups = FunctionalGroupLibrary()
     info("Groups in library: %s" % str(f_groups.group_list))
 
+    #Define some backends for where to send the structures
+    backends = []
+    backend_options = job_options.gettuple('fapswitch_backends')
+
+    if 'sqlite' in backend_options:
+        # Initialise and add the database writer
+        debug("Initialising the sqlite backend")
+        try:
+            from backend.sql import AlchemyBackend
+            backend = AlchemyBackend(job_name)
+            backend.populate_groups(f_groups)
+            backends.append(backend)
+        except ImportError:
+            error("SQLAlchemy not installed; sql backend unavailable")
+        # done
+
+    if 'file' in backend_options:
+        # Just dumps to a named file
+        debug("Initialising cif file writer backend")
+        from backend.cif_file import CifFileBackend
+        backends.append(CifFileBackend())
+
+
     # Decide if we should run the server mode
     if job_options.getbool('daemon'):
         # Make the program die if the daemon is called unsuccessfully
-        success = fapswitch_deamon(job_options, input_structure, f_groups)
+        success = fapswitch_deamon(job_options, input_structure, f_groups, backends=backends)
         if success is False:
             raise SystemExit
 
@@ -897,7 +922,7 @@ def main():
     randoms = re.findall('\{(.*?)\}', custom_strings)
     debug("Random option strings: %s" % str(randoms))
     for random_string in randoms:
-        random_replace(input_structure, f_groups, custom=random_string)
+        random_replace(input_structure, f_groups, custom=random_string, backends=backends)
     # site replacements in square brackets [], no spaces
     site_strings = re.findall('\[(.*?)\]', custom_strings)
     debug("Site replacement options strings: %s" % str(site_strings))
@@ -905,7 +930,7 @@ def main():
         # These should be functional_group1@site1.functional_group2@site2
         site_list = [x.split('@') for x in site_string.split('.') if x]
         debug(str(site_list))
-        site_replace(input_structure, f_groups, site_list)
+        site_replace(input_structure, f_groups, site_list, backends=backends)
 
     # Full systematic replacement of everything start here
     # Will use selected groups if specified, otherwise use all
@@ -923,13 +948,13 @@ def main():
     prob_unfunc = job_options.getfloat('fapswitch_unfunctionalised_probability')
 
     if job_options.getbool('fapswitch_replace_all_sites'):
-        all_combinations_replace(input_structure, f_groups, replace_only=replace_only, groups_only=replace_groups)
+        all_combinations_replace(input_structure, f_groups, replace_only=replace_only, groups_only=replace_groups, backends=backends)
 
     random_count = job_options.getint('fapswitch_site_random_count')
     successful_randoms = 0
     while successful_randoms < random_count:
         #function returns true if structure is generated
-        if random_combination_replace(input_structure, f_groups, replace_only=replace_only, groups_only=replace_groups, max_different=max_different, prob_unfunc=prob_unfunc):
+        if random_combination_replace(input_structure, f_groups, replace_only=replace_only, groups_only=replace_groups, max_different=max_different, prob_unfunc=prob_unfunc, backends=backends):
             successful_randoms += 1
             info("Generated %i of %i site random structures" % (successful_randoms, random_count))
 
@@ -937,7 +962,7 @@ def main():
     successful_randoms = 0
     while successful_randoms < random_count:
         #function returns true if structure is generated
-        if random_replace(input_structure, f_groups, replace_only=replace_only, groups_only=replace_groups, max_different=max_different, prob_unfunc=prob_unfunc):
+        if random_replace(input_structure, f_groups, replace_only=replace_only, groups_only=replace_groups, max_different=max_different, prob_unfunc=prob_unfunc, backends=backends):
             successful_randoms += 1
             info("Generated %i of %i fully random structures" % (successful_randoms, random_count))
 

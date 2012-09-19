@@ -600,12 +600,15 @@ def site_replace(structure, groups, replace_list, rotations=12, backends=()):
     return True
 
 
-def random_replace(structure, groups, replace_only=None, groups_only=None, num_groups=None, custom=None, rotations=36, max_different=0, prob_unfunc=0.5, backends=()):
+def freeform_replace(structure, groups, replace_only=None, groups_only=None, num_groups=None, custom=None, rotations=36, max_different=0, prob_unfunc=0.5, backends=()):
     """
-    Replace a random number of sites.
+    Replace sites with no symmetry constraint and with random rotations
+    for successive insertion trials (i.e. there will be variation for the
+    same structure)
 
     """
     # Assume that the replace only is passed as a list or iterable
+    # default to everything
     if replace_only is None:
         replace_only = list(structure.attachments)
     # Valid list is True where allowed to attach
@@ -632,14 +635,22 @@ def random_replace(structure, groups, replace_only=None, groups_only=None, num_g
         debug("Restricted to: %s" % local_groups)
 
     if custom is not None:
+        # Specific functionalisation requested
         debug("Processing custom string: %s" % custom)
         func_repr = custom.strip('{}').split(".")
-        if len(func_repr) != nsites:
+        if len(func_repr) > nsites:
             error("Expected %s sites; got %s" % (nsites, len(func_repr)))
+            func_repr = func_repr[:nsites]
+            warn("Truncated to {%s}" % ".".join(func_repr))
+        elif len(func_repr) < nsites:
+            error("Expected %s sites; got %s" % (nsites, len(func_repr)))
+            func_repr = func_repr + ['']*(nsites - len(func_repr))
+            warn("Padded to {%s}" % ".".join(func_repr))
         for unmasked, site in zip(valid_list, func_repr):
             if unmasked is False and site != '':
                 warn("Replacing masked site")
     else:
+        # Randomise the selection
         if num_groups is None:
             num_groups = random.randint(1, nsites)
             debug("Randomly replacing %i sites" % num_groups)
@@ -780,12 +791,12 @@ def fapswitch_deamon(options, structure, f_groups, backends):
         # collect information to send what has been done back
         processed = []
 
-        # randoms are in braces {}, no spaces
-        randoms = re.findall('\{(.*?)\}', line)
-        debug("Random strings: %s" % str(randoms))
-        for random_string in randoms:
-            complete = random_replace(structure, f_groups, custom=random_string, backends=backends)
-            processed.append('{%s}' % random_string)
+        # freeform strings are in braces {}, no spaces
+        free_strings = re.findall('\{(.*?)\}', line)
+        debug("Freeform strings: %s" % str(free_strings))
+        for free_string in free_strings:
+            complete = freeform_replace(structure, f_groups, custom=free_string, backends=backends)
+            processed.append('{%s}' % free_string)
             processed.append('%s' % complete)
 
         # site replacements in square brackets [], no spaces
@@ -918,11 +929,11 @@ def main():
     # User defined, single-shot functionalisations
     custom_strings = job_options.get('fapswitch_custom_strings')
     # Pattern matching same as in the daemon
-    # randoms are in braces {}, no spaces
-    randoms = re.findall('\{(.*?)\}', custom_strings)
-    debug("Random option strings: %s" % str(randoms))
-    for random_string in randoms:
-        random_replace(input_structure, f_groups, custom=random_string, backends=backends)
+    # freeform strings are in braces {}, no spaces
+    freeform_strings = re.findall('\{(.*?)\}', custom_strings)
+    debug("Freeform option strings: %s" % str(freeform_strings))
+    for freeform_string in freeform_strings:
+        freeform_replace(input_structure, f_groups, custom=freeform_string, backends=backends)
     # site replacements in square brackets [], no spaces
     site_strings = re.findall('\[(.*?)\]', custom_strings)
     debug("Site replacement options strings: %s" % str(site_strings))
@@ -950,6 +961,7 @@ def main():
     if job_options.getbool('fapswitch_replace_all_sites'):
         all_combinations_replace(input_structure, f_groups, replace_only=replace_only, groups_only=replace_groups, backends=backends)
 
+    # group@site randomisations
     random_count = job_options.getint('fapswitch_site_random_count')
     successful_randoms = 0
     while successful_randoms < random_count:
@@ -958,11 +970,12 @@ def main():
             successful_randoms += 1
             info("Generated %i of %i site random structures" % (successful_randoms, random_count))
 
+    # fully freeform randomisations
     random_count = job_options.getint('fapswitch_full_random_count')
     successful_randoms = 0
     while successful_randoms < random_count:
         #function returns true if structure is generated
-        if random_replace(input_structure, f_groups, replace_only=replace_only, groups_only=replace_groups, max_different=max_different, prob_unfunc=prob_unfunc, backends=backends):
+        if freeform_replace(input_structure, f_groups, replace_only=replace_only, groups_only=replace_groups, max_different=max_different, prob_unfunc=prob_unfunc, backends=backends):
             successful_randoms += 1
             info("Generated %i of %i fully random structures" % (successful_randoms, random_count))
 

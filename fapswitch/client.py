@@ -31,7 +31,7 @@ while 1:
     line = raw_input("fapswitch >>> ")
     if 'help' in line.lower():
         print("Fapswitch client:")
-        print("Random strings: dot separated between curly braces")
+        print("Freeform strings: dot separated between curly braces")
         print("e.g. {.Me...F..Cl.Cl.Cl..}")
         print("Site replacements: dot separated between square brackets")
         print("e.g. [Me@H7.COOH@H8.F@H12]")

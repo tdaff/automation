@@ -507,7 +507,7 @@ def all_combinations_replace(structure, groups, rotations=12, replace_only=None,
             site_replace(structure, groups, replace_list, backends=backends)
 
 
-def random_combination_replace(structure, groups, rotations=12, replace_only=None, groups_only=None, max_different=0, prob_unfunc=0.5, backends=()):
+def random_combination_replace(structure, groups, rotations=12, replace_only=None, groups_only=None, max_different=0, prob_unfunc=-1.0, backends=()):
     """
     Make a random structure in the site symmetry constrained sample space.
 
@@ -533,6 +533,13 @@ def random_combination_replace(structure, groups, rotations=12, replace_only=Non
         debug("Restricted to: %s" % local_groups)
 
     replace_list = []
+
+    if prob_unfunc < 0:
+        # Negative probability means try a random proportion of
+        # functionalisation
+        prob_unfunc = random.random()
+        debug("Random proportion of functionalisation (%f)" % prob_unfunc)
+
     for site in sorted(local_attachments):
         if random.random() < prob_unfunc:
             # no functional group here

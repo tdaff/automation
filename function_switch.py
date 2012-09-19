@@ -591,7 +591,8 @@ def site_replace(structure, groups, replace_list, rotations=12, backends=()):
     new_mof_friendly_name = ".".join(new_mof_friendly_name)
     info("Generated (%i): [%s]" % (count(), new_mof_friendly_name))
 
-    cif_file = to_cif(new_mof, structure.cell, new_mof_bonds, new_mof_name)
+    full_mof_name = "%s_func_%s" % (structure.name, new_mof_name)
+    cif_file = to_cif(new_mof, structure.cell, new_mof_bonds, full_mof_name)
 
     for backend in backends:
         backend.add_symmetry_structure(structure.name, replace_list, cif_file)
@@ -709,12 +710,15 @@ def freeform_replace(structure, groups, replace_only=None, groups_only=None, num
             warn("Stopped after: %s" % ".".join(new_mof_name))
             return False
 
-    new_mof_name = "{" + ".".join(new_mof_name) + "}"
-    info("Generated (%i): %s" %  (count(), new_mof_name))
+    new_mof_name = ".".join(new_mof_name)
+    info("Generated (%i): {%s}" %  (count(), new_mof_name))
     info("With unique name: %s" % unique_name)
-    job_name = structure.name
-    with open('%s_rand_%s.cif' % (job_name, unique_name), 'w') as output_file:
-        output_file.writelines(to_cif(new_mof, structure.cell, new_mof_bonds, new_mof_name))
+
+    full_mof_name = "%s_free_%s" % (structure.name, new_mof_name)
+    cif_file = to_cif(new_mof, structure.cell, new_mof_bonds, full_mof_name)
+
+    for backend in backends:
+        backend.add_freeform_structure(structure.name, func_repr, cif_file)
 
     # completed sucessfully
     return True
@@ -888,6 +892,11 @@ def main():
     # Begin processing
     info("Structure attachment sites: %s" % list(input_structure.attachments))
 
+    # Will use selected sites if specified, otherwise use all
+    replace_only = job_options.gettuple('fapswitch_replace_only')
+    if replace_only == ():
+        replace_only = None
+
     # label_atom has a global state that
     for atom in input_structure.atoms:
         label_atom(site=atom.site)
@@ -944,10 +953,6 @@ def main():
         site_replace(input_structure, f_groups, site_list, backends=backends)
 
     # Full systematic replacement of everything start here
-    # Will use selected groups if specified, otherwise use all
-    replace_only = job_options.gettuple('fapswitch_replace_only')
-    if replace_only == ():
-        replace_only = None
 
     # Only use these functional groups for replacements
     replace_groups = job_options.gettuple('fapswitch_replace_groups')

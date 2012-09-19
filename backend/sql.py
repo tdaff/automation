@@ -5,6 +5,8 @@ Sqlite backend to save generated structures in a database.
 
 """
 
+import hashlib
+
 from sqlalchemy import create_engine
 from sqlalchemy import Table, Column, Integer, String, Text, ForeignKey
 from sqlalchemy.orm import sessionmaker, relationship
@@ -16,11 +18,18 @@ Base = declarative_base()
 # A secondary table is needed to link the structures to functionalisation sets
 sym_associations = Table('sym_associations',
                          Base.metadata,
-                         Column('functionalised_structure_id', Integer,
+                         Column('sym_functionalised_structure_id', Integer,
                                 ForeignKey('sym_functionalised_structures.id')),
                          Column('functionalisation_id', Integer,
                                 ForeignKey('functionalisations.id')))
 
+# keep track of which freeform structures have which groups
+freeform_groups = Table('free_associations',
+                         Base.metadata,
+                         Column('free_functionalised_structure_id', Integer,
+                                ForeignKey('free_functionalised_structures.id')),
+                         Column('functional_group_id', String,
+                                ForeignKey('functional_groups.id')))
 
 # Define models as in the SQLAlchemy tutorial
 
@@ -52,7 +61,7 @@ class SymFunctionalisedStructure(Base):
         self.cif_file = cif_file
 
     def __repr__(self):
-        return "<SymFunctionalisedStructure('%s')>" % (self.fullname)
+        return "<SymFunctionalisedStructure('[%s]')>" % (self.fullname)
 
     @property
     def fullname(self):
@@ -107,6 +116,44 @@ class Functionalisation(Base):
         return "%s@%s" % (self.functional_group_id, self.site)
 
 
+# These are not constrained by the symmetry; can be defined by just a string
+
+class FreeFunctionalisedStructure(Base):
+    """
+    SQLAlchemy model for structures that have freeform functionalisation
+    over all the sites of the base structure. Each .base_structure .name
+    (or .fullname) should be the same structure but rotations may change
+    each generation.
+
+    """
+    __tablename__ = 'free_functionalised_structures'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    base_structure = Column(String)
+    cif_file = Column(Text)
+
+    functional_groups = relationship('FunctionalGroup',
+                                     secondary=freeform_groups,
+                                     backref='free_functionalised_structures')
+
+    def __init__(self, base_structure, name, cif_file):
+        self.base_structure = base_structure
+        self.name = name.strip("{}")
+        self.cif_file = cif_file
+
+    def __repr__(self):
+        return "<FreeFunctionalisedStructure('{%s}')>" % (self.name)
+
+    @property
+    def unique_name(self):
+        """Return the unique composite name"""
+        func_repr = self.name.split(".")
+        unique_name = hashlib.md5(str(func_repr)).hexdigest()
+        return "%s_free_%s" % (self.base_structure, unique_name)
+
+
+
 # Objects to interact with the database in a pluggable way; methods
 # can hide the add or create and cacheing
 
@@ -157,8 +204,8 @@ class AlchemyBackend(object):
             # Not in the database so initialise the structure and then add in
             # the functionalisations
             structure = SymFunctionalisedStructure(base_structure,
-                                                       new_mof_name,
-                                                       cif_file)
+                                                   new_mof_name,
+                                                   cif_file)
 
             for group, site in functions:
                 # Query for one if it is already stored
@@ -174,11 +221,44 @@ class AlchemyBackend(object):
                 # The relationship keeps track of the list
                 structure.functionalisations.append(functionalisation)
 
-            print structure.fullname
             self.session.add(structure)
             # New structure inserted
         else:
             structure.cif_file = cif_file
 
         self.session.commit()
-        print structure.id
+
+    def add_freeform_structure(self, base_structure, functions, cif_file):
+        """
+        Insert a structure with freeform functionalisation into the
+        database. Will try to associate all the different functional
+        groups contained.
+
+        """
+
+        new_mof_name = ".".join(functions)
+        cif_file = "".join(cif_file)
+
+        # Get an exisiting vesion of the structure if it exists
+        structure = self.session.query(FreeFunctionalisedStructure).\
+            filter(FreeFunctionalisedStructure.base_structure == base_structure).\
+            filter(FreeFunctionalisedStructure.name == new_mof_name).\
+            first()
+
+        if structure is None:
+            # Not in the database so initialise the structure and then add in
+            # the functionalisations
+            structure = FreeFunctionalisedStructure(base_structure,
+                                                    new_mof_name,
+                                                    cif_file)
+
+            for unique_group in set(functions):
+                group = self.groups.filter(FunctionalGroup.id == unique_group).first()
+                structure.functional_groups.append(group)
+
+            self.session.add(structure)
+            # New structure inserted
+        else:
+            structure.cif_file = cif_file
+
+        self.session.commit()

@@ -6,12 +6,18 @@ Sqlite backend to save generated structures in a database.
 """
 
 import hashlib
+from logging import info, error, debug
 
 from sqlalchemy import create_engine
-from sqlalchemy import Table, Column, Integer, String, Text, ForeignKey
+from sqlalchemy import Table, Column, Integer, Float, String, Text, ForeignKey
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.ext.declarative import declarative_base
 
+
+# Status codes for if structures are being calculated
+NEW = 0
+STARTED = 1
+FINISHED = 2
 
 Base = declarative_base()
 
@@ -46,6 +52,7 @@ class SymFunctionalisedStructure(Base):
     name = Column(String)
     base_structure = Column(String)
     cif_file = Column(Text)
+    status = Column(Integer)
 
     # Many to many with bidirectional realtionship
     functionalisations = relationship('Functionalisation',
@@ -59,6 +66,7 @@ class SymFunctionalisedStructure(Base):
         self.base_structure = base_structure
         self.name = name
         self.cif_file = cif_file
+        self.status = NEW
 
     def __repr__(self):
         return "<SymFunctionalisedStructure('[%s]')>" % (self.fullname)
@@ -132,6 +140,7 @@ class FreeFunctionalisedStructure(Base):
     name = Column(String)
     base_structure = Column(String)
     cif_file = Column(Text)
+    status = Column(Integer)
 
     functional_groups = relationship('FunctionalGroup',
                                      secondary=freeform_groups,
@@ -141,6 +150,7 @@ class FreeFunctionalisedStructure(Base):
         self.base_structure = base_structure
         self.name = name.strip("{}")
         self.cif_file = cif_file
+        self.status = NEW
 
     def __repr__(self):
         return "<FreeFunctionalisedStructure('{%s}')>" % (self.name)
@@ -261,4 +271,147 @@ class AlchemyBackend(object):
         else:
             structure.cif_file = cif_file
 
+        self.session.commit()
+
+    def start_cif(self, structure_type, structure_id):
+        """
+        Return the cif file for the given structure and mark it as started
+        in the database.
+
+        """
+
+        # bind the name as the extraction should be the same
+        if structure_type == 'sym':
+            debug("Looking for symmetry functionalised structure")
+            Structure = SymFunctionalisedStructure
+        elif structure_type == 'free':
+            debug("Looking for free functionalised structure")
+            Structure = FreeFunctionalisedStructure
+        else:
+            error("Unknown structure type %s" % structure_type)
+            return None
+
+        structure = self.session.query(Structure).\
+            filter(Structure.id == structure_id).first()
+
+        if structure is None:
+            error("ID %i not found in database" % structure_id)
+            return None
+        else:
+            # Mark it as started and send back the cif
+            debug("Found structure %i" % structure_id)
+            structure.status = STARTED
+            self.session.commit()
+            # TODO(tdaff): sqlite always returns a unicode object
+            # test that this doesn't break across versions
+            return structure.cif_file.encode('UTF-8')
+
+    def store_results(self, structure_type, structure_id, structure):
+        """
+        Save the uptake data in an appropriate table. Will create tables if
+        they do not exist.
+
+        """
+
+        # TODO(tdaff): more complete database to come
+        if len(structure.guests) > 1:
+            error("Database only deals with single guests at the moment")
+            return
+
+        # Just bind the guest we use (since there is only one here)
+        guest = structure.guests[0]
+
+        class GuestUptake(Base):
+            """
+            Guest uptake container, generated on the fly depending on guest
+            and structure.
+
+            """
+            __tablename__ = '%s_%s_uptake' % (structure_type, guest.ident)
+
+            # store all variations (necessary?)
+            id = Column(Integer, primary_key=True)
+            temperature = Column(Float)
+            pressure = Column(Float)
+            raw = Column(Float)
+            raw_stdev = Column(Float)
+            raw_supercell = Column(Integer)
+            moluc = Column(Float)
+            moluc_stdev = Column(Float)
+            mmolg = Column(Float)
+            mmolg_stdev = Column(Float)
+            volvol = Column(Float)
+            volvol_stdev = Column(Float)
+            wtpc = Column(Float)
+            wtpc_stdev = Column(Float)
+            hoa = Column(Float)
+            hoa_stdev = Column(Float)
+            structure_id = Column(Integer, ForeignKey('%s_functionalised_structures.id' % structure_type))
+
+
+        # create table for GuestUptake if doesn't already exist
+        Base.metadata.create_all(self.engine)
+
+        # Insert all the tp_points for the guest
+        for tp_point in sorted(guest.uptake):
+            # Instance row for each state point
+            db_uptake = GuestUptake()
+            db_uptake.structure_id = structure_id
+
+            # Set the state point
+            db_uptake.temperature = tp_point[0]
+            db_uptake.pressure = tp_point[1][0]  # guest idx is 0 for one guest
+
+            # keep the raw values just here
+            # <N>, sd, supercell
+            uptake = guest.uptake[tp_point]
+            db_uptake.raw = uptake[0]
+            db_uptake.raw_stdev = uptake[1]
+            db_uptake.raw_supercell = uptake[2]
+
+            # calculated values
+            # normalise to unit cell
+            uptake, stdev = (uptake[0]/uptake[2], uptake[1]/uptake[2])
+            # molecules per unit cell
+            db_uptake.moluc = uptake
+            db_uptake.moluc_stdev = stdev
+            # uptake in mmol/g
+            db_uptake.mmolg = 1000*uptake/structure.weight
+            db_uptake.mmolg_stdev = 1000*stdev/structure.weight
+            # volumetric uptake
+            db_uptake.volvol = (guest.molar_volume*uptake/(6.023E-4*structure.volume))
+            db_uptake.volvol_stdev = (guest.molar_volume*stdev/(6.023E-4*structure.volume))
+            # weight percent uptake
+            db_uptake.wtpc = 100*(1 - structure.weight/(structure.weight + uptake*guest.weight))
+            db_uptake.wtpc_stdev = 100*(1 - structure.weight/(structure.weight + stdev*guest.weight))
+            # heat of adsorption
+            hoa = guest.hoa[tp_point]
+            db_uptake.hoa = hoa[0]
+            db_uptake.hoa_stdev = hoa[1]
+
+            # make sure to .commit() later
+            self.session.add(db_uptake)
+
+        # Tell the database the calculation is finished
+        # bind the name as the extraction should be the same
+        if structure_type == 'sym':
+            Structure = SymFunctionalisedStructure
+        elif structure_type == 'free':
+            Structure = FreeFunctionalisedStructure
+        else:
+            error("Unknown structure type %s" % structure_type)
+            return None
+
+        structure = self.session.query(Structure).\
+            filter(Structure.id == structure_id).first()
+
+        if structure is None:
+            error("ID %i not found in database" % structure_id)
+            return None
+        else:
+            # Mark it as started and send back the cif
+            debug("Set structure %i as finished in database" % structure_id)
+            structure.status = FINISHED
+
+        # finish up and save
         self.session.commit()

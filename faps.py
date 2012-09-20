@@ -195,6 +195,8 @@ class PyNiss(object):
 
         self.step_properties()
 
+        self.send_to_database()
+
         self.post_summary()
 
 
@@ -228,6 +230,24 @@ class PyNiss(object):
                 info(" * State of %s: Running, jobid: %s" % (step, state[1]))
             else:
                 info(" * State of %s: %s" % (step, valid_states[state[0]]))
+
+    def send_to_database(self):
+        """If using a database, store the results"""
+
+        # we can skip if not using a database
+        if not 'sql' in self.options.get('initial_structure_format'):
+            return
+
+        # extract the database and structure names
+        db_params = self.options.get('job_name').split('.')
+
+        # import this here so sqlalchemy is not required generally
+        from backend.sql import AlchemyBackend
+
+        database = AlchemyBackend(db_params[0])
+        info("Storing results in database")
+        database.store_results(db_params[1], int(db_params[2]), self.structure)
+        debug("Database finished")
 
     def post_summary(self):
         """Summarise any results for GCMC, properties..."""
@@ -1307,8 +1327,16 @@ class Structure(object):
 
     def from_file(self, basename, filetype, defaults):
         """Select the correct file parser."""
-        filetype = filetype.lstrip('.')
-        if filetype.lower() in ['pdb']:
+        if filetype in ['sql', 'sqlite']:
+            # Makeshift selection method to select a mof
+            # jobname is dbname.type.structure_id
+            from backend.sql import AlchemyBackend
+            # [db_name, sym or free, identity]
+            db_params = self.name.split('.')
+            reader = AlchemyBackend(db_params[0])
+            cif_string = reader.start_cif(db_params[1], int(db_params[2]))
+            self.from_cif(string=cif_string)
+        elif filetype.lower() in ['pdb']:
             self.from_pdb(basename + '.' + filetype)
         elif filetype.lower() in ['pqr']:
             # Look for a pqr or just a pdb wih charges
@@ -1405,12 +1433,18 @@ class Structure(object):
         self.atoms = newatoms
         self.order_by_types()
 
-    def from_cif(self, filename):
+    def from_cif(self, filename=None, string=None):
         """Genereate structure from a .cif file."""
-        info("Reading positions from cif file: %s" % filename)
-        filetemp = open(filename)
-        cif_file = filetemp.readlines()
-        filetemp.close()
+        if filename is not None:
+            info("Reading positions from cif file: %s" % filename)
+            filetemp = open(filename)
+            cif_file = filetemp.readlines()
+            filetemp.close()
+        elif string is not None:
+            info("Positions from cif string")
+            cif_file = string.splitlines()
+        else:
+            error("No source for cif file")
         cif_file = strip_blanks(cif_file)
         params = [None, None, None, None, None, None]
         atoms = []

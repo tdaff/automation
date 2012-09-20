@@ -382,7 +382,7 @@ def matrix_rotate(source, target):
             other = asarray([-source[1]/vlen, source[0]/vlen, source[2]])
         elif source[1] != 0.0:
             vlen = (source[1]**2 + source[2]**2)**0.5
-            other = asarry([source[0], -source[2]/vlen, source[1]/vlen])
+            other = asarray([source[0], -source[2]/vlen, source[1]/vlen])
         elif source[2] != 0.0:
             vlen = (source[2]**2 + source[0]**2)**0.5
             other = asarray([source[2]/vlen, source[1], -source[0]/vlen])

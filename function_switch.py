@@ -490,7 +490,7 @@ def test_collision(test_atom, atoms, cell, overlap=1.3, ignore=()):
     return True
 
 
-def all_combinations_replace(structure, groups, rotations=12, replace_only=None, groups_only=None, backends=()):
+def all_combinations_replace(structure, groups, rotations=12, replace_only=None, groups_only=None, max_different=None, backends=()):
     """
     Replace every functional point with every combination of functional groups.
 
@@ -511,8 +511,14 @@ def all_combinations_replace(structure, groups, rotations=12, replace_only=None,
         local_groups = list(groups)
         debug("Using all groups: %s" % local_groups)
 
+    if max_different is None:
+        max_different = len(local_groups)
+
     for site_set in sites:
         for group_set in product(local_groups, repeat=len(site_set)):
+            #TODO(tdaff): make this more efficient
+            if len(set(group_set)) > max_different:
+                continue
             replace_list = zip(group_set, site_set)
             site_replace(structure, groups, replace_list, backends=backends)
 
@@ -982,7 +988,7 @@ def main():
     prob_unfunc = job_options.getfloat('fapswitch_unfunctionalised_probability')
 
     if job_options.getbool('fapswitch_replace_all_sites'):
-        all_combinations_replace(input_structure, f_groups, replace_only=replace_only, groups_only=replace_groups, backends=backends)
+        all_combinations_replace(input_structure, f_groups, replace_only=replace_only, groups_only=replace_groups, max_different=max_different, backends=backends)
 
     # group@site randomisations
     random_count = job_options.getint('fapswitch_site_random_count')

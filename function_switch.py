@@ -92,6 +92,8 @@ class ModifiableStructure(Structure):
         """
 
         atoms = self.atoms
+        cell = self.cell.cell
+        inv_cell = self.cell.inverse
         self.gen_neighbour_list()
         self.attachments = {}
 
@@ -104,10 +106,18 @@ class ModifiableStructure(Structure):
                         break
                 else:
                     error("Unbonded hydrogen")
+
+                # Generate the direction here as we were getting buggy
+                # attachment over periodic boundaries
+                direction = min_vect(atoms[o_index].ipos(cell, inv_cell),
+                                     atoms[o_index].ifpos(inv_cell),
+                                     atom.ipos(cell, inv_cell),
+                                     atom.ifpos(inv_cell), cell)
+
                 if atom.site in self.attachments:
-                    self.attachments[atom.site].append((h_index, o_index))
+                    self.attachments[atom.site].append((h_index, o_index, direction))
                 else:
-                    self.attachments[atom.site] = [(h_index, o_index)]
+                    self.attachments[atom.site] = [(h_index, o_index, direction)]
 
 
     def gen_babel_uff_properties(self):
@@ -557,6 +567,7 @@ def site_replace(structure, groups, replace_list, rotations=12, backends=()):
     Will dump a cif to the backends on success, and return 1 for failed attempt.
 
     """
+
     rotation_angle = 2*np.pi/rotations
     new_mof_name = []
     new_mof_friendly_name = []
@@ -571,7 +582,7 @@ def site_replace(structure, groups, replace_list, rotations=12, backends=()):
             attach_id = this_point[0]
             attach_to = this_point[1]
             attach_at = structure.atoms[attach_to].pos
-            attach_towards = direction3d(attach_at, structure.atoms[attach_id].pos)
+            attach_towards = this_point[2]
             attach_normal = structure.atoms[attach_to].normal
             new_mof[attach_id:attach_id+1] = [None]
             start_idx = len(new_mof)
@@ -694,7 +705,7 @@ def freeform_replace(structure, groups, replace_only=None, groups_only=None, num
         attach_id = this_point[0]
         attach_to = this_point[1]
         attach_at = structure.atoms[attach_to].pos
-        attach_towards = direction3d(attach_at, structure.atoms[attach_id].pos)
+        attach_towards = this_point[2]
         attach_normal = structure.atoms[attach_to].normal
         #extracted_atoms = new_mof[attach_id:attach_id+1]
         new_mof[attach_id:attach_id+1] = [None]

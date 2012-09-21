@@ -35,7 +35,7 @@ from config import Options
 from elements import CCDC_BOND_ORDERS
 
 
-DOT_FAPSWITCH_VERSION = (2, 2)
+DOT_FAPSWITCH_VERSION = (3, 0)
 
 class ModifiableStructure(Structure):
     """

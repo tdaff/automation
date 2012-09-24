@@ -1936,7 +1936,9 @@ class Structure(object):
         # all atoms of the same forcefield type must have the same label
         # gulp fails if atoms of the same type have different labels!
         # this only crops up as an error in the 4.0 versions
-        keywords = "opti noautobond bond\n"
+        # 'decimal_only' stops fractions that cannot be parsed when reading
+        # updated positions
+        keywords = "opti noautobond bond decimal_only\n"
         gin_file = [
             "# \n# Keywords:\n# \n",
             keywords,

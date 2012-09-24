@@ -35,7 +35,7 @@ from config import Options
 from elements import CCDC_BOND_ORDERS
 
 
-DOT_FAPSWITCH_VERSION = (3, 0)
+DOT_FAPSWITCH_VERSION = (4, 0)
 
 class ModifiableStructure(Structure):
     """
@@ -81,7 +81,7 @@ class ModifiableStructure(Structure):
             right = min_vect(cpositions[at_idx], fpositions[at_idx],
                              cpositions[conex[1]], fpositions[conex[1]],
                              cell)
-            atom.normal = cross(left, right)
+            atom.normal = normalise(cross(left, right))
 
 
     def gen_attachment_sites(self):
@@ -113,6 +113,7 @@ class ModifiableStructure(Structure):
                                      atoms[o_index].ifpos(inv_cell),
                                      atom.ipos(cell, inv_cell),
                                      atom.ifpos(inv_cell), cell)
+                direction = normalise(direction)
 
                 if atom.site in self.attachments:
                     self.attachments[atom.site].append((h_index, o_index, direction))
@@ -307,8 +308,8 @@ class FunctionalGroup(object):
         items = dict(items)
 
         self._parse_atoms(items.pop('atoms'))
-        self.orientation = string_to_tuple(items.pop('orientation'), float)
-        self.normal = string_to_tuple(items.pop('normal'), float)
+        self.orientation = normalise(string_to_tuple(items.pop('orientation'), float))
+        self.normal = normalise(string_to_tuple(items.pop('normal'), float))
         self.bond_length = float(items.pop('carbon_bond'))
         self.bonds = dict(((int(x), int(y)), float(z)) for (x, y, z) in
                           subgroup(items.pop('bonds').split(), width=3))
@@ -426,6 +427,10 @@ def direction3d(source, target):
     return [target[0] - source[0],
             target[1] - source[1],
             target[2] - source[2]]
+
+def normalise(vector):
+    """Return an array with magnitude 1."""
+    return asarray(vector)/norm(vector)
 
 def powerset(iterable):
     "powerset([1,2,3]) --> () (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)"

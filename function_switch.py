@@ -511,7 +511,7 @@ def all_combinations_replace(structure, groups, rotations=12, replace_only=None,
         local_groups = list(groups)
         debug("Using all groups: %s" % local_groups)
 
-    if max_different is None:
+    if max_different is None or max_different <= 0:
         max_different = len(local_groups)
 
     for site_set in sites:

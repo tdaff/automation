@@ -1559,12 +1559,14 @@ class Structure(object):
         bonds = {}
         # TODO(tdaff): this works for the one tested MOF; 0.1 was not enough
         # only check for bonds that are too long, not too short.
-        bond_tolerence = 0.2
+        bond_tolerence = 0.25
         # Assign bonds by index
         for bond, bond_data in cif_bonds.items():
             for first_index, first_atom in enumerate(self.atoms):
                 if first_atom.site == bond[0]:
                     for second_index, second_atom in enumerate(self.atoms):
+                        if second_atom is first_atom:
+                            continue
                         if second_atom.site == bond[1]:
                             # TODO(tdaff): symmetry implementation for cif bonding
                             distance = min_distance(first_atom, second_atom)

@@ -727,6 +727,7 @@ class PyNiss(object):
         """Run GULP to do a UFF optimisation."""
         job_name = self.options.get('job_name')
         optim_code = 'gulp'
+        terse = self.options.getbool('gulp_terse')
         # put an opt in path to distinguish from the charge calculation
         optim_dir = path.join(self.options.get('job_dir'),
                                    'faps_%s_%s_opt' % (job_name, optim_code))
@@ -735,7 +736,7 @@ class PyNiss(object):
         debug("Running in %s" % optim_dir)
 
         filetemp = open('%s.gin' % job_name, 'w')
-        filetemp.writelines(self.structure.to_gulp(optimise=True))
+        filetemp.writelines(self.structure.to_gulp(optimise=True, terse=terse))
         filetemp.close()
 
         if 'GULP_LIB' not in os.environ:
@@ -1895,13 +1896,13 @@ class Structure(object):
 
         return fdf
 
-    def to_gulp(self, qeq_fit=False, optimise=False):
+    def to_gulp(self, qeq_fit=False, optimise=False, terse=False):
         """Return a GULP file to use for the QEq charges."""
         if qeq_fit:
             from elements import QEQ_PARAMS
             keywords = "fitting bulk_noopt qeq\n"
         elif optimise:
-            return self.to_gulp_optimise()
+            return self.to_gulp_optimise(terse=terse)
         else:
             keywords = "single conp qeq\n"
         gin_file = [
@@ -1933,14 +1934,18 @@ class Structure(object):
         return gin_file
 
 
-    def to_gulp_optimise(self):
+    def to_gulp_optimise(self, terse=False):
         """Return a GULP file to optimise with UFF."""
         # all atoms of the same forcefield type must have the same label
         # gulp fails if atoms of the same type have different labels!
         # this only crops up as an error in the 4.0 versions
         # 'decimal_only' stops fractions that cannot be parsed when reading
         # updated positions
-        keywords = "opti noautobond bond decimal_only\n"
+        if terse:
+            # Don't output the bonds
+            keywords = "opti noautobond decimal_only\n"
+        else:
+            keywords = "opti noautobond bond decimal_only\n"
         gin_file = [
             "# \n# Keywords:\n# \n",
             keywords,
@@ -1983,7 +1988,15 @@ class Structure(object):
         # Restart file is for final structure
         gin_file.append("\ndump every %s.grs\n" % self.name)
         # optimization movie useful for debugging mostly
-        gin_file.append("\noutput movie arc %s\nprint 1\n" % self.name)
+        if terse:
+            # These tell gulp to be quiet, but we also stop the massive arc
+            # file being generated
+            gin_file.append("\nterse inout structure\n"
+                            "terse inout potentials\n"
+                            "terse inout derivatives\n"
+                            "#output movie arc %s\n" % self.name)
+        else:
+            gin_file.append("\noutput movie arc %s\n" % self.name)
 
         return gin_file
 

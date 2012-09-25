@@ -212,7 +212,6 @@ def to_cif(atoms, cell, bonds, name):
 
     bond_part = []
     for bond, bond_info in bonds.items():
-        print bond, bond_info
         try:
             bond_length = bond_info[0]
             bond_order = CCDC_BOND_ORDERS[bond_info[1]]

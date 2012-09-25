@@ -1559,13 +1559,15 @@ class Structure(object):
         bonds = {}
         # TODO(tdaff): this works for the one tested MOF; 0.1 was not enough
         # only check for bonds that are too long, not too short.
-        bond_tolerence = 0.2
+        bond_tolerence = 0.25
         # Assign bonds by index
         for bond, bond_data in cif_bonds.items():
             for first_index, first_atom in enumerate(self.atoms):
                 if first_atom.site == bond[0]:
                     for second_index, second_atom in enumerate(self.atoms):
-                        if second_atom.site == bond[1]:
+                        if second_atom is first_atom:
+                            continue
+                        elif second_atom.site == bond[1]:
                             # TODO(tdaff): symmetry implementation for cif bonding
                             distance = min_distance(first_atom, second_atom)
                             bond_dist = bond_data[0]
@@ -1575,7 +1577,7 @@ class Structure(object):
                                 # use the sorted index as bonds between the
                                 # same type are doubly specified
                                 bond_id = tuple(sorted((first_index, second_index)))
-                                bonds[bond_id] = CCDC_BOND_ORDERS[bond_data[1]]
+                                bonds[bond_id] = (distance, CCDC_BOND_ORDERS[bond_data[1]])
                                 if first_atom.is_metal or second_atom.is_metal:
                                     first_atom.is_fixed = True
                                     second_atom.is_fixed = True
@@ -1971,7 +1973,7 @@ class Structure(object):
 
         gin_file.append("\n")
         for bond in sorted(self.bonds):
-            bond_type = GULP_BOND_ORDERS[self.bonds[bond]]
+            bond_type = GULP_BOND_ORDERS[self.bonds[bond][1]]
             gin_file.append("connect %6i %6i %s\n" % (bond[0] + 1, bond[1] + 1, bond_type))
 
         gin_file.append("\nlibrary uff\n")

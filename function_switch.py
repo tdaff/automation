@@ -35,7 +35,7 @@ from config import Options
 from elements import CCDC_BOND_ORDERS
 
 
-DOT_FAPSWITCH_VERSION = (4, 0)
+DOT_FAPSWITCH_VERSION = (5, 0)
 
 class ModifiableStructure(Structure):
     """
@@ -179,7 +179,9 @@ class ModifiableStructure(Structure):
             if bond.IsAmide():
                 bond_order = 1.41
             # save the indicies as zero based
-            bonds[tuple(sorted((start_idx-1, end_idx-1)))] = bond_order
+            bond_length = bond.GetLength()
+            bond_id = tuple(sorted((start_idx-1, end_idx-1)))
+            bonds[bond_id] = (bond_length, bond_order)
 
         self.bonds = bonds
 
@@ -209,11 +211,14 @@ def to_cif(atoms, cell, bonds, name):
         atom_part.append("%f %f %f\n" % tuple(atom.ifpos(inv_cell)))
 
     bond_part = []
-    for bond, order in bonds.items():
+    for bond, bond_info in bonds.items():
+        print bond, bond_info
         try:
-            bond_part.append("%-5s %-5s %-5s\n" %
+            bond_length = bond_info[0]
+            bond_order = CCDC_BOND_ORDERS[bond_info[1]]
+            bond_part.append("%-5s %-5s %f %-5s\n" %
                              (atoms[bond[0]].site, atoms[bond[1]].site,
-                              CCDC_BOND_ORDERS[order]))
+                              bond_length, bond_order))
         except AttributeError:
             # one of the atoms is None so skip
             debug("cif NoneType atom")
@@ -243,7 +248,7 @@ def to_cif(atoms, cell, bonds, name):
         "\nloop_\n",
         "_geom_bond_atom_site_label_1\n",
         "_geom_bond_atom_site_label_2\n",
-#        "_geom_bond_distance\n",
+        "_geom_bond_distance\n",
         "_ccdc_geom_bond_type\n"] + bond_part
 
     return cif_file
@@ -302,6 +307,7 @@ class FunctionalGroup(object):
         """Initialize from a list of tuples as the attributes."""
         # These are defaults, best that they are overwritten
         self.atoms = []
+        self.bonds = {}
         self.orientation = [0, 1, 0]
 
         # pop the items from a dict giving neater code
@@ -311,8 +317,7 @@ class FunctionalGroup(object):
         self.orientation = normalise(string_to_tuple(items.pop('orientation'), float))
         self.normal = normalise(string_to_tuple(items.pop('normal'), float))
         self.bond_length = float(items.pop('carbon_bond'))
-        self.bonds = dict(((int(x), int(y)), float(z)) for (x, y, z) in
-                          subgroup(items.pop('bonds').split(), width=3))
+        self._parse_bonds(items.pop('bonds'))
         self.idx = 0
         self.connection_point = 0  # always connect to the first atom
         # Arbitrary attributes can be set
@@ -330,6 +335,20 @@ class FunctionalGroup(object):
             new_atom.uff_type = atom[1]
             new_atom.site = label_atom(new_atom.element)
             self.atoms.append(new_atom)
+
+    def _parse_bonds(self, bond_block):
+        """
+        Extract the bonds from the text and calculate the distances between the
+        atoms as these are needed for the cif file.
+
+        """
+
+        bond_split = subgroup(bond_block.split(), width=3)
+        for bond_trio in bond_split:
+            bond = (int(bond_trio[0]), int(bond_trio[1]))
+            distance = vecdist3(self.atoms[bond[0]].pos,
+                                self.atoms[bond[1]].pos)
+            self.bonds[bond] = (distance, float(bond_trio[2]))
 
     def _gen_neighbours(self):
         """Update atoms with neighbouring atoms."""
@@ -365,11 +384,12 @@ class FunctionalGroup(object):
             atom.pos = (atom.pos + point + bond_length*np.array(direction))
             atom.idx = start_index + index
         new_bonds = {}
-        for bond_pair, bond_order in self.bonds.iteritems():
+        for bond_pair, bond_info in self.bonds.iteritems():
             new_bond = (bond_pair[0] + start_index, bond_pair[1] + start_index)
-            new_bonds[new_bond] = bond_order
-        # bond to structure
-        new_bonds[(attach_point, self.connection_point + start_index)] = 1
+            new_bonds[new_bond] = bond_info
+        # bond to structure is single...
+        bond_to_structure = (attach_point, self.connection_point + start_index)
+        new_bonds[bond_to_structure] = (self.bond_length, 1.0)
 
         return new_atoms, new_bonds
 

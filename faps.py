@@ -37,7 +37,7 @@ import time
 from copy import copy
 from itertools import count
 from logging import warning, debug, error, info, critical
-from math import ceil
+from math import ceil, log
 from os import path
 
 import numpy as np
@@ -48,7 +48,7 @@ from numpy.linalg import norm
 from config import Options
 from elements import WEIGHT, ATOMIC_NUMBER, UFF, VASP_PSEUDO_PREF
 from elements import CCDC_BOND_ORDERS, GULP_BOND_ORDERS, METALS
-from elements import COVALENT_RADII
+from elements import COVALENT_RADII, UFF_FULL
 from job_handler import JobHandler
 from logo import LOGO
 
@@ -58,6 +58,7 @@ BOHR2ANG = 0.52917720859
 EV2KCAL = 23.060542301389
 NAVOGADRO = 6.02214129E23
 INFINITY = float('inf')
+KCAL_TO_KJ = 4.1868  # Steam tables from openbabel
 
 FASTMC_DEFAULT_GRID_SPACING = 0.1
 
@@ -2087,6 +2088,119 @@ class Structure(object):
         field.append("close\n")
 
         return config, field
+
+    def to_gromacs(self):
+        """Procedure:
+        generate .gro atom positions
+        generate .top lj topology
+        generate .itp uff topology
+        gererate .mdp parameters
+        grompp -f mdp_file -c gro_file -p top_file -o output.tpr
+        """
+
+        ##
+        # .gro file
+        ##
+        # TITLE linw
+        # number of atoms
+        gro_file = ["%s\n" % self.name, " %i\n" % self.natoms]
+        # TODO(tdaff): check residue in toplogy?
+        residue = (1, self.name[:4].upper())
+        for idx, atom in enumerate(self.atoms):
+            # In the specification the atom position is given as
+            # %8.3f in nm, but we probably would like more accuracy
+            # but make sure there are 5 figures to left of decimal point
+            pos_nm = tuple([x/10.0 for x in atom.pos])
+            gro_file.append(("%5i%5s" % residue) +
+                            ("%5s%5i" % (atom.uff_type, idx + 1)) +
+                            ("%15.10f%15.10f%15.10f\n" % pos_nm))
+
+        # cell is also in nm
+        # v1(x) v2(y) v3(z) v1(y) v1(z) v2(x) v2(z) v3(x) v3(y)
+        box = self.cell.cell/10.0
+        # gromacs needs these condtiions. Might need to rotate cell sometimes?
+        if not (box[0][1] == box[0][2] == box[1][2] == 0):
+            error("Gromacs can't handle this cell orientation")
+        gro_file.append("%f %f %f %f %f %f %f %f %f\n" % (
+            box[0][0], box[1][1], box[2][2],
+            box[0][1], box[0][2],
+            box[1][0], box[1][2],
+            box[2][0], box[2][1]))
+
+        sys.stdout.writelines(gro_file)
+
+        ##
+        # .top file
+        ##
+        comb_rule = 1 # 1 = LORENTZ_BERTHELOT; 2 = GEOMETRIC
+        top_file = [
+            "; Topology file for %s\n" % self.name,
+            "[ defaults ]\n",
+            "; nbfunc      comb-rule      gen-pairs       fudgeLJ    fudgeQQ\n",
+            "1             %i              yes             1.0        1.0\n\n" % (comb_rule)]
+
+        # define the forcefield
+        unique_types = set()
+        top_file.append("[ atomtypes ]\n")
+        top_file.append("; name1 name2   mass     charge  ptype   sigma   epsilon\n")
+        for atom in self.atoms:
+            if atom.uff_type not in unique_types:
+                uff_type = atom.uff_type
+                # sigma = x1 * 2^(-1/6)
+                # CONVERT TO nm !!
+                sigma = 0.1*UFF_FULL[uff_type][2]*(2**(-1.0/6.0))
+                # epsilon = D1 in kcal
+                epsilon = UFF_FULL[uff_type][3] * KCAL_TO_KJ
+                top_file.append("%-6s   %-6s   %9.4f   %9.4f   A %12.7f %12.7f\n" % (uff_type, uff_type, atom.mass, 0.0, sigma, epsilon))
+                unique_types.add(uff_type)
+
+        top_file.extend(["\n#include <%s.itp>\n\n" % self.name,
+                         "[ system ]\n",
+                         "UFF optimisation of %s\n\n" % self.name,
+                         "[ molecules ]\n",
+                         "%s  1\n" % residue[1]])
+
+        sys.stdout.writelines(top_file)
+
+        ##
+        # .itp file
+        ##
+        # exclude 3 neighbours
+        itp_file = ["[ moleculetype ]\n",
+                    "; molname nrexcl\n"
+                    "%s 3\n" % residue[1],
+                    "[ atoms ]\n",
+                    "; nr type  resnr    residue    atom     cgnr    charge       mass \n"]
+
+        # atoms
+        for idx, atom in enumerate(self.atoms):
+            uff_type = atom.uff_type
+            itp_file.append("%-6i  %-6s  %i  %-6s  %-6s   %d  %9.4f  %9.4f\n" % (idx+1, atom.type, residue[0], residue[1], uff_type, 1, atom.charge, atom.mass))
+
+        # bonds
+        itp_file.append(" [ bonds ]\n")
+        itp_file.append("; ai aj funct b0 kb\n")
+
+        unique_bonds = {}
+        #FIXME(tdaff) bonds will have length in v2
+        for bond, bondorder in self.bonds.items():
+            atoma = self.atoms[bond[0]]
+            atomb = self.atoms[bond[1]]
+            typed_bond = self.atoms[bond[0]].uff_type, self.atoms[bond[1]].uff_type, bondorder
+            if not typed_bond in unique_bonds:
+                ri = UFF_FULL[atoma.uff_type][0]
+                rj = UFF_FULL[atomb.uff_type][0]
+                chiI = UFF_FULL[atoma.uff_type][8]
+                chiJ = UFF_FULL[atomb.uff_type][8]
+                rbo = -0.1332*(ri+rj)*log(bondorder)
+
+                ren = ri*rj*(((sqrt(chiI) - sqrt(chiJ))**2)) / (chiI*ri + chiJ*rj)
+                r0 = ri + rj + rbo - ren
+
+#                print typed_bond, r0
+
+        sys.stdout.writelines(itp_file)
+
 
     def to_cssr(self, cartesian=False, no_atom_id=False):
         """

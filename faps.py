@@ -2894,7 +2894,8 @@ class Atom(object):
             self.site = "%s%i" % (self.site, idx)
         if '_atom_type_description' in at_dict:
             self.uff_type = at_dict['_atom_type_description']
-
+        if '_atom_type_parital_charge' in at_dict:
+            self.charge = float(at_dict['_atom_type_parital_charge'])
 
     def from_pdb(self, line, charges=False):
         """

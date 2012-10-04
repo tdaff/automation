@@ -2096,6 +2096,7 @@ class Structure(object):
         generate .itp uff topology
         gererate .mdp parameters
         grompp -f mdp_file -c gro_file -p top_file -o output.tpr
+        mdrun -s moffive -o traj-c moffive -nt 1
         """
 
         ##
@@ -2127,8 +2128,6 @@ class Structure(object):
             box[1][0], box[1][2],
             box[2][0], box[2][1]))
 
-        sys.stdout.writelines(gro_file)
-
         ##
         # .top file
         ##
@@ -2139,7 +2138,7 @@ class Structure(object):
             "; nbfunc      comb-rule      gen-pairs       fudgeLJ    fudgeQQ\n",
             "1             %i              yes             1.0        1.0\n\n" % (comb_rule)]
 
-        # define the forcefield
+        # define the forcefield for UFF
         unique_types = set()
         top_file.append("[ atomtypes ]\n")
         top_file.append("; name1 name2   mass     charge  ptype   sigma   epsilon\n")
@@ -2160,8 +2159,6 @@ class Structure(object):
                          "[ molecules ]\n",
                          "%s  1\n" % residue[1]])
 
-        sys.stdout.writelines(top_file)
-
         ##
         # .itp file
         ##
@@ -2175,31 +2172,94 @@ class Structure(object):
         # atoms
         for idx, atom in enumerate(self.atoms):
             uff_type = atom.uff_type
-            itp_file.append("%-6i  %-6s  %i  %-6s  %-6s   %d  %9.4f  %9.4f\n" % (idx+1, atom.type, residue[0], residue[1], uff_type, 1, atom.charge, atom.mass))
+            # charge group is different for each atom as gromacs has max of 32 in a group
+            itp_file.append("%-6i  %-6s  %i  %-6s  %-6s   %d  %9.4f  %9.4f\n" % (idx+1, uff_type, residue[0], residue[1], uff_type, idx+1, atom.charge, atom.mass))
 
         # bonds
         itp_file.append(" [ bonds ]\n")
         itp_file.append("; ai aj funct b0 kb\n")
 
         unique_bonds = {}
+        bonding_table = dict([(x, {}) for x in range(self.natoms)])
         #FIXME(tdaff) bonds will have length in v2
         for bond, bondorder in self.bonds.items():
-            atoma = self.atoms[bond[0]]
-            atomb = self.atoms[bond[1]]
-            typed_bond = self.atoms[bond[0]].uff_type, self.atoms[bond[1]].uff_type, bondorder
+            idx_a = bond[0]
+            idx_b = bond[1]
+            atom_a = self.atoms[idx_a]
+            atom_b = self.atoms[idx_b]
+            uff_a = atom_a.uff_type
+            uff_b = atom_b.uff_type
+            typed_bond = tuple(sorted([uff_a, uff_b]) + [bondorder])
+
+            bonding_table[idx_a][idx_b] = typed_bond
+            bonding_table[idx_b][idx_a] = typed_bond
+
+            # have we already calculated the parameters
             if not typed_bond in unique_bonds:
-                ri = UFF_FULL[atoma.uff_type][0]
-                rj = UFF_FULL[atomb.uff_type][0]
-                chiI = UFF_FULL[atoma.uff_type][8]
-                chiJ = UFF_FULL[atomb.uff_type][8]
+                ri = UFF_FULL[uff_a][0]
+                rj = UFF_FULL[uff_b][0]
+                chiI = UFF_FULL[atom_a.uff_type][8]
+                chiJ = UFF_FULL[atom_b.uff_type][8]
                 rbo = -0.1332*(ri+rj)*log(bondorder)
 
                 ren = ri*rj*(((sqrt(chiI) - sqrt(chiJ))**2)) / (chiI*ri + chiJ*rj)
-                r0 = ri + rj + rbo - ren
+                r0 = 0.1*(ri + rj + rbo - ren)
 
-#                print typed_bond, r0
+                # force constant
+                # parameters Z1
+                kb = (KCAL_TO_KJ * 664.12 * UFF_FULL[uff_a][5] * UFF_FULL[uff_b][5])/(r0**3)
 
-        sys.stdout.writelines(itp_file)
+                unique_bonds[typed_bond] = (r0, kb)
+
+            params = unique_bonds[typed_bond]
+            bond_func = 1  # gromacs harmonic
+            # add 1 to bond as 1 indexed
+            itp_file.append('%-5i %-5i %1i %11.4f %11.4f ; %-5s %-5s %.2f\n' % (bond[0]+1, bond[1]+1, bond_func, params[0], params[1], typed_bond[0], typed_bond[1], bondorder))
+
+        # angles
+        itp_file.append("\n [ angles ]\n")
+
+        for idx_a in sorted(bonding_table):
+            bonded_atoms = bonding_table[idx_a]
+            for l_idx in bonded_atoms:
+                for r_idx in bonded_atoms:
+                    if l_idx == r_idx:
+                        continue
+                    # FIXME(tdaff) special cases for 5 or more coord
+                    central_atom = self.atoms[idx_a]
+                    l_atom = self.atoms[l_idx]
+                    r_atom = self.atoms[r_idx]
+                    coordination = len(bonded_atoms)
+                    # FIXME(tdaff) over/under coordinated atoms?
+                    theta0 = UFF_FULL[central_atom.uff_type][1]
+                    cosT0 = cos(theta0*DEG2RAD)
+                    sinT0 = sin(theta0*DEG2RAD)
+                    c2 = 1.0 / (4.0 * sinT0 * sinT0)
+                    c1 = -4.0 * c2 * cosT0
+                    c0 = c2*(2.0*cosT0*cosT0 + 1.0)
+                    zi = UFF_FULL[l_atom.uff_type][5]
+                    zk = UFF_FULL[r_atom.uff_type][5]
+                    bond_ab = tuple(sorted((l_idx, idx_a)))
+                    bond_ab = tuple(sorted([l_atom.uff_type, central_atom.uff_type]) + [self.bonds[bond_ab]])
+                    bond_bc = tuple(sorted((r_idx, idx_a)))
+                    bond_bc = tuple(sorted([r_atom.uff_type, central_atom.uff_type]) + [self.bonds[bond_bc]])
+                    rab = unique_bonds[bond_ab][0]
+                    rbc = unique_bonds[bond_bc][0]
+                    rac = sqrt(rab*rab + rbc*rbc - 2.0 * rab*rbc*cosT0)
+
+                    ka = (644.12 * KCAL_TO_KJ) * (zi * zk / (rac**5.0))
+                    ka *= (3.0*rab*rbc*(1.0 - cosT0*cosT0) - rac*rac*cosT0)
+
+                    thetamin = (pi-arccos(c1/(4.0*c2))/DEG2RAD)
+                    kappa = ka * (16.0*c2*c2 - c1*c1) / (4.0* c2)
+                    itp_file.append("%-5i %-5i %-5i %3i %f %f ; %-5s %-5s %-5s" % (l_idx + 1, idx_a + 1, r_idx + 1, 1, thetamin, kappa, l_atom.uff_type, central_atom.uff_type, r_atom.uff_type))
+
+        with open("moffive.top", 'w') as tempfile:
+            tempfile.writelines(top_file)
+        with open("moffive.gro", 'w') as tempfile:
+            tempfile.writelines(gro_file)
+        with open("moffive.itp", 'w') as tempfile:
+            tempfile.writelines(itp_file)
 
 
     def to_cssr(self, cartesian=False, no_atom_id=False):

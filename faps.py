@@ -1651,7 +1651,7 @@ class Structure(object):
             elif line.strip() == 'fractional':
                 cell = self.cell.cell
                 for atom, atom_line in zip(self.atoms, grs_out):
-                    atom.pos = dot([float(x) for x in atom_line.split()[2:5]], cell)
+                    atom.pos = dot([gfloat(x) for x in atom_line.split()[2:5]], cell)
 
     def from_xyz(self, filename, update=False, cell=None):
         """Read a structure from an file."""
@@ -3421,6 +3421,16 @@ def same_guests(base, other):
 def ufloat(text):
     """Convert string to float, ignoring the uncertainty part."""
     return float(re.sub('\(.*\)', '', text))
+
+
+def gfloat(text):
+    """Parse a gulp output float, where it could also be a rational fraction."""
+    # TODO(tdaff): use Fraction in 2.7+?
+    if "/" in text:
+        text = text.split('/')
+        return float(text[0])/float(text[1])
+    else:
+        return float(text)
 
 
 def try_int(text, default=0):

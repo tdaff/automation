@@ -869,8 +869,10 @@ class PyNiss(object):
         os.chdir(qeq_dir)
         debug("Running in %s" % qeq_dir)
 
+        qeq_dict = parse_qeq_params(self.options.gettuple('qeq_parameters'))
+
         filetemp = open('%s.gin' % job_name, 'w')
-        filetemp.writelines(self.structure.to_gulp(fitting))
+        filetemp.writelines(self.structure.to_gulp(qeq_fit=fitting, qeq_dict=qeq_dict))
         filetemp.close()
 
         if self.options.getbool('no_submit'):
@@ -904,7 +906,13 @@ class PyNiss(object):
         filetemp.close()
 
         # EGULP defaults to GULP parameters if not specified
-        egulp_parameters = self.options.gettuple('egulp_parameters')
+        # TODO(tdaff): remove old terminaology
+        try:
+            egulp_parameters = self.options.gettuple('egulp_parameters')
+            warning("egulp_parameters is deprecated use qeq_parameters instead")
+        except AttributeError:
+            egulp_parameters = self.options.gettuple('qeq_parameters')
+
         if egulp_parameters:
             info("Custom EGULP parameters selected")
             filetemp = open('%s.param' % job_name, 'w')
@@ -1897,7 +1905,7 @@ class Structure(object):
 
         return fdf
 
-    def to_gulp(self, qeq_fit=False, optimise=False, terse=False):
+    def to_gulp(self, qeq_fit=False, optimise=False, terse=False, qeq_dict={}):
         """Return a GULP file to use for the QEq charges."""
         if qeq_fit:
             from elements import QEQ_PARAMS
@@ -1906,6 +1914,7 @@ class Structure(object):
             return self.to_gulp_optimise(terse=terse)
         else:
             keywords = "single conp qeq\n"
+
         gin_file = [
             "# \n# Keywords:\n# \n",
             keywords,
@@ -1931,6 +1940,13 @@ class Structure(object):
             for atom in self.atoms:
                 gin_file.extend(["%-5s core " % atom.type,
                                  "%14.7f %14.7f %14.7f\n" % tuple(atom.pos)])
+            if qeq_dict:
+                unique_types = unique(self.types)
+                gin_file.append('\nqelectronegativity\n')
+                for atom_type, params in qeq_dict.items():
+                    if atom_type in unique_types:
+                        gin_file.append('%-4s %f %f\n' % (atom_type, params[0], params[1]))
+
         gin_file.append("\ndump every %s.grs\nprint 1\n" % self.name)
         return gin_file
 
@@ -3313,26 +3329,36 @@ def mk_gcmc_control(temperature, pressures, options, guests, supercell=None):
     return control
 
 
-def mk_egulp_params(param_tuple):
-    """Convert an options tuple to an EGULP parameters file filling."""
-    # group up into ()(atom, electronegativity, 0.5*hardness), ... )
+def parse_qeq_params(param_tuple):
+    """Convert an options tuple to a dict of values."""
+    # group up into ((atom, electronegativity, 0.5*hardness), ... )
     param_tuple = subgroup(param_tuple, 3)
-    # first line is the number of parametr sets
-    #TODO(tdaff): try adding some error checking
-    egulp_file = ["%s\n" % len(param_tuple)]
+    param_dict = {}
     for param_set in param_tuple:
         try:
             atom_type = int(param_set[0])
+            atom_type = ATOMIC_NUMBER[atom_type]
         except ValueError:
             # assume it is an element symbol instead
-            atom_type = ATOMIC_NUMBER.index(param_set[0])
+            atom_type = param_set[0]
         try:
-            egulp_file.append("%-4d %f %f\n" % (atom_type,
-                                                float(param_set[1]),
-                                                float(param_set[2])))
+            param_dict[atom_type] = (float(param_set[1]), float(param_set[2]))
         except IndexError:
-            error("Cannot read parameters for %s" % ATOMIC_NUMBER[atom_type])
-            terminate(223)
+            warn("Cannot read parameters for %s" % atom_type)
+
+    return param_dict
+
+
+def mk_egulp_params(param_tuple):
+    """Convert an options tuple to an EGULP parameters file filling."""
+    # group up into ((atom, electronegativity, 0.5*hardness), ... )
+    param_dict = parse_qeq_params(param_tuple)
+    # first line is the number of parametr sets
+    #TODO(tdaff): try adding some error checking
+    egulp_file = ["%s\n" % len(param_dict)]
+    for atom_type, params in param_dict.items():
+        egulp_file.append("%-4i %f %f\n" % (ATOMIC_NUMBER.index(atom_type),
+                                            params[0], params[1]))
 
     return egulp_file
 

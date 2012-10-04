@@ -1,0 +1,24 @@
+# EGULP fitted qeq parameters to 
+# genstruct database with SD/BFGS
+# SBU 7 -- Zirconium
+#
+# !!!!!!!!!!  WARNING !!!!!!!!!!
+# !!!! NOTE LOW CORRELATION !!!!
+# !! THINK BEFORE USING THESE !!
+#
+# +------------------------+---------------+---------------+
+# |                        | EGULP/REPEAT  | GULP/REPEAT   |
+# |                        +--------+------+--------+------+
+# |                        | UPTAKE | HOA  | UPTAKE | HOA  |
+# +========================+========+======+========+======+
+# | SPEARMAN'S CORRELATION |  0.85  | 0.85 |  0.99  | 0.99 |
+# +------------------------+--------+------+--------+------+
+# | PEARSON'S CORRELATION  |  0.85  | 0.85 |  0.99  | 0.99 |
+# +------------------------+--------+------+--------+------+
+
+
+qeq_parameters = 
+    C    4.929854   4.547831
+    O   10.625092   7.975075
+    Zr   2.253738   2.664456
+

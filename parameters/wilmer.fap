@@ -1,0 +1,29 @@
+# EGULP fitted qeq parameters to Wilmer and Snurr's
+# hypothetical MOF database (~146 MOFs)
+# http://hmofs.northwestern.edu
+# 
+# !!!!!!!!!!!!!!!! WARNING !!!!!!!!!!!!!!!!
+# !! THESE STRUCTURES HAVE NOT BEEN      !!
+# !! VALIDATED; IT IS NOT RECOMMENDED TO !!
+# !! USE THESE PARAMETERS FOR PRODUCTION !!
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#
+# Note:
+# Although parameters are given for all elements
+# it is possible to get better correaltions
+# using defaults for O, C, and N
+
+
+qeq_parameters = 
+    C    5.446        5.160
+    N    6.231        6.524
+    O    8.797        6.207
+    Cu   4.61832258   3.21397419
+    Zn   3.75901935   3.62704516
+    F    7.75550968  10.07401290
+    V    2.76438710   3.72438710
+    Zr   2.77264516   2.49187097
+    Br   5.86960000   6.16560000
+    Cl   5.83440000   5.59038710
+
+

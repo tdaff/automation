@@ -1,0 +1,24 @@
+# EGULP fitted qeq parameters to 
+# genstruct database with SD/BFGS
+# SBU 4 -- Chromium
+#
+# !!!!!!!!!!  WARNING !!!!!!!!!!
+# !!!! NOTE LOW CORRELATION !!!!
+# !! THINK BEFORE USING THESE !!
+#
+# +------------------------+---------------+---------------+
+# |                        | EGULP/REPEAT  | GULP/REPEAT   |
+# |                        +--------+------+--------+------+
+# |                        | UPTAKE | HOA  | UPTAKE | HOA  |
+# +========================+========+======+========+======+
+# | SPEARMAN'S CORRELATION |  0.96  | 0.95 |  0.99  | 0.99 |
+# +------------------------+--------+------+--------+------+
+# | PEARSON'S CORRELATION  |  0.96  | 0.96 |  0.99  | 0.99 |
+# +------------------------+--------+------+--------+------+
+
+
+qeq_parameters = 
+    C    4.975   4.585
+    Cr   2.539   3.368
+    O   10.504   8.028
+

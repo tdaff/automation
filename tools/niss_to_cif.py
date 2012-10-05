@@ -14,7 +14,7 @@ from os import path
 # faps is in the parent directory of this script
 sys.path.append(path.dirname(path.dirname(path.realpath(__file__))))
 # Need the PyNiss and the rest as they are being unpickled
-from faps import PyNiss, Structure, Symmetry, Cell, Atom
+from faps import PyNiss, Structure, Symmetry, Cell, Atom, Guest
 from function_switch import to_cif
 
 

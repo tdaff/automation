@@ -2337,7 +2337,7 @@ class Structure(object):
 
         supercell_mult = prod(self.gcmc_supercell)
         for idx, line in enumerate(output):
-            if line.startswith('   final stats'):
+            if 'final stats' in line:
                 guest_id = int(line.split()[4]) - 1
                 self.guests[guest_id].uptake[tp_point] = (
                     float(output[idx + 3].split()[-1]),
@@ -2347,7 +2347,7 @@ class Structure(object):
                 self.guests[guest_id].hoa[tp_point] = (
                     float(output[idx + 7].split()[-1]),
                     float(output[idx + 8].split()[-1]))
-            elif line.startswith('       total accepted steps'):
+            elif 'total accepted steps' in line:
                 counted_steps = int(line.split()[-1])
                 if counted_steps < 10000:
                     warning("Number of accepted GCMC steps is very low; "

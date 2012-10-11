@@ -2331,22 +2331,28 @@ class Structure(object):
         startdir = os.getcwd()
         os.chdir(filepath)
 
+        # Since Pete changed output strip indentation and blank lines
         filetemp = open('OUTPUT')
-        output = filetemp.readlines()
+        output = strip_blanks(filetemp.readlines())
         filetemp.close()
 
+        # Keep track of supercell so we can get unit cell values
         supercell_mult = prod(self.gcmc_supercell)
+        # Still positional as we need multiple values simultaneously
+        # and very old versions cahnged wording of heat of adsorption
+        # and enthalpy of guest
         for idx, line in enumerate(output):
+            # Assume that block will always start like this
             if 'final stats' in line:
                 guest_id = int(line.split()[4]) - 1
                 self.guests[guest_id].uptake[tp_point] = (
-                    float(output[idx + 3].split()[-1]),
-                    float(output[idx + 4].split()[-1]),
+                    float(output[idx + 1].split()[-1]),
+                    float(output[idx + 2].split()[-1]),
                     supercell_mult)
                 # This will sometimes be NaN
                 self.guests[guest_id].hoa[tp_point] = (
-                    float(output[idx + 7].split()[-1]),
-                    float(output[idx + 8].split()[-1]))
+                    float(output[idx + 3].split()[-1]),
+                    float(output[idx + 4].split()[-1]))
             elif 'total accepted steps' in line:
                 counted_steps = int(line.split()[-1])
                 if counted_steps < 10000:

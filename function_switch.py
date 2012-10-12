@@ -195,7 +195,8 @@ def to_cif(atoms, cell, bonds, name):
             type_count[atom.element] = 1
         atom.site = "%s%i" % (atom.element, type_count[atom.element])
         atom_part.append("%-5s %-5s %-5s " % (atom.site, atom.element, uff_type))
-        atom_part.append("%f %f %f\n" % tuple(atom.ifpos(inv_cell)))
+        atom_part.append("%f %f %f " % tuple(atom.ifpos(inv_cell)))
+        atom_part.append("%f\n" % atom.charge)
 
     bond_part = []
     for bond, order in bonds.items():
@@ -227,7 +228,8 @@ def to_cif(atoms, cell, bonds, name):
         "_atom_type_description\n",
         "_atom_site_fract_x\n",
         "_atom_site_fract_y\n",
-        "_atom_site_fract_z\n"] + atom_part + [
+        "_atom_site_fract_z\n",
+        "_atom_type_parital_charge\n"] + atom_part + [
         # bonding loop
         "\nloop_\n",
         "_geom_bond_atom_site_label_1\n",

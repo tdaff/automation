@@ -3,7 +3,15 @@
 """
 niss_to_cif.py
 
-Extract the structure from a running or finished simulataion
+Extract the structure from running or finished faps simulataions. Will process
+multiple jobs when given together on the commandline. This script will read in
+the state of the simulation from the niss file and create a cif with the latest
+optimised structure including the most recent charges.
+
+Usage: niss_to_cif.py JOB_NAME1 [JOB_NAME2] [...]
+
+Options:
+  -h, --help         print this help and exit
 
 """
 
@@ -18,10 +26,9 @@ from faps import PyNiss, Structure, Symmetry, Cell, Atom, Guest
 from function_switch import to_cif
 
 
-def main():
+def niss_to_cif(job_name):
     """Load a simulation Niss and dump out the cif of the current structure."""
     # We just need the job name so don't overcomplicate with configparser
-    job_name = sys.argv[1]
     if job_name[-5:] == ".niss":
         job_name = job_name[:-5]
 
@@ -35,7 +42,7 @@ def main():
         load_niss.close()
     else:
         print("ERROR! %s not found" % niss_name)
-        raise SystemExit
+        return
 
     # the method from fapswitch accepts separate components
     cryst = my_simulation.structure
@@ -49,6 +56,17 @@ def main():
     output_file.writelines(cif_lines)
     output_file.close()
     print("Wrote %s" % cif_file_name)
+
+
+def main():
+    """Process multiple niss files given on the command line."""
+    # Rudimentary help option
+    if "-h" in sys.argv or "--help" in sys.argv:
+        print(__doc__)
+        raise SystemExit
+    # Otherwise everythin is just a job name
+    for job_name in sys.argv[1:]:
+        niss_to_cif(job_name)
 
 
 if __name__ == '__main__':

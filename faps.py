@@ -421,6 +421,7 @@ class PyNiss(object):
 
         if self.state['ff_opt'][0] == NOT_RUN or 'ff_opt' in self.options.args:
             jobid = self.run_ff_opt()
+            sys_argv_strip('ff_opt')
             end_after = self.postrun(jobid)
             self.dump_state()
 
@@ -454,6 +455,7 @@ class PyNiss(object):
 
         if self.state['dft'][0] == NOT_RUN or 'dft' in self.options.args:
             jobid = self.run_dft()
+            sys_argv_strip('dft')
             end_after = self.postrun(jobid)
             self.dump_state()
 
@@ -485,6 +487,7 @@ class PyNiss(object):
 
         if self.state['charges'][0] == NOT_RUN or 'charges' in self.options.args:
             jobid = self.run_charges()
+            sys_argv_strip('charges')
             end_after = self.postrun(jobid)
             self.dump_state()
 
@@ -511,6 +514,7 @@ class PyNiss(object):
             # The dictionary is empty before any runs
             info("Starting gcmc step")
             jobids = self.run_fastmc()
+            sys_argv_strip('gcmc')
             self.dump_state()
 
         for tp_point, jobid in jobids.items():
@@ -3444,6 +3448,13 @@ def try_symlink(src, dest):
         os.symlink(src, dest)
     except AttributeError:
         shutil.copy(src, dest)
+
+
+def sys_argv_strip(argument):
+    """Remove an argument from the sys.argv if it is there."""
+    while argument in sys.argv:
+        sys.argv.remove(argument)
+    return 0
 
 
 def same_guests(base, other):

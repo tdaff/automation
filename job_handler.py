@@ -373,7 +373,7 @@ def _pass(*args, **kwargs):
 
 def _argstrip(arglist):
     """Some options might be best removed before resubmission."""
-    to_remove = ['-i', '--import', 'ff_opt', 'dft', 'gcmc', 'charges']
+    to_remove = ['-i', '--interactive', '-m', '--import']
     newargs = list(arglist)
     for item in to_remove:
         while item in newargs:

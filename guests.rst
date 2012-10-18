@@ -18,14 +18,31 @@ These guests are available as standard with the identifier with the
 ============ ===========================================================
 Identifier   Guest
 ============ ===========================================================
-CO2          Carbon Dioxide
+CO2          Carbon Dioxide for Adsorption in Zeolites
+CO2-TraPPE   TraPPE Carbon Dioxide
+CO-MOF       Carbon Monoxide Optimised for CuBTC MIL-47 and IRMOF1
+CO-UFF       Carbon Monoxide with UFF Parameters and Mulliken Charges
+CO-Graphite  Carbon Monoxide Adsorbed on Graphite
+CO-Ligand    Carbon Monoxide in Myoglobin
 TIP5P        TIP5P Water
 TIP5P-Ew     TIP5P-Ew Water for Ewald sums
-TIP4P-Ew     TIP4P-Ew four-site water model for biomolecular simulations
+TIP4P-Ew     TIP4P-Ew Four-Site Water Model for Biomolecular Simulations
 CH4-TraPPE   TraPPE Methane; Single Site
 CH4-5s       Methane 5 Site
-N2           Nitrogen based on Etters potential
-H2S          Hydrogen Sulphide for vapor-liquid equilibria
+N2           Three Site Nitrogen Based on TraPPE
+N2-2site     Two Site, Chargeless Nitrogen
+N2-Etters    Nitrogen Based on Etters Potential
+H2S          Hydrogen Sulphide for Vapor-Liquid Equilibria
+N2O-PE       Nitrous Oxide for Phase Equilibria with Oxygen
+N2O-Sol      Nitrous Oxide for Solubility in Fluorinated Liquids
+NO2          Nitrogen Dioxide
+N2O4         Dinitrogen Tetroxide
+NO           Nitric Oxide for Diffusion in Water
+O2-TraPPE    Oxygen for Liquid Vapour Phase Equilibria
+O2-PE        Oxygen for Phase Equilibria with Nitrous Oxide
+SO2          Sulphur Dioxide for Vapor-Liquid Equilibria
+H2           Anisotropic Hydrogen Diatom for Condensed Phase
+I2           Iodine Diatom with UFF parameters
 ============ ===========================================================
 
 

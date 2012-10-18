@@ -12,7 +12,7 @@ Your first calculation
 ----------------------
 
 Download :download:`this example structure file <_static/MIL-47.cif>` here and
-save it where you will be running faps as ``MIL-47.cif``.
+save it where you will be running faps as :file:`MIL-47.cif`.
 
 Faps is designed to have sensible defaults for most options, so it is possible
 to run a simulation without any further input. The usual way to run faps is
@@ -20,11 +20,75 @@ using a ``JOBNAME``, in this case this is the name of the cif without ``.cif``.
 All the output files and interim calcualtions will use this jobname as the
 basename. You can fap the structure by running:
 
-   ``faps MIL-47``
+  :command:`faps MIL-47`
 
-Will generate, in sequence, a DFT hydrogen-optimized structure, REPEAT charges,
-and the GCMC uptake of |CO2| at 1 bar pressure in a ``structure-CO2.csv`` file.
+.. code-block:: text
 
+  >> Starting faps version 0.999-r367
+          .;StX;8@%%8%...
+       .XX;::88SXXXX@.8t8.              S@@
+      .%t888X8@888@88SXXt@;.            S .X.:
+     ;%8@@XXSS%8888@888@@St..             %8XX8S
+    .;XXSXX@@X%@8888XS@@88@:8    %X@.%8 :@X:.  X:                    S8:@S8
+   .8S8XX88S%SS@8:XS;XXSS88X8. :@ %8: 8t:X@8 . S           .8@8;   S8: t: :.
+   @S88@X88@@%X@ .X888888t%:.   :.       :@:@@         .S8S:S8;.8 S.t%
+  .%;8SXX@888XSX%8S XX  8:S:;            8;t.         SX S.S  :: :% S.S88S.
+  .:@X%@8888888t88t 8@8tX@ @             %;  ::@:     :  S   t  8 .; X8@; ::S
+   ;;X%%8@8:X. 88XX@888@8@8%       @.X%8X   .8. tt     @ @ 88;@          ;8 t
+   .8Xt8 .  S8.888X%%%S8;%;SS   SXS:;8 @:   .  % 8@    .:.8.: .        t;8:%
+    :;Xt%.8;:;X8X8@XSX8%  t@    t 8:        @ 8 ..;%    t 8;       X;;8.@8S
+   ..:@XX8 : tS8888888S    :    X ;  8t 8  . @@;:8X.@;  8 S        :S8;8
+      :S:tt8: tX888888tX% %:     % :X.XX@ :8 :.;S %  ;Xt8:%
+       ;@;%88% ; .:;;.t@8Xt      t  S:    @ @       XSX; .    88:
+     t@.%@XX88@ 88@@XS    t      @        @:@               ;  .S
+   ; @SS%88 :88t 8%    8;8.      % :%      .               88St       :.
+  ;8@S%;;;;:;t88; @88X;           .t:                     8S  S ;@8S: .;
+  8@Stt;::::::.tS@ S t                                    8: ;@:;X8Xt.
+  8X%t;;:::...::;S8X                                       t;%.;tS
+  XS%t;;:::.....:;t8                                          S% ;
+                                                                  faps 0.999-r367
+  >> Starting a new simulation...
+  >> Reading in structure
+  >> Reading positions from cif file: MIL-47.cif
+  >> Writing state file, MIL-47.niss.
+  >> Skipping force field optimisation
+  >> Running a vasp calculation
+  >> Running on 16 nodes
+  >> Optimizing hydrogen positions
+  >> Dispersion correction will be used
+  >> Running vasp job in queue. Jobid: 36961790
+  36961791.wooki.cluster
+  >> Writing state file, MIL-47.niss.
+  >> Faps terminated normally
+
+
+If you are running on a cluster, you will see the Faps logo, some output
+information and the program will end. The job should now be running through your
+queueing system and subsequent sections will automatically run through the
+queue. This will generate, in sequence, a DFT hydrogen-optimized structure,
+REPEAT charges, and the GCMC uptake of |CO2| at 298 K and 0.15 bar pressure in a
+:file:`structure-CO2.csv` file. You can check the status of the job by running
+:command:`faps MIL-47` again.
+
+.. code-block:: text
+
+  >> Starting faps version 0.999-r367
+  >> Existing simulation found: MIL-47.niss; loading...
+  >> Using new options.
+  >> Previous system state reported from .niss file (running jobs may have
+     already finished):
+  >>  * State of esp: Not run
+  >>  * State of charges: Not run
+  >>  * State of dft: Running, jobid: 36961790
+  >>  * State of GCMC: Not run
+  >>  * State of init: Processed
+  >>  * State of ff_opt: Skipped
+  >>  * State of properties: Not run
+  >> DFT still in progress
+  >> Faps terminated normally
+
+The DFT calculation might take a while so have a cup of tea and come back in a
+bit.
 
 --------------------
 Isotherm calculation
@@ -35,9 +99,9 @@ calcaulted for every combination.
 
 .. code-block:: ini
 
-   # structure.fap
-   mc_pressure = 0.01 0.1 0.2 0.4 0.8 1.2
-   mc_temperature = 263 273
+  # structure.fap
+  mc_pressure = 0.01 0.1 0.2 0.4 0.8 1.2
+  mc_temperature = 263 273
 
 
 ---------------

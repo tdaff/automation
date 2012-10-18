@@ -5,6 +5,8 @@
 # in the job directory.
 #
 # Use the template to make new guests. Blocks of text need to be indented.
+#
+# EPSILON_K_TO_KCAL = 0.0019872041
 
 [template]
 name = Molecule Name
@@ -26,7 +28,7 @@ probe radius = 1.4  # probe to use for void volumes, suface areas, etc
 molar volume = 22.414  # used for volumetric uptake (defaults to ideal gas)
 
 [CO2]
-name = Carbon Dioxide
+name = Carbon Dioxide for Adsorption in Zeolites
 source = http://dx.doi.org/10.1021/jp810871f
 atoms =
     Cx  12.0107  0.65120  0.0    0.0  0.0
@@ -38,6 +40,88 @@ potentials =
 probability =
     1
     2  3
+probe radius = 1.71
+
+[CO2-TraPPE]
+name = TraPPE Carbon Dioxide
+source = http://dx.doi.org/10.1002/aic.690470719
+atoms =
+    Cx  12.0107  0.70  0.0   0.0  0.0
+    Ox  15.9994 -0.35  1.16  0.0  0.0
+    Ox  15.9994 -0.35 -1.16  0.0  0.0
+potentials =
+    Cx  2.80  0.05365
+    Ox  3.05  0.15699
+probability =
+    1
+    2  3
+probe radius = 1.71
+
+[CO-MOF]
+name = Carbon Monoxide Optimised for CuBTC MIL-47 and IRMOF1
+source = http://dx.doi.org/10.1021/jp211563e
+atoms =
+    Cx  12.0107 -0.2424  0.0000  0.0000  0.0000
+    Ox  15.9994 -0.2744  1.1280  0.0000  0.0000
+    COx  0.0000  0.5168  0.6443  0.0000  0.0000
+potentials =
+    Cx  3.636  0.0320755
+    Ox  2.919  0.1947738
+    COx 0.000  0.0000000
+probability =
+    1
+    2
+    0
+probe radius = 1.71
+
+[CO-UFF]
+name = Carbon Monoxide with UFF Parameters and Mulliken Charges
+source = http://dx.doi.org/10.1021/jp908058n
+atoms =
+    Cx  12.0107  0.107  0.000  0.000  0.000
+    Ox  15.9994 -0.107  1.140  0.000  0.000
+potentials =
+    Cx  3.43  0.10499
+    Ox  3.12  0.05999
+probability =
+    1
+    2
+    0
+probe radius = 1.71
+
+[CO-Graphite]
+name = Carbon Monoxide Adsorbed on Graphite
+source = http://dx.doi.org/10.1080/00268978400103111
+atoms =
+    Cx  12.0107  0.831 -0.6446  0.0000  0.0000
+    Ox  15.9994  0.000  0.4836  0.0000  0.0000
+    COx  0.0000 -0.636  1.0820  0.0000  0.0000
+    COx  0.0000 -0.195  0.3256  0.0000  0.0000
+potentials =
+    Cx  3.385  0.79270
+    Ox  2.885  0.12235
+    COx 0.000  0.00000
+probability =
+    1
+    2
+    0
+probe radius = 1.71
+
+[CO-Ligand]
+name = Carbon Monoxide in Myoglobin
+source = http://dx.doi.org/10.1016/0301-0104(91)87068-7
+atoms =
+    Cx  12.0107 -0.75  0.0000  0.0000  0.0000
+    Ox  15.9994 -0.85  1.1280  0.0000  0.0000
+    com  0.0000  1.60  0.6443  0.0000  0.0000
+potentials =
+    Cx  3.83  0.0262
+    Ox  3.12  0.1591
+    com 0.00  0.0000
+probability =
+    1
+    2
+    0
 probe radius = 1.71
 
 [TIP5P]
@@ -79,7 +163,7 @@ probability =
 probe radius = 1.4
 
 [TIP4P-Ew]
-name = TIP4P-Ew four-site water model for biomolecular simulations
+name = TIP4P-Ew Four-Site Water Model for Biomolecular Simulations
 source = http://dx.doi.org/10.1063/1.1683075
 atoms =
     Ow  15.9994  0.00000  0.0000000  0.000000  0.0000000
@@ -152,7 +236,7 @@ probability =
 probe radius = 1.8
 
 [N2-Etters]
-name = Nitrogen based on Etters potential
+name = Nitrogen Based on Etters Potential
 source = http://dx.doi.org/10.1063/1.1352078
 atoms =
     Nx   14.0067 -0.4954 -0.556 0.000 0.000
@@ -167,7 +251,7 @@ probability =
 probe radius = 1.8
 
 [H2S]
-name = Hydrogen Sulphide for vapor-liquid equilibria
+name = Hydrogen Sulphide for Vapor-Liquid Equilibria
 source = http://dx.doi.org/10.1063/1.2049278
 atoms =
     SX    32.065 -0.380  0.000000  0.000000  0.000000
@@ -180,6 +264,150 @@ probability =
     1
     2 3
 probe radius = 1.8
+
+[N2O-PE]
+name = Nitrous Oxide for Phase Equilibria with Oxygen
+source = http://dx.doi.org/10.1016/j.fluid.2007.07.014
+atoms =
+    N1    14.0067 -0.3630  2.3124  0.0000  0.0000
+    N2    14.0067  0.7130  1.1842  0.0000  0.0000
+    Ox    15.9990 -0.3500  0.0000  0.0000  0.0000
+potentials =
+    N1   3.120  0.157321
+    N2   2.800  0.053655
+    Ox   3.050  0.156989
+probability =
+    1
+    2
+    3
+probe radius = 1.7
+
+[N2O-Sol]
+name = Nitrous Oxide for Solubility in Fluorinated Liquids
+source = http://dx.doi.org/10.1021/jp062995z
+atoms =
+    N1    14.0067 -0.2497  2.3120  0.0000  0.0000
+    N2    14.0067  0.5159  1.1840  0.0000  0.0000
+    Ox    15.9990 -0.2662  0.0000  0.0000  0.0000
+potentials =
+    N1   3.150  0.112337
+    N2   3.150  0.112337
+    Ox   3.030  0.155360
+probability =
+    1
+    2
+    3
+probe radius = 1.7
+
+[NO2]
+name = Nitrogen Dioxide
+source = http://dx.doi.org/10.1021/jp8068255
+atoms =
+    Ox    15.9990 -0.073 -1.0985  0.4651  0.0000
+    Nx    14.0067  0.146  0.0000  0.0000  0.0000
+    Ox    15.9990 -0.073  1.0985  0.4651  0.0000
+potentials =
+    Nx   3.24  0.100076
+    Ox   2.93  0.124220
+probability =
+    2
+    1 3
+probe radius = 1.7
+
+[N2O4]
+name = Dinitrogen Tetroxide
+source = http://dx.doi.org/10.1021/jp8068255
+atoms =
+    Ox    15.9990 -0.294 -1.1010 -1.3426  0.0000
+    Nx    14.0067  0.588  0.0000 -0.8910  0.0000
+    Ox    15.9990 -0.294  1.1010 -1.3426  0.0000
+    Ox    15.9990 -0.294 -1.1010  1.3426  0.0000
+    Nx    14.0067  0.588  0.0000  0.8910  0.0000
+    Ox    15.9990 -0.294  1.1010  1.3426  0.0000
+potentials =
+    Nx   3.24  0.100076
+    Ox   2.93  0.124220
+probability =
+    2 5
+    1 3 4 6
+probe radius = 1.7
+
+[NO]
+name = Nitric Oxide for Diffusion in Water
+source = http://dx.doi.org/10.1063/1.1992482
+atoms =
+    Nx    14.0067  0.0288  0.00  0.00  0.00
+    Ox    15.9990 -0.0288  1.15  0.00  0.00
+potentials =
+    Nx   3.014  0.157983
+    Ox   2.875  0.192639
+probability =
+    1
+    2
+probe radius = 1.7
+
+[O2-TraPPE]
+name = Oxygen for Liquid Vapour Phase Equilibria
+source = http://dx.doi.org/10.1007/s00214-005-0073-1
+atoms =
+    O2    15.9990 -0.113 -0.605  0.000  0.000
+    O2    15.9990 -0.113 +0.605  0.000  0.000
+    com    0.0000  0.226  0.000  0.000  0.000
+potentials =
+    O2   3.02  0.097373
+    com  0.00  0.000000
+probability =
+    1 2
+    0
+probe radius = 1.7
+
+[O2-PE]
+name = Oxygen for Phase Equilibria with Nitrous Oxide
+source = http://dx.doi.org/10.1016/j.fluid.2007.07.014
+atoms =
+    O2    15.9990 -0.1230 -0.6050  0.0000  0.0000
+    O2    15.9990 -0.1230 +0.6050  0.0000  0.0000
+    com    0.0000  0.2460  0.0000  0.0000  0.0000
+potentials =
+    O2   3.013  0.0974684
+    com  0.000  0.0000000
+probability =
+    1 2
+    0
+probe radius = 1.7
+
+[SO2]
+name = Sulphur Dioxide for Vapor-Liquid Equilibria
+source = http://dx.doi.org/10.1063/1.2049278
+atoms =
+    Sx    32.065   0.59   0.000000  0.000000  0.000000
+    Ox    15.999  -0.295 -1.235751  0.723562  0.000000
+    Ox    15.999  -0.295  1.235751  0.723562  0.000000
+potentials =
+    Sx   3.39  0.14666
+    Ox   3.05  0.15699
+probability =
+    1
+    2 3
+probe radius = 1.7
+
+[H2]
+name = Anisotropic Hydrogen Diatom for Condensed Phase
+source = http://dx.doi.org/10.1021/ct800155q
+atoms =
+    H2E   0.000  0.3732 -0.371 0.000 0.000
+    H2N   1.000  0.0000 -0.329 0.000 0.000
+    H2G   0.000 -0.7464  0.000 0.000 0.000
+    H2N   1.000  0.0000  0.329 0.000 0.000
+    H2E   0.000  0.3732  0.371 0.000 0.000
+potentials =
+    H2G   3.2293 0.0175899
+    H2N   2.3406 0.0080798
+    H2E   0.0000 0.0000000
+probability =
+    2 4
+    0
+probe radius = 1.0
 
 [I2]
 name = Iodine Diatom with UFF parameters

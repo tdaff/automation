@@ -1,30 +1,22 @@
 .. _installation:
 
 ============
-Getting faps
+Installation
 ============
 
 There are a number of mehthods to install a copy of faps on your system
-which depend on your use-case. For a single simulation or a set of
-simulations with different parameters it is easiest to use the system
-installed version of the code with an individual input file for each.
-For a large number of identical jobs it is best to obtain a local copy
-of the code and modify the settings for all jobs in that copy.
+which depend on your use-case. For the large majority of users the system
+installed faps should be sufficient. Only in the case that you need to modify
+the source or you need a different version you can obtain a personal copy.
 
 ---------------------
 System installed faps
 ---------------------
 
 Provided that faps is in your ``$PATH`` you can run the system installed
-version with the command ``faps``.
-
-
--------------
-Personal copy
--------------
-
-Simply copy the entire faps directy into your own directory and edit the
-``site.ini`` as appropriate.
+version with the command :command:`faps`. If it is not in your path, you can
+either :command:`/use/path/to/faps.py` or make a symbolic link somewhere in your
+path :command:`ln -s /path/to/faps.py ~/bin/faps`.
 
 
 ---------------
@@ -35,21 +27,22 @@ The faps code has has been developed using the `mercurial
 <http://mercurial.selenic.com/>`_ source control manager. If you have
 read access to the `bitbucket repository
 <https://bitbucket.org/tdaff/automation>`_ the most current version can
-be checked out with the ``hg clone`` command. You may also clone an
-existing repository that you have read access to.
+be checked out with the :command:`hg clone` command or downloaded as a
+:file:`.tar.gz`. You may also clone an existing repository that you have read
+access to.
 
-To keep your local copy up-to-date issue an ``hg pull`` followed by an
-``hg up``. Please see the mercurial manual for more details.
+To keep your local copy up-to-date issue an :command:`hg pull` followed by an
+:command:`hg up`. Please see the mercurial manual for more details.
 
 .. warning::
-   Updating your copy will potentially overwrite modified files. Use the
-   `site.ini` file for any customisations as this wil not be
-   overwritten.
+  Updating your copy will potentially overwrite modified files. Use the
+  :file:`site.ini` file for any customisations as this wil not be
+  overwritten.
 
 
-================================
-Executables and additional files
-================================
+===========================================
+Setting up executables and additional files
+===========================================
 
 -----------
 Executables

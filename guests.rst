@@ -3,9 +3,9 @@ Guests
 ======
 
 Faps is distributed with a number of standard guests available in the
-``guests.lib`` file in the faps directory. It is also possible to add
-custom guests for your simulation either in a ``~/.faps/guests.lib``
-that is queried for all simulations or a ``$JOBDIR/guests.lib`` that
+:file:`guests.lib` file in the faps directory. It is also possible to add
+custom guests for your simulation either in :file:`~/.faps/guests.lib`
+that is queried for all simulations or a :file:`$JOBDIR/guests.lib` that
 is queried for all jobs running in that directory.
 
 ----------------
@@ -13,14 +13,14 @@ Available guests
 ----------------
 
 These guests are available as standard with the identifier with the
-``guests`` option.
+:envvar:`guests` option.
 
 ============ ===========================================================
 Identifier   Guest
 ============ ===========================================================
-CO2          Carbon Dioxide for Adsorption in Zeolites
-CO2-TraPPE   TraPPE Carbon Dioxide
-CO-MOF       Carbon Monoxide Optimised for CuBTC MIL-47 and IRMOF1
+CO2          Carbon Dioxide for Adsorption in Zeolites :cite:`Garcia-Sanchez2009`
+CO2-TraPPE   TraPPE Carbon Dioxide :cite:`Potoff2001`
+CO-MOF       Carbon Monoxide Optimised for CuBTC MIL-47 and IRMOF1 :cite:`Martin-Calvo2012`
 CO-UFF       Carbon Monoxide with UFF Parameters and Mulliken Charges
 CO-Graphite  Carbon Monoxide Adsorbed on Graphite
 CO-Ligand    Carbon Monoxide in Myoglobin
@@ -72,9 +72,11 @@ The following example is explained below.
     probability =
         0
         2  3
+    probe radius = 1.71
+
 
 The name in square brackets ``[CO2-GS]`` is the identifier to use in the
-``guests`` option in the ``.fap`` file. Try to be short but descriptive,
+``guests`` option in your ``.fap`` file. Try to be short but descriptive,
 but this must be unique.
 
 ``name`` is the full name and should differentiate it from similar
@@ -102,3 +104,5 @@ Goups of atoms can be chosen for probability plotting in the
 ``probability`` block. Each line is the atom identifiers for a single
 group (1 is the first atom), 0 is the centre of mass. In this case the
 second plot is for the oxygen atoms.
+
+.. bibliography:: library.bib

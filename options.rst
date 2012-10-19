@@ -1,36 +1,42 @@
-================
-Customising faps
-================
+=======
+Options
+=======
 
-Sensible defaults are provided by faps for most options, however it also aims
-to offer many options for customising calculations. Defaults for all options
-can be found in the ``defaults.ini``; site-wide options such as the exe names
-and directories should be set in the :ref:`site.ini <site-ini>`. Custom job
-types should be set up in your ``~/faps/$JOB_TYPE.fap`` and referenced with the
-``--job-type`` commandline option.
+.. program:: faps
+
+
+Sensible defaults are provided by faps for most options, however it also aims to
+offer many options for customising calculations. Defaults for all options can be
+found in the :file:`defaults.ini`, which is located in the source code
+directory; site-wide options such as the executable locations, directories and
+queueing system and directories should be set in the :ref:`site.ini <site-ini>`.
+When using the same options for many jobs the custom job types should be set up
+in your :file:`~/faps/$JOB_TYPE.fap` and referenced with the
+:option:`-j` commandline option. Settings for an individual job can be
+set in the :file:`$JOBNAME.fap` file or on the command line with :option:`-o`.
 
 .. _config-files:
 
--------------------
-Configuration files
--------------------
+-------------------------
+Configuration file format
+-------------------------
 
 Config files use a simple ini format of ``option = value``, or ``option:
 value``. Values will requre a spcific type:
 
- * ``str``
-      Any string value, such as text or a path.
+``str``
+  Any string value, such as text or a path.
 
- * ``bool``
-      A case-insensitive true/false value; ``1``, ``yes``, ``true``, and ``on``
-      will evaluate to ``True``, and ``0``, ``no``, ``false``, and ``off``
-      will evaluate to ``False``.
+``bool``
+  A case-insensitive true/false value; ``1``, ``yes``, ``true``, and ``on``
+  will evaluate to ``True``, and ``0``, ``no``, ``false``, and ``off``
+  will evaluate to ``False``.
 
- * ``int``
-      An integer value, such as ``1234``, ``0``, ``-12``.
+``int``
+  An integer value, such as ``1234``, ``0``, ``-12``.
 
- * ``float``
-      A decimal value, such as ``12.5``, ``7``, ``-33.98``.
+``float``
+  A decimal value, such as ``12.5``, ``7``, ``-33.98``.
 
 Many options will take a ``list`` of several values. Items can be separated by
 commas and whitespace, and brackets are ignored. In some cases the values
@@ -40,325 +46,638 @@ examples, ``float``: ``0.1 0.2 0.3``; ``str``: ``(CO2, CH4)``; ``int``:
 
 Lines starting with ``#`` or ``;`` are comments and will be ignored.
 
-The following is an auto-generated list of most options. The default value for
-each option is given here. For the most up-to-date list, see the
-``defaults.ini`` file.
+Options should be one per line. If you wish to span multiple lines, subsequent
+ones should be indented. Options are evaluated hierarchically and will silently
+fall back to defaults in the order (use the :option:`-v` option to show which
+options are used):
 
-.. program:: faps
+* Command line arguments or option from :option:`-o`
+* Job specific option from :file:`$JOBNAME.fap`
+* Job type :file:`~/.faps/JOB_TYPE.fap` specified with :option:`-j`
+* Site specific from :file:`site.ini`
+* Default from :file:`defaults.ini`
 
 
 
-.. envvar:: charge_method = repeat
+The following is an automatically generated list of most options. The default
+value for each option is given here. For the most up-to-date list, see the
+:file:`defaults.ini` file.
 
-   Method for calculating charge. [str] {repeat, gulp}
 
-.. envvar:: default_cell = (10.0, 10.0, 10.0, 90, 90, 90)
+.. envvar:: charge_method
 
-   Cell parameters to use only when they are not specified in the input
-   structure. Use either (a, b, c, alpha, beta, gamma) or
-   ax, ay, az,
-   bx, by, bz,
-   cx, cy, cz
-   notation. [float, list]
+  Default: repeat
 
-.. envvar:: dft_code = vasp
+  yes, on, 1 and False, no, off, 0
+  Method for calculating charge. [str] {repeat, gulp, egulp}
 
-   Method to use for dft and/or optimization step. [str] {vasp, siesta}
+.. envvar:: dedicated_queue
 
-.. envvar:: dispersion = True
+  Default:
 
-   Turn on empirical dispersion corrections in dft codes that
-   support it. [bool]
+  Use a a specific queue when submitting jobs. Leave blank for none [str]
+  e.g. NRAP12345 on sharcnet...
 
-.. envvar:: egulp_exe = egulp
+.. envvar:: default_cell
 
-   Location of Eugenes QEq code
+  Default: (10.0, 10.0, 10.0, 90, 90, 90)
 
-.. envvar:: egulp_parameters =
+  Cell parameters in A to use only when they are not specified in the
+  input structure (e.g. for .xyz). Use either (a, b, c, alpha, beta, gamma) or
+  ax, ay, az,
+  bx, by, bz,
+  cx, cy, cz
+  notation. [float, list]
 
-   custom parameter sets for QEq as (atom, electronegativity, 0.5\*hardness)
+.. envvar:: dft_code
 
-.. envvar:: esp_resolution = 0.1
+  Default: vasp
 
-   Resolution of the esp grid (A). [float]
+  Method to use for dft and/or optimization step. [str] {vasp, siesta}
 
-.. envvar:: esp_src = vasp
+.. envvar:: dispersion
 
-   Source for the ESP. This will usually be the same as the dft_code,
-   but not always. [str] {vasp, siesta}
+  Default: True
 
-.. envvar:: fastmc_exe = fastmc
+  Turn on empirical dispersion corrections in dft codes that
+  support it. [bool]
 
-   Location of fastmc executable, must be the full path or be in the
-   user's $PATH. [str]
+.. envvar:: egulp_exe
 
-.. envvar:: fastmc_ncpu = 1
+  Default: egulp
 
-   Number of CPUs to run fastmc on. Make sure that you use the
-   correct fastmc_exe for parallel runs. [int]
+  Location of Eugene's QEq code. [str]
 
-.. envvar:: find_maxima = True
+.. envvar:: esp_resolution
 
-   Calculate the location of the guests from the probability cube [bool]
+  Default: 0.1
 
-.. envvar:: fold = True
+  Target resolution of the esp grid (A). [float]
 
-   Fold probability cube into the unit cell [bool]
+.. envvar:: esp_src
 
-.. envvar:: guests = CO2
+  Default: vasp
 
-   Guest(s) to use in GCMC. [str, list] {see guests.lib}
+  Source for the ESP. This will usually be the same as the dft_code,
+  but not always. [str] {vasp, siesta}
 
-.. envvar:: gulp_exe = gulp
+.. envvar:: fastmc_compress_files
 
-   Location of GULP exe
+  Default: \*.cube
 
-.. envvar:: import = False
+  files to keep and compress after a successful fastmc job [str, list]
 
-   Try to read in data from a previous calculation. [bool]
+.. envvar:: fastmc_delete_files
 
-.. envvar:: initial_structure_format = pdb
+  Default:
 
-   Filetype for input structure file. [str] {pdb, cif, vasp, xyz}
+  files to delete after a successful fastmc job [str, list]
 
-.. envvar:: interactive = False
+.. envvar:: fastmc_exe
 
-   Enable interactive interface. [bool]
+  Default: fastmc
 
-.. envvar:: kpoints = (1, 1, 1)
+  Location of fastmc executable, must be the full path or be in the
+  user's $PATH. [str]
 
-   Kpoint grid size for dft calculations. Ensure that gamma-point only
-   exe is not used for >1 kpoint. [(int, int, int)]
+.. envvar:: fastmc_keep_unfolded_cubes
 
-.. envvar:: mc_code = fastmc
+  Default: False
 
-   Method to use for Monte Carlo calculations. [str] {fastmc}
+  Should the original cube files be kept after folding (or deleted)? [bool]
 
-.. envvar:: mc_cutoff = 12.5
+.. envvar:: fastmc_ncpu
 
-   Potential cutoff to use in GCMC. This will also be used to determine
-   the minimum supercell size. [float]
+  Default: 1
 
-.. envvar:: mc_eq_steps = 1000000
+  Number of CPUs to run fastmc on. Make sure that you use the
+  correct fastmc_exe for parallel runs. [int]
 
-   GCMC equilibration steps. [int]
+.. envvar:: ff_opt_code
 
-.. envvar:: mc_history_freq = 0
+  Default: gulp
 
-   How often to write the fastmc history. [int]
+  Method to use to do force field optimisations. [str]
 
-.. envvar:: mc_jobcontrol = False
+.. envvar:: find_maxima
 
-   Add the 'jobcontrol' directive with fastmc so that GCMC must be
-   stopped manually. [bool]
+  Default: True
 
-.. envvar:: mc_numguests_freq = 1000
+  Calculate the location of the guests from the probability cube [bool]
 
-   How often to write the fastmc numguests. [int]
+.. envvar:: fold
 
-.. envvar:: mc_pressure = 1.0
+  Default: True
 
-   GCMC pressure(s) (bar). For multiple pressure points and guests use
-   nested lists ((g1p1, g2p1, ...), (g1p2, g2p2, ...), ...), these are
-   all run at every temperature to generate isotherms [float, list]
+  Fold probability cube into the unit cell [bool]
 
-.. envvar:: mc_probability_plot = True
+.. envvar:: guests
 
-   Turn on probability plots in GCMC. [bool]
+  Default: CO2
 
-.. envvar:: mc_prod_steps = 10000000
+  Guest(s) to use in GCMC. [str, list] {see guests.lib}
 
-   GCMC production steps. [int]
+.. envvar:: gulp_terse
 
-.. envvar:: mc_state_points =
+  Default: False
 
-   Individual state points to run gcmc simulations; not combined with
-   temperature/pressure isotherms. Specify points (bar/Kelvin) as:
-   (T1, (g1p1, g2p1, ...)), (T2, (g1p2, g2p2, ...), ... [float, list]
+  Reduce the standard output of GULP to a minimum with no movie files [bool]
 
-.. envvar:: mc_supercell = (1, 1, 1)
+.. envvar:: gulp_exe
 
-   Supercell to use for GCMC. These values will only be used if the
-   individual dimenstions are larger than the supercell calculated from
-   the cutoff. [(int, int, int)]
+  Default: gulp
 
-.. envvar:: mc_temperature = 273
+  Location of GULP exe. [str]
 
-   Temperature(s) to use in GCMC (Kelvin) combined with pressures to
-   collect isotherms. [float, list]
+.. envvar:: import
 
-.. envvar:: no_charges = False
+  Default: False
 
-   Skip the charge calculation step; Charges will all be zero. [bool]
+  Try to read in data from a previous calculation. [bool]
 
-.. envvar:: no_dft = False
+.. envvar:: initial_structure_format
 
-   Skip the dft/optimization step; structure is not optimized and charge
-   calculation may fail if it depends on this step. [bool]
+  Default: cif
 
-.. envvar:: no_gcmc = False
+  Filetype for input structure file. [str] {pdb, cif, vasp, xyz}
 
-   Skip the gcmc step. [bool]
+.. envvar:: interactive
 
-.. envvar:: no_properties = False
+  Default: False
 
-   Skip the property calculations. [bool]
+  Enable interactive interface. [bool]
 
-.. envvar:: no_submit = False
+.. envvar:: kpoints
 
-   Do not submit jobs; just create input files. [bool]
+  Default: (1, 1, 1)
 
-.. envvar:: optim_h = True
+  Kpoint grid size for dft calculations. Ensure that gamma-point only
+  exe is not used for >1 kpoint. [(int, int, int)]
 
-   Optimize positions of hydrogens in dft/optimization step. [bool]
+.. envvar:: mc_code
 
-.. envvar:: optim_all = False
+  Default: fastmc
 
-   Optimize all atom positions in dft/optimization step. [bool]
+  Method to use for Monte Carlo calculations. [str] {fastmc}
 
-.. envvar:: optim_cell = False
+.. envvar:: mc_cutoff
 
-   Optimize cell vectors in dft/optimization step. [bool]
+  Default: 12.5
 
-.. envvar:: potcar_dir = vasp_pseudopotentials/
+  Potential cutoff in A to use in GCMC. This will also be used to
+  determine the minimum supercell size. [float]
 
-   Location of VASP POTCARs; each element in a folder. [str]
+.. envvar:: mc_eq_steps
 
-.. envvar:: psf_dir = siesta_pseuodpotentials/
+  Default: 1000000
 
-   Location of siesta psf pseudopotentials. [str]
+  GCMC equilibration steps. Use negative values for cycles. [int]
 
-.. envvar:: qeq_fit = False
+.. envvar:: mc_history_freq
 
-   Fit charge equilibration parameters to calculated charges. [bool]
+  Default: 0
 
-.. envvar:: queue = wooki
+  How often to write the fastmc history. [int]
 
-   Queuing system to use. [str] {wooki, sharcnet}
+.. envvar:: mc_jobcontrol
 
-.. envvar:: quiet = False
+  Default: False
 
-   Silence stdout. This will be ignored here; set on commandline. [bool]
+  Add the 'jobcontrol' directive with fastmc so that GCMC must be
+  stopped manually. [bool]
 
-.. envvar:: repeat_compress_files = \*.cube
+.. envvar:: mc_numguests_freq
 
-   files to keep and compress after a successful REPEAT job [str, list]
+  Default: 1000
 
-.. envvar:: repeat_delete_files = ESP_real_coul.dat fort.30 fort.40 REPEAT_param.inp
+  How often to write the fastmc numguests.out file. [int]
 
-   files to delete after a successful REPEAT job [str, list]
+.. envvar:: mc_pressure
 
-.. envvar:: repeat_exe = repeat.x
+  Default: 0.15
 
-   Location of REPEAT executable. [str]
+  GCMC pressure(s) (bar). For multiple pressure points and guests use
+  nested lists ((g1p1, g2p1, ...), (g1p2, g2p2, ...), ...), these are
+  all run at every temperature to generate isotherms. [float, list]
 
-.. envvar:: repeat_ncpu = 1
+.. envvar:: mc_probability_plot
 
-   Cpus to use for REPEAT calculation. Ensure that repeat_exe points to a
-   parallel version if using more than one CPU. [int]
+  Default: True
 
-.. envvar:: run_all = True
+  Turn on probability plots in GCMC. [bool]
 
-   Run all the steps without stopping. [bool]
+.. envvar:: mc_probability_plot_spacing
 
-.. envvar:: serial_memory = 2.5
+  Default: 0.1
 
-   Maximum memory that can be used for serial calculations (GB). [float]
+  Distance between grid points (resolution) in A for GCMC
+  probability plot. [float]
 
-.. envvar:: siesta_accuracy = med
+.. envvar:: mc_prod_steps
 
-   General acucracy setting for siesta calcualtions. [str] {low, med, high}
+  Default: 10000000
 
-.. envvar:: siesta_compress_files =
+  GCMC production steps. Use negative values for cycles. [int]
 
-   Files to keep and compress after a successful SIESTA job [str, list]
+.. envvar:: mc_state_points
 
-.. envvar:: siesta_delete_files = \*.ion \*.xml INPUT_TMP\* \*.DM
+  Default:
 
-   Files to delete after a successful SIESTA job [str, list]
+  Individual state points to run gcmc simulations; not combined with
+  temperature/pressure isotherms. Specify points (bar/Kelvin) as:
+  (T1, (g1p1, g2p1, ...)), (T2, (g1p2, g2p2, ...), ... [float, list]
 
-.. envvar:: siesta_exe = siesta
+.. envvar:: mc_supercell
 
-   Location of siesta executable. [str]
+  Default: (1, 1, 1)
 
-.. envvar:: siesta_ncpu = 1
+  Minimum supercell to use for GCMC. These values will only be used
+  if the individual dimenstions are larger than the supercell calculated
+  from the cutoff. [(int, int, int)]
 
-   Number of CPUs to use for siesta. [str]
+.. envvar:: mc_temperature
 
-.. envvar:: siesta_to_cube = siesta2repeat
+  Default: 298
 
-   Command to convert siesta ESP to .cube file. [str]
+  Temperature(s) to use in GCMC (Kelvin) combined with pressures to
+  collect isotherms. [float, list]
 
-.. envvar:: spin = False
+.. envvar:: no_charges
 
-   Turn on spin polarization in dft. [bool]
+  Default: False
 
-.. envvar:: surface_area_probe =
+  Skip the charge calculation step; If charges are not set in the
+  input file or by other means they will all be zero. [bool]
 
-   Radius of probe for calculating surface areas. A probe of radius 0.0 will
-   generate the VdW surface typical values for probe molecules are 1.42 (H2),
-   1.72 (CO2) or 1.82 (N2) (A). [float, list]
+.. envvar:: no_dft
 
-.. envvar:: surface_area_resolution = 0.03
+  Default: False
 
-   Approximate area per point when subdividing accessible surface areas (A^2).
+  Skip the dft/optimization step; structure is not dft optimized and charge
+  calculation may fail if it depends on the esp from this step. [bool]
 
-.. envvar:: surface_area_save = False
+.. envvar:: no_force_field_opt
 
-   Save the valid points on the surface to a file. [bool]
+  Default: True
 
-.. envvar:: surface_area_uniform_sample = False
+  Do not pre-optimise with a force field. Ususally requires topology
+  defined in the input file. [bool]
 
-   Use points with a uniform spacing? (or do Monte Carlo sampling) [bool]
+.. envvar:: no_gcmc
 
-.. envvar:: symmetry = False
+  Default: False
 
-   Treat symmetrical atoms as equivalent for charges. [bool]
+  Skip the gcmc step. [bool]
 
-.. envvar:: threaded_codes = repeat
+.. envvar:: no_properties
 
-   Codes that run with openmp threads, not mpi. [str, list]
+  Default: False
 
-.. envvar:: threaded_memory = 12
+  Skip the property calculations. [bool]
 
-   Maximum memory to use for threaded calculations (GB). [float]
+.. envvar:: no_submit
 
-.. envvar:: update_opts = True
+  Default: False
 
-   Re-read options on restart. [bool]
+  Do not submit jobs; just create input files. [bool]
 
-.. envvar:: vasp_compress_files = LOCPOT CHGCAR vasprun.xml
+.. envvar:: optim_h
 
-   files to keep and compress after a successful VASP job [str, list]
+  Default: True
 
-.. envvar:: vasp_delete_files = WAVECAR CHG DOSCAR EIGENVAL POTCAR PCDAT IBZKPT XDATCAR KPOINTS
+  Optimize positions of hydrogens in dft/optimization step. [bool]
 
-   files to delete after a successful VASP job [str, list]
+.. envvar:: optim_all
 
-.. envvar:: vasp_exe = vasp
+  Default: False
 
-   Name (location) of vasp executable. [str]
+  Optimize all atom positions in dft/optimization step. [bool]
 
-.. envvar:: vasp_ncpu = 8
+.. envvar:: optim_cell
 
-   Number of cpus to run vasp on. [int]
+  Default: False
 
-.. envvar:: vasp_to_cube = vasp_to_cube
+  Optimize cell vectors in dft/optimization step. [bool]
 
-   Command to convert LOCPOT to .cube for REPEAT [str]
+.. envvar:: plain
 
-.. envvar:: verbose = False
+  Default: False
 
-   Print debugging information. This will be ignored here; set on commandline.
+  Do not colourise output. Ignored here; use commandline. [bool]
 
-.. envvar:: zeo++ = True
+.. envvar:: potcar_dir
 
-   Run zeo++ on the structure? [bool]
+  Default: vasp_pseudopotentials/
 
-.. envvar:: zeo++_command = network -res -chan 1.72 -sa 0.0 0.0 50000 -vol 0.0 0.0 50000
+  Location of VASP POTCARs; each element in a folder. [str]
 
-   Command to run for zeo++. Include all required options here but omit the
-   cssr name. Radius (-r) and mass (-mass) files are automatically added.
+.. envvar:: psf_dir
+
+  Default: siesta_pseuodpotentials/
+
+  Location of siesta psf pseudopotentials. [str]
+
+.. envvar:: qeq_fit
+
+  Default: False
+
+  Fit charge equilibration parameters to calculated charges. [bool]
+
+.. envvar:: qeq_parameters
+
+  Default:
+
+  custom parameter sets for QEq as (atom, electronegativity, 0.5\*hardness)
+  [(int/str, float, float), list]
+
+.. envvar:: queue
+
+  Default: wooki
+
+  Queuing system to use. [str] {wooki, sharcnet}
+
+.. envvar:: quiet
+
+  Default: False
+
+  Only output errors. This will be ignored here; set on commandline. [bool]
+
+.. envvar:: repeat_compress_files
+
+  Default: \*.cube
+
+  files to keep and compress after a successful REPEAT job. [str, list]
+
+.. envvar:: repeat_delete_files
+
+  Default: ESP_real_coul.dat fort.30 fort.40 REPEAT_param.inp
+
+  files to delete after a successful REPEAT job. [str, list]
+
+.. envvar:: repeat_exe
+
+  Default: repeat.x
+
+  Location of REPEAT executable. [str]
+
+.. envvar:: repeat_ncpu
+
+  Default: 1
+
+  Cpus to use for REPEAT calculation. Ensure that repeat_exe points to a
+  parallel version if using more than one CPU. [int]
+
+.. envvar:: run_all
+
+  Default: True
+
+  Run all the steps without stopping. [bool]
+
+.. envvar:: serial_memory
+
+  Default: 2.5
+
+  Maximum memory that can be used for serial calculations (GB).
+  If using serial repeat this can restrict the resolution of the ESP. [float]
+
+.. envvar:: siesta_accuracy
+
+  Default: med
+
+  General acucracy setting for siesta calcualtions. [str] {low, med, high}
+
+.. envvar:: siesta_compress_files
+
+  Default:
+
+  Files to keep and compress after a successful SIESTA job. [str, list]
+
+.. envvar:: siesta_delete_files
+
+  Default: \*.ion \*.xml INPUT_TMP\* \*.DM
+
+  Files to delete after a successful SIESTA job. [str, list]
+
+.. envvar:: siesta_exe
+
+  Default: siesta
+
+  Location of siesta executable. [str]
+
+.. envvar:: siesta_ncpu
+
+  Default: 1
+
+  Number of CPUs to use for siesta. [str]
+
+.. envvar:: siesta_to_cube
+
+  Default: siesta2repeat
+
+  Command to convert siesta ESP to .cube file. [str]
+
+.. envvar:: silent
+
+  Default: False
+
+  Only emit critical messages. Ignored here; use commandline. [bool]
+
+.. envvar:: spin
+
+  Default: False
+
+  Turn on spin polarization in dft. [bool]
+
+.. envvar:: surface_area_probe
+
+  Default:
+
+  Radius of probe for calculating surface areas. A probe of radius 0.0 will
+  generate the VdW surface typical values for probe molecules are 1.42 (H2),
+  1.72 (CO2) or 1.82 (N2) (A). [float, list]
+
+.. envvar:: surface_area_resolution
+
+  Default: 0.03
+
+  Approximate area per point when subdividing accessible surface
+  areas (A^2). [float]
+
+.. envvar:: surface_area_save
+
+  Default: False
+
+  Save the valid points on the surface to a file. [bool]
+
+.. envvar:: surface_area_uniform_sample
+
+  Default: False
+
+  Use points with a uniform spacing? (or do Monte Carlo sampling) [bool]
+
+.. envvar:: symmetry
+
+  Default: False
+
+  Treat symmetrical atoms as equivalent for charges. [bool]
+
+.. envvar:: tar_after
+
+  Default: False
+
+  Bundle all the output into an archive when the job is finished. [bool]
+
+.. envvar:: tar_extract_before
+
+  Default: False
+
+  Extract all the tarred files before starting (useful for import). [bool]
+
+.. envvar:: threaded_codes
+
+  Default: repeat
+
+  Codes that run with openmp threads, not mpi. [str, list]
+
+.. envvar:: threaded_memory
+
+  Default: 12
+
+  Maximum memory to use for threaded calculations (GB). [float]
+
+.. envvar:: update_opts
+
+  Default: True
+
+  Re-read options on restart. [bool]
+
+.. envvar:: vasp_compress_files
+
+  Default: LOCPOT CHGCAR vasprun.xml
+
+  files to keep and compress after a successful VASP job. [str, list]
+
+.. envvar:: vasp_delete_files
+
+  Default: WAVECAR CHG DOSCAR EIGENVAL POTCAR PCDAT IBZKPT XDATCAR KPOINTS
+
+  files to delete after a successful VASP job. [str, list]
+
+.. envvar:: vasp_exe
+
+  Default: vasp
+
+  Name (location) of vasp executable. [str]
+
+.. envvar:: vasp_ncpu
+
+  Default: 8
+
+  Number of cpus to run vasp on. [int]
+
+.. envvar:: vasp_to_cube
+
+  Default: vasp_to_cube
+
+  Command to convert LOCPOT to .cube for REPEAT. [str]
+
+.. envvar:: verbose
+
+  Default: False
+
+  Print debugging information. This will be ignored here; set on commandline.
+
+.. envvar:: zeo++
+
+  Default: True
+
+  Run zeo++ on the structure? [bool]
+
+.. envvar:: zeo++_exe
+
+  Default: network
+
+  Command to run for zeo++. Faps will generate the command lines. [str]
+
+.. envvar:: daemon
+
+  Default: False
+
+
+  Function switch specific options
+
+  Run fapswitch as a service and wait for line-by-line input.
+  See also commandline options. [bool]
+
+.. envvar:: fapswitch_backends
+
+  Default: file
+
+  Backends to store the output structures. [str, list] {file, sqlite}
+
+.. envvar:: fapswitch_connectivity
+
+  Default: openbabel
+
+  Where to get the connectivity information from [str] {openbabel, file}
+
+.. envvar:: fapswitch_custom_strings
+
+  Default:
+
+  Make functionalisations with the set of {.freeform.srings.} and
+  [symm@try.strings]. [str, list]
+
+.. envvar:: fapswitch_full_random_count
+
+  Default: 0
+
+  Number of completely randomised structures to make. [int]
+
+.. envvar:: fapswitch_max_different
+
+  Default: 0
+
+  Maximum number of groups that will be used simultaneously. [int]
+
+.. envvar:: fapswitch_port
+
+  Default: 0
+
+  Socket port to run the server mode on; leave as zero to pick random
+  available port as two instances cannot share a port. [int]
+
+.. envvar:: fapswitch_replace_all_sites
+
+  Default: False
+
+  Should fapswitch produce all group@site combinations? [bool]
+
+.. envvar:: fapswitch_replace_groups
+
+  Default:
+
+  Only use the specified groups in systematic functionalisations. [list]
+
+.. envvar:: fapswitch_replace_only
+
+  Default:
+
+  Only replace the listed sites in systematic functionalisations. [list]
+
+.. envvar:: fapswitch_site_random_count
+
+  Default: 0
+
+  Number of symmetry based randomised structures to make. [int]
+
+.. envvar:: fapswitch_unfunctionalised_probability
+
+  Default: 0.5
+
+  Probability that a site will have no functionalisation in random switching
+  scheme. [float]
+
 
 .. _commandline-options:
 
@@ -366,49 +685,65 @@ each option is given here. For the most up-to-date list, see the
 Commandline options
 -------------------
 
-A list of commandline options may be obtained by running ``faps -h`` at any
-time. Most options will be set in the :ref:`config files <config-files>` but
+A list of commandline options may be obtained by running :command:`faps -h` at
+any time. Most options will be set in the :ref:`config files <config-files>` but
 all options can be set at runtime with a commandline switch. The most useful
 flags are described here.
 
 
 .. option:: -v, --verbose
 
-   Print additional debugging information to the terminal and the
-   ``$JOBNAME.flog`` file.
+  Print additional debugging information to the terminal and the
+  :file:`$JOBNAME.flog` file.
 
 .. option:: -q, --quiet
 
-   Do not produce any terminal output. All normal output is still logged to the
-   ``$JOBNAME.flog`` file.
+  Only output errors and warnings to the terminal. All normal output is still
+  logged to the :file:`$JOBNAME.flog` file.
 
-.. option:: -j $JOB_TYPE, --job-type=$JOB_TYPE
+.. option:: -s, --silent
 
-   Use the ``~/.faps/$JOB_TYPE.fap`` file to set options for the current job.
-   This will override defaults but options will still be overridden by
-   ``$jobname.fap`` and options set on the commandline.
+  Do not produce any terminal output except for critical errors. All normal
+  output is still logged to the :file:`$JOBNAME.flog` file.
+
+.. option:: -p, --plain
+
+  Do not colorise or wrap the terminal output. Default is to colour the
+  information and wrap the text at 80 characters. File output is always plain.
+
+.. option:: -j <$JOB_TYPE>, --job-type=<$JOB_TYPE>
+
+  Use the :file:`~/.faps/$JOB_TYPE.fap` file to set options for the current job.
+  This will override defaults but options will still be overridden by
+  :file:`$JOBNAME.fap` and options set on the commandline.
 
 .. option:: -m, --import
 
-   Faps will try to import data from an old or broken simulation and continue
-   from there.
+  Faps will try to import data from an old or broken simulation and continue
+  from there.
 
 .. option:: -n, --no-submit
 
-   Faps will create input files but not submit any jobs. As steps may depend on
-   each other, calculations may need to run to continue the simulations.
+  Faps will create input files but not submit any jobs. As steps may depend on
+  each other, calculations may need to run to continue the simulations.
 
-.. option:: -o, --option
+.. option:: -o <CMDOPTS>, --option=<CMDOPTS>
 
-   Allows any option from the :ref:`config file <config-files>` to be specified
-   for a single job or step. These will override all other config files.
-   Options should be specified as ``key=value`` pairs with no spaces or boolean
-   values are set to true when they appear on the commandline. For example
-   ``faps -o vasp_ncpu=24 -o spin -o optim_h=false $JOBNAME``, will override
-   the number of vasp CPUs, turn on spin and turn off hydrogen optimisation.
+  Allows any option from the :ref:`config file <config-files>` to be specified
+  for a single job or step. These will override all other config files. Options
+  should be specified as ``key=value`` pairs with no spaces or boolean values
+  are set to true when they appear on the commandline. For example
+  :command:`faps -o vasp_ncpu=24 -o spin -o optim_h=false $JOBNAME`, will
+  override the number of vasp CPUs, turn on spin and turn off hydrogen
+  optimisation.
 
 .. option:: -i, --interactive
 
-   After loading any previous simulation, faps will immediately enter the
-   *expert only* interactive mode. This is probably only for debugging and
-   fixing calculations. No support for this.
+  After loading any previous simulation, faps will immediately enter the
+  *expert only* interactive mode. This is probably only for debugging and
+  fixing calculations. No support for this.
+
+.. option:: -d, --daemon
+
+  Fapswitch only: Start the program as a service; see the fapswitch
+  documentation for how to use this.

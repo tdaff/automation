@@ -24,6 +24,7 @@ Contents
    options
    guests
    examples
+   fapswitch
 
 ==================
 Indices and tables

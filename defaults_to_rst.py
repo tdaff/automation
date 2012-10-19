@@ -16,9 +16,11 @@ for line in defaults:
     if not line:
         continue
     elif line[0] in ['#', ';']:
-        this_option.append("   %s\n" % line.lstrip('#; \t'))
+        this_option.append("  %s\n" % line.lstrip('#; \t'))
     else:
-        rst.append("\n.. envvar:: %s\n\n" % line)
+        option, default = line.split('=')
+        rst.append("\n.. envvar:: %s\n\n" % option.strip())
+        rst.append("  Default: %s\n\n" % default.strip())
         rst.extend(this_option)
         this_option = []
 

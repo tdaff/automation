@@ -1980,6 +1980,7 @@ class Structure(object):
             " 1 1 1\n 1 1 1\n 1 1 1\n",  # constant pressure relaxation
             "cartesian\n"]
         all_ff_types = {}
+        #TODO(tdaff): warn for no ff types
         for at_idx, atom in enumerate(self.atoms):
             ff_type = atom.uff_type
             if not ff_type in all_ff_types:

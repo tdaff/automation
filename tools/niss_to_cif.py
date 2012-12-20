@@ -17,6 +17,7 @@ Options:
 
 import pickle
 import sys
+import traceback
 from os import path
 
 # faps is in the parent directory of this script
@@ -66,7 +67,11 @@ def main():
         raise SystemExit
     # Otherwise everythin is just a job name
     for job_name in sys.argv[1:]:
-        niss_to_cif(job_name)
+        try:
+            niss_to_cif(job_name)
+        except Exception as e:
+            print("Encountered error with %s" % job_name)
+            traceback.print_exc()
 
 
 if __name__ == '__main__':

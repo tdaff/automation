@@ -1874,6 +1874,19 @@ class Structure(object):
                         "   Br 2\n",
                         "%endblock PS.lmax\n"])
 
+        if "In" in u_types:
+            # semicore states need to be accounted for
+            # TODO(tdaff): selective polarisation on the basis functions
+            fdf.extend(["\n%block PAO.Basis\n",
+                        "In   3\n",
+                        "  n=5  0  2\n",
+                        "    0.0 0.0\n",
+                        "  n=5  1  2  P\n",
+                        "    0.0 0.0\n",
+                        "  n=4  2  2\n",
+                        "    0.0 0.0\n",
+                        "%endblock PAO.Basis\n"])
+
         optim_h = options.getbool('optim_h')
         optim_all = options.getbool('optim_all')
         optim_cell = options.getbool('optim_cell')

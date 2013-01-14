@@ -3283,6 +3283,14 @@ def mk_incar(options, esp_grid=None):
         info("Changing FFT grid to %ix%ix%i" % esp_grid)
         incar.append("NGXF = %i ; NGYF = %i ; NGZF = %i\n" % esp_grid)
 
+    # VASP recommends, for best performance:
+    # NPAR = 4 - approx SQRT( number of cores)
+    vasp_ncpu = options.getint('vasp_ncpu')
+    npar = vasp_ncpu  # recommended up to 8 cpus
+    if vasp_ncpu > 8:
+        npar = 4*max(int((vasp_ncpu**0.5)/4.0), 1)
+    incar.append("NPAR    = %i\n" % npar)
+
     return incar
 
 

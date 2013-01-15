@@ -1554,7 +1554,7 @@ class Structure(object):
             # Some of pete's symmetrised mofs need a higher tolerence
             duplicate_tolerance = 0.2  # Angstroms
             self.remove_duplicates(duplicate_tolerance)
-        self.order_by_types()
+#        self.order_by_types()
 
         bonds = {}
         # TODO(tdaff): this works for the one tested MOF; 0.1 was not enough
@@ -2703,7 +2703,9 @@ class Atom(object):
         if re.match('[0-9]', self.site) and idx is not None:
             debug("Site label may not be unique; appending index")
             self.site = "%s%i" % (self.site, idx)
-        if '_atom_type_description' in at_dict:
+        if '_atom_site_description' in at_dict:
+            self.uff_type = at_dict['_atom_site_description']
+        elif '_atom_type_description' in at_dict:
             self.uff_type = at_dict['_atom_type_description']
 
 

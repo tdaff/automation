@@ -2932,7 +2932,9 @@ class Atom(object):
         if re.match('[0-9]', self.site) and idx is not None:
             debug("Site label may not be unique; appending index")
             self.site = "%s%i" % (self.site, idx)
-        if '_atom_type_description' in at_dict:
+        if '_atom_site_description' in at_dict:
+            self.uff_type = at_dict['_atom_site_description']
+        elif '_atom_type_description' in at_dict:
             self.uff_type = at_dict['_atom_type_description']
         if '_atom_type_parital_charge' in at_dict:
             self.charge = float(at_dict['_atom_type_parital_charge'])

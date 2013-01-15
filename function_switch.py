@@ -226,7 +226,7 @@ def to_cif(atoms, cell, bonds, name):
         "\nloop_\n",
         "_atom_site_label\n",
         "_atom_site_type_symbol\n",
-        "_atom_type_description\n",
+        "_atom_site_description\n",
         "_atom_site_fract_x\n",
         "_atom_site_fract_y\n",
         "_atom_site_fract_z\n",

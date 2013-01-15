@@ -139,8 +139,8 @@ bonds =
 name = Nitro
 atoms =
     N  N_R   0.000  0.000  0.000
-    O  N_R   1.111  0.573  0.000
-    O  N_R  -1.111  0.573  0.000
+    O  O_R   1.111  0.573  0.000
+    O  O_R  -1.111  0.573  0.000
 orientation = 0.0 1.0 0.0
 normal = 0.0 0.0 1.0
 carbon_bond = 1.51

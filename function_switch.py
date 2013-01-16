@@ -406,18 +406,8 @@ def matrix_rotate(source, target):
     v = cross(source, target)
     vlen = dot(v, v)
     if vlen == 0.0:
-        # parallel or antiparallel vectors need an arbritaty normal
-        if source[0] != 0.0:
-            vlen = (source[0]**2 + source[1]**2)**0.5
-            other = asarray([-source[1]/vlen, source[0]/vlen, source[2]])
-        elif source[1] != 0.0:
-            vlen = (source[1]**2 + source[2]**2)**0.5
-            other = asarray([source[0], -source[2]/vlen, source[1]/vlen])
-        elif source[2] != 0.0:
-            vlen = (source[2]**2 + source[0]**2)**0.5
-            other = asarray([source[2]/vlen, source[1], -source[0]/vlen])
-        v = cross(other, target)
-        vlen = dot(v, v)
+        # already aligned, no rotation needed 
+        return identity(3)
     c = dot(source, target)
     h = (1 - c)/vlen
     return array([[c + h*v[0]*v[0], h*v[0]*v[1] - v[2], h*v[0]*v[2] + v[1]],

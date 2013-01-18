@@ -35,7 +35,7 @@ from config import Options
 from elements import CCDC_BOND_ORDERS
 
 
-DOT_FAPSWITCH_VERSION = (2, 2)
+DOT_FAPSWITCH_VERSION = (5, 0)
 
 class ModifiableStructure(Structure):
     """
@@ -81,7 +81,7 @@ class ModifiableStructure(Structure):
             right = min_vect(cpositions[at_idx], fpositions[at_idx],
                              cpositions[conex[1]], fpositions[conex[1]],
                              cell)
-            atom.normal = cross(left, right)
+            atom.normal = normalise(cross(left, right))
 
 
     def gen_attachment_sites(self):
@@ -92,6 +92,8 @@ class ModifiableStructure(Structure):
         """
 
         atoms = self.atoms
+        cell = self.cell.cell
+        inv_cell = self.cell.inverse
         self.gen_neighbour_list()
         self.attachments = {}
 
@@ -104,10 +106,19 @@ class ModifiableStructure(Structure):
                         break
                 else:
                     error("Unbonded hydrogen")
+
+                # Generate the direction here as we were getting buggy
+                # attachment over periodic boundaries
+                direction = min_vect(atoms[o_index].ipos(cell, inv_cell),
+                                     atoms[o_index].ifpos(inv_cell),
+                                     atom.ipos(cell, inv_cell),
+                                     atom.ifpos(inv_cell), cell)
+                direction = normalise(direction)
+
                 if atom.site in self.attachments:
-                    self.attachments[atom.site].append((h_index, o_index))
+                    self.attachments[atom.site].append((h_index, o_index, direction))
                 else:
-                    self.attachments[atom.site] = [(h_index, o_index)]
+                    self.attachments[atom.site] = [(h_index, o_index, direction)]
 
 
     def gen_babel_uff_properties(self):
@@ -168,7 +179,9 @@ class ModifiableStructure(Structure):
             if bond.IsAmide():
                 bond_order = 1.41
             # save the indicies as zero based
-            bonds[tuple(sorted((start_idx-1, end_idx-1)))] = bond_order
+            bond_length = bond.GetLength()
+            bond_id = tuple(sorted((start_idx-1, end_idx-1)))
+            bonds[bond_id] = (bond_length, bond_order)
 
         self.bonds = bonds
 
@@ -199,11 +212,13 @@ def to_cif(atoms, cell, bonds, name):
         atom_part.append("%f\n" % atom.charge)
 
     bond_part = []
-    for bond, order in bonds.items():
+    for bond, bond_info in bonds.items():
         try:
-            bond_part.append("%-5s %-5s %-5s\n" %
+            bond_length = bond_info[0]
+            bond_order = CCDC_BOND_ORDERS[bond_info[1]]
+            bond_part.append("%-5s %-5s %f %-5s\n" %
                              (atoms[bond[0]].site, atoms[bond[1]].site,
-                              CCDC_BOND_ORDERS[order]))
+                              bond_length, bond_order))
         except AttributeError:
             # one of the atoms is None so skip
             debug("cif NoneType atom")
@@ -235,7 +250,7 @@ def to_cif(atoms, cell, bonds, name):
         "\nloop_\n",
         "_geom_bond_atom_site_label_1\n",
         "_geom_bond_atom_site_label_2\n",
-#        "_geom_bond_distance\n",
+        "_geom_bond_distance\n",
         "_ccdc_geom_bond_type\n"] + bond_part
 
     return cif_file
@@ -294,17 +309,17 @@ class FunctionalGroup(object):
         """Initialize from a list of tuples as the attributes."""
         # These are defaults, best that they are overwritten
         self.atoms = []
+        self.bonds = {}
         self.orientation = [0, 1, 0]
 
         # pop the items from a dict giving neater code
         items = dict(items)
 
         self._parse_atoms(items.pop('atoms'))
-        self.orientation = string_to_tuple(items.pop('orientation'), float)
-        self.normal = string_to_tuple(items.pop('normal'), float)
+        self.orientation = normalise(string_to_tuple(items.pop('orientation'), float))
+        self.normal = normalise(string_to_tuple(items.pop('normal'), float))
         self.bond_length = float(items.pop('carbon_bond'))
-        self.bonds = dict(((int(x), int(y)), float(z)) for (x, y, z) in
-                          subgroup(items.pop('bonds').split(), width=3))
+        self._parse_bonds(items.pop('bonds'))
         self.idx = 0
         self.connection_point = 0  # always connect to the first atom
         # Arbitrary attributes can be set
@@ -322,6 +337,20 @@ class FunctionalGroup(object):
             new_atom.uff_type = atom[1]
             new_atom.site = label_atom(new_atom.element)
             self.atoms.append(new_atom)
+
+    def _parse_bonds(self, bond_block):
+        """
+        Extract the bonds from the text and calculate the distances between the
+        atoms as these are needed for the cif file.
+
+        """
+
+        bond_split = subgroup(bond_block.split(), width=3)
+        for bond_trio in bond_split:
+            bond = (int(bond_trio[0]), int(bond_trio[1]))
+            distance = vecdist3(self.atoms[bond[0]].pos,
+                                self.atoms[bond[1]].pos)
+            self.bonds[bond] = (distance, float(bond_trio[2]))
 
     def _gen_neighbours(self):
         """Update atoms with neighbouring atoms."""
@@ -357,11 +386,12 @@ class FunctionalGroup(object):
             atom.pos = (atom.pos + point + bond_length*np.array(direction))
             atom.idx = start_index + index
         new_bonds = {}
-        for bond_pair, bond_order in self.bonds.iteritems():
+        for bond_pair, bond_info in self.bonds.iteritems():
             new_bond = (bond_pair[0] + start_index, bond_pair[1] + start_index)
-            new_bonds[new_bond] = bond_order
-        # bond to structure
-        new_bonds[(attach_point, self.connection_point + start_index)] = 1
+            new_bonds[new_bond] = bond_info
+        # bond to structure is single...
+        bond_to_structure = (attach_point, self.connection_point + start_index)
+        new_bonds[bond_to_structure] = (self.bond_length, 1.0)
 
         return new_atoms, new_bonds
 
@@ -379,18 +409,8 @@ def matrix_rotate(source, target):
     v = cross(source, target)
     vlen = dot(v, v)
     if vlen == 0.0:
-        # parallel or antiparallel vectors need an arbritaty normal
-        if source[0] != 0.0:
-            vlen = (source[0]**2 + source[1]**2)**0.5
-            other = asarray([-source[1]/vlen, source[0]/vlen, source[2]])
-        elif source[1] != 0.0:
-            vlen = (source[1]**2 + source[2]**2)**0.5
-            other = asarry([source[0], -source[2]/vlen, source[1]/vlen])
-        elif source[2] != 0.0:
-            vlen = (source[2]**2 + source[0]**2)**0.5
-            other = asarray([source[2]/vlen, source[1], -source[0]/vlen])
-        v = cross(other, target)
-        vlen = dot(v, v)
+        # already aligned, no rotation needed 
+        return identity(3)
     c = dot(source, target)
     h = (1 - c)/vlen
     return array([[c + h*v[0]*v[0], h*v[0]*v[1] - v[2], h*v[0]*v[2] + v[1]],
@@ -419,6 +439,10 @@ def direction3d(source, target):
     return [target[0] - source[0],
             target[1] - source[1],
             target[2] - source[2]]
+
+def normalise(vector):
+    """Return an array with magnitude 1."""
+    return asarray(vector)/norm(vector)
 
 def powerset(iterable):
     "powerset([1,2,3]) --> () (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)"
@@ -483,7 +507,7 @@ def test_collision(test_atom, atoms, cell, overlap=1.3, ignore=()):
     return True
 
 
-def all_combinations_replace(structure, groups, rotations=12, replace_only=None, groups_only=None, backends=()):
+def all_combinations_replace(structure, groups, rotations=12, replace_only=None, groups_only=None, max_different=None, backends=()):
     """
     Replace every functional point with every combination of functional groups.
 
@@ -504,8 +528,14 @@ def all_combinations_replace(structure, groups, rotations=12, replace_only=None,
         local_groups = list(groups)
         debug("Using all groups: %s" % local_groups)
 
+    if max_different is None or max_different <= 0:
+        max_different = len(local_groups)
+
     for site_set in sites:
         for group_set in product(local_groups, repeat=len(site_set)):
+            #TODO(tdaff): make this more efficient
+            if len(set(group_set)) > max_different:
+                continue
             replace_list = zip(group_set, site_set)
             site_replace(structure, groups, replace_list, backends=backends)
 
@@ -560,6 +590,7 @@ def site_replace(structure, groups, replace_list, rotations=12, backends=()):
     Will dump a cif to the backends on success, and return 1 for failed attempt.
 
     """
+
     rotation_angle = 2*np.pi/rotations
     new_mof_name = []
     new_mof_friendly_name = []
@@ -574,7 +605,7 @@ def site_replace(structure, groups, replace_list, rotations=12, backends=()):
             attach_id = this_point[0]
             attach_to = this_point[1]
             attach_at = structure.atoms[attach_to].pos
-            attach_towards = direction3d(attach_at, structure.atoms[attach_id].pos)
+            attach_towards = this_point[2]
             attach_normal = structure.atoms[attach_to].normal
             new_mof[attach_id:attach_id+1] = [None]
             start_idx = len(new_mof)
@@ -697,7 +728,7 @@ def freeform_replace(structure, groups, replace_only=None, groups_only=None, num
         attach_id = this_point[0]
         attach_to = this_point[1]
         attach_at = structure.atoms[attach_to].pos
-        attach_towards = direction3d(attach_at, structure.atoms[attach_id].pos)
+        attach_towards = this_point[2]
         attach_normal = structure.atoms[attach_to].normal
         #extracted_atoms = new_mof[attach_id:attach_id+1]
         new_mof[attach_id:attach_id+1] = [None]
@@ -974,7 +1005,7 @@ def main():
     prob_unfunc = job_options.getfloat('fapswitch_unfunctionalised_probability')
 
     if job_options.getbool('fapswitch_replace_all_sites'):
-        all_combinations_replace(input_structure, f_groups, replace_only=replace_only, groups_only=replace_groups, backends=backends)
+        all_combinations_replace(input_structure, f_groups, replace_only=replace_only, groups_only=replace_groups, max_different=max_different, backends=backends)
 
     # group@site randomisations
     random_count = job_options.getint('fapswitch_site_random_count')

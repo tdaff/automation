@@ -1568,7 +1568,7 @@ class Structure(object):
             # Some of pete's symmetrised mofs need a higher tolerence
             duplicate_tolerance = 0.2  # Angstroms
             self.remove_duplicates(duplicate_tolerance)
-        self.order_by_types()
+#        self.order_by_types()
 
         bonds = {}
         # TODO(tdaff): this works for the one tested MOF; 0.1 was not enough
@@ -1591,7 +1591,7 @@ class Structure(object):
                                 # use the sorted index as bonds between the
                                 # same type are doubly specified
                                 bond_id = tuple(sorted((first_index, second_index)))
-                                bonds[bond_id] = CCDC_BOND_ORDERS[bond_data[1]]
+                                bonds[bond_id] = (distance, CCDC_BOND_ORDERS[bond_data[1]])
                                 if first_atom.is_metal or second_atom.is_metal:
                                     first_atom.is_fixed = True
                                     second_atom.is_fixed = True
@@ -2015,7 +2015,7 @@ class Structure(object):
 
         gin_file.append("\n")
         for bond in sorted(self.bonds):
-            bond_type = GULP_BOND_ORDERS[self.bonds[bond]]
+            bond_type = GULP_BOND_ORDERS[self.bonds[bond][1]]
             gin_file.append("connect %6i %6i %s\n" % (bond[0] + 1, bond[1] + 1, bond_type))
 
         gin_file.append("\nlibrary uff\n")

@@ -1581,7 +1581,7 @@ class Structure(object):
                     for second_index, second_atom in enumerate(self.atoms):
                         if second_atom is first_atom:
                             continue
-                        if second_atom.site == bond[1]:
+                        elif second_atom.site == bond[1]:
                             # TODO(tdaff): symmetry implementation for cif bonding
                             distance = min_distance(first_atom, second_atom)
                             bond_dist = bond_data[0]

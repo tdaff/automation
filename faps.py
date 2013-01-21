@@ -1572,7 +1572,10 @@ class Structure(object):
 
         bonds = {}
         # TODO(tdaff): this works for the one tested MOF; 0.1 was not enough
-        # only check for bonds that are too long, not too short.
+        # check for bonds that are too long.
+        # Also check for bonds that are less than half the covalent radii which
+        # shouldn't happen (means atoms too close anyway), but some groins
+        # have this
         bond_tolerence = 0.25
         # Assign bonds by index
         for bond, bond_data in cif_bonds.items():
@@ -1586,8 +1589,15 @@ class Structure(object):
                             distance = min_distance(first_atom, second_atom)
                             bond_dist = bond_data[0]
                             if bond_dist is None:
-                                bond_dist = first_atom.covalent_radius + second_atom.covalent_radius
-                            if distance < (bond_dist + bond_tolerence):
+                                bond_dist = (first_atom.covalent_radius +
+                                             second_atom.covalent_radius)
+                            if distance < 0.6 * bond_dist:
+                                warning("Short contact ignored: "
+                                        "%s(%i) and %s(%i) = %.2f A" %
+                                        (first_atom.site, first_index,
+                                         second_atom.site, second_index,
+                                         distance))
+                            elif distance < (bond_dist + bond_tolerence):
                                 # use the sorted index as bonds between the
                                 # same type are doubly specified
                                 bond_id = tuple(sorted((first_index, second_index)))
@@ -2457,6 +2467,20 @@ class Structure(object):
                 uniq_atoms.append(atom)
         debug("Found %i unique atoms in %i" % (len(uniq_atoms), self.natoms))
         self.atoms = uniq_atoms
+
+    def check_close_contacts(self, tolerance=1.0):
+        """Check for atoms that are closer than a specified distance."""
+        for atom_idx, atom in enumerate(self.atoms):
+            for other_idx, other in enumerate(self.atoms):
+                if other_idx >= atom_idx:
+                    # short circuit half the calculations
+                    # Can we do combinations with idx in 2.7
+                    break
+                elif min_distance(atom, other) < tolerance:
+                    bond_ids = tuple(sorted([atom_idx, other_idx]))
+                    if bond_ids not in self.bonds:
+                        warning("Close atoms: %s(%i) and %s(%i)" %
+                                (atom.site, atom_idx, other.site, other_idx))
 
     def gen_supercell(self, options):
         """Cacluate the smallest satisfactory supercell and set attribute."""

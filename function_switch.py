@@ -409,7 +409,7 @@ def matrix_rotate(source, target):
     v = cross(source, target)
     vlen = dot(v, v)
     if vlen == 0.0:
-        # already aligned, no rotation needed 
+        # already aligned, no rotation needed
         return identity(3)
     c = dot(source, target)
     h = (1 - c)/vlen
@@ -903,6 +903,7 @@ def main():
 
         # Ensure that atoms in the structure are properly typed
         input_structure.gen_factional_positions()
+        input_structure.check_close_contacts()
         bonding_src = job_options.get('fapswitch_connectivity')
         if bonding_src == 'file':
             # Rudimentary checks for poor structures

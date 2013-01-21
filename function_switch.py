@@ -903,7 +903,6 @@ def main():
 
         # Ensure that atoms in the structure are properly typed
         input_structure.gen_factional_positions()
-        input_structure.check_close_contacts()
         bonding_src = job_options.get('fapswitch_connectivity')
         if bonding_src == 'file':
             # Rudimentary checks for poor structures
@@ -918,6 +917,10 @@ def main():
         elif bonding_src == 'openbabel':
             info("Generating topology with Open Babel")
             input_structure.gen_babel_uff_properties()
+
+        # A couple of structure checks
+        input_structure.check_close_contacts()
+        input_structure.bond_length_check()
 
         # Initialise the sites after bonds are perceived
         input_structure.gen_attachment_sites()

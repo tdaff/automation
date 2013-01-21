@@ -2482,6 +2482,21 @@ class Structure(object):
                         warning("Close atoms: %s(%i) and %s(%i)" %
                                 (atom.site, atom_idx, other.site, other_idx))
 
+    def bond_length_check(self, too_long=1.25, too_short=0.7):
+        """Warn if bonds are not within a sensible range of covalent radii."""
+        for bond in self.bonds:
+            atom = self.atoms[bond[0]]
+            other = self.atoms[bond[1]]
+            distance = min_distance(atom, other)
+            bond_dist = (atom.covalent_radius + other.covalent_radius)
+            if distance > bond_dist * too_long:
+                warning("Long bond found: %s(%i) and %s(%i) = %.2f A" %
+                        (atom.site, bond[0], other.site, bond[1], distance))
+            elif distance < bond_dist * too_short:
+                warning("Short bond found: %s(%i) and %s(%i) = %.2f A" %
+                        (atom.site, bond[0], other.site, bond[1], distance))
+
+
     def gen_supercell(self, options):
         """Cacluate the smallest satisfactory supercell and set attribute."""
         config_supercell = options.gettuple('mc_supercell', int)

@@ -27,6 +27,7 @@ from os import path
 
 import numpy as np
 from numpy import array, identity, asarray, dot, cross, outer, sin, cos
+from numpy import roll
 from numpy.linalg import norm
 
 from faps import Structure, Atom
@@ -81,8 +82,13 @@ class ModifiableStructure(Structure):
             right = min_vect(cpositions[at_idx], fpositions[at_idx],
                              cpositions[conex[1]], fpositions[conex[1]],
                              cell)
-            atom.normal = normalise(cross(left, right))
-
+            normal = cross(left, right)
+            if norm(normal) == 0.0:
+                normal = arbitrary_normal(left)
+                # already normalised
+                atom.normal = normal
+            else:
+                atom.normal = normalise(normal)
 
     def gen_attachment_sites(self):
         """
@@ -488,7 +494,7 @@ def min_vect(c_coa, f_coa, c_cob, f_cob_in, box):
 
 def test_collision(test_atom, atoms, cell, overlap=1.3, ignore=()):
     """
-    Does atom intersect with any others?
+    Does atom intersect with any others? Use ignore for bonded atom ids.
 
     """
     pos = test_atom.ipos(cell.cell, cell.inverse)
@@ -497,14 +503,27 @@ def test_collision(test_atom, atoms, cell, overlap=1.3, ignore=()):
         # Skip non atoms
         if atom is None:
             continue
-        #TODO(tdaff): ignore bonded atom
         if idx in ignore:
             continue
-        dist = min_vect(pos, ipos, atom.ipos(cell.cell, cell.inverse), atom.ifpos(cell.inverse), cell.cell)
+        dist = min_vect(pos, ipos, atom.ipos(cell.cell, cell.inverse),
+                        atom.ifpos(cell.inverse), cell.cell)
         dist = dot(dist, dist)
         if dist < overlap:
             return False
     return True
+
+
+def arbitrary_normal(vector):
+    """Create a normalised normal to an input, does not use random values."""
+    if vector == [0, 0, 0]:
+        # everything is norma to a zero length vector
+        return asarray([1, 0 , 0])
+    elif vector[0] == vector[1] == vector[2]:
+        # just need cross product with something with non-equal elements
+        return normalise(cross(vector, [0.0, 1.0, 0.0]))
+    else:
+        #different elements so we can swap some to create a different vector
+        return normalise(cross(vector, roll(vector, 1)))
 
 
 def all_combinations_replace(structure, groups, rotations=12, replace_only=None, groups_only=None, max_different=None, backends=()):

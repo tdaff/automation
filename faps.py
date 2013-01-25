@@ -1998,12 +1998,16 @@ class Structure(object):
             "vectors\n"] + self.cell.to_vector_strings() + [
             " 1 1 1\n 1 1 1\n 1 1 1\n",  # constant pressure relaxation
             "cartesian\n"]
+
         all_ff_types = {}
-        #TODO(tdaff): warn for no ff types
+
         for at_idx, atom in enumerate(self.atoms):
             ff_type = atom.uff_type
             if not ff_type in all_ff_types:
                 all_ff_types[ff_type] = atom.site
+                # Sanity check in case types are not given in the input
+                if ff_type not in UFF_FULL:
+                    error("Atom %s has unknown type %s" % (atom, ff_type))
             if atom.is_fixed:
                 fixed_flags = "0 0 0"
             else:
@@ -2013,6 +2017,7 @@ class Structure(object):
                              "%f " % atom.charge,
                              "%f " % 1.0,  # occupancy
                              fixed_flags, "\n"])
+
 
         #identify all the individual uff species for the library
         gin_file.append("\nspecies\n")

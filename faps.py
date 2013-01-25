@@ -48,7 +48,7 @@ from numpy.linalg import norm
 from config import Options
 from elements import WEIGHT, ATOMIC_NUMBER, UFF, VASP_PSEUDO_PREF
 from elements import CCDC_BOND_ORDERS, GULP_BOND_ORDERS, METALS
-from elements import COVALENT_RADII, UFF_FULL
+from elements import COVALENT_RADII, UFF_FULL, QEQ_PARAMS
 from job_handler import JobHandler
 from logo import LOGO
 
@@ -917,16 +917,23 @@ class PyNiss(object):
         except AttributeError:
             egulp_parameters = self.options.gettuple('qeq_parameters')
 
-        if egulp_parameters:
-            info("Custom EGULP parameters selected")
-            filetemp = open('%s.param' % job_name, 'w')
-            filetemp.writelines(mk_egulp_params(egulp_parameters))
-            filetemp.close()
-            # job handler needs to know about both these files
-            egulp_args = ['%s.geo' % job_name, '%s.param' % job_name]
+        if not egulp_parameters:
+            # parameters are mandatory in new egulp
+            egulp_parameters = ('H', QEQ_PARAMS['H'][0], QEQ_PARAMS['H'][1])
         else:
-            # Only geometry file is needed for this run
-            egulp_args = ['%s.geo' % job_name]
+            info("Custom EGULP parameters selected")
+
+        filetemp = open('%s.param' % job_name, 'w')
+        filetemp.writelines(mk_egulp_params(egulp_parameters))
+        filetemp.close()
+
+        filetemp = open('%s.ini' % job_name, 'w')
+        filetemp.writelines(mk_egulp_ini())
+        filetemp.close()
+
+        egulp_args = ['%s.geo' % job_name,
+                      '%s.param' % job_name,
+                      '%s.ini' % job_name]
 
         if self.options.getbool('no_submit'):
             info("EGULP input files generated; skipping job submission")
@@ -1925,7 +1932,6 @@ class Structure(object):
     def to_gulp(self, qeq_fit=False, optimise=False, terse=False, qeq_dict={}):
         """Return a GULP file to use for the QEq charges."""
         if qeq_fit:
-            from elements import QEQ_PARAMS
             keywords = "fitting bulk_noopt qeq\n"
         elif optimise:
             return self.to_gulp_optimise(terse=terse)
@@ -2047,7 +2053,8 @@ class Structure(object):
         geometry_file.append('%i\n' % self.natoms)
         geometry_file.extend([
             ('%6d ' % atom.atomic_number) +
-            ('%12.7f %12.7f  %12.7f\n' % tuple(atom.ipos(cell, inv_cell)))
+            ('%12.7f %12.7f  %12.7f' % tuple(atom.ipos(cell, inv_cell))) +
+            ('%12.7f\n' % atom.charge)
             for atom in self.atoms
         ])
         return geometry_file
@@ -3396,6 +3403,20 @@ def mk_egulp_params(param_tuple):
 
     return egulp_file
 
+
+def mk_egulp_ini():
+    """Create a default ini file for egulp to do qeq calculation."""
+    egulp_ini = [
+        "build_grid 0\n"
+        "build_grid_from_scratch 1 none 0.25 0.25 0.25 2\n"
+        "save_grid 0 none\n"
+        "calculate_pot_diff  0\n"
+        "skip_everything 0\n"
+        "point_charges_present 0\n"
+        "include_pceq 0\n"
+        "imethod 0\n"]
+
+    return egulp_ini
 
 
 def unique(in_list, key=None):

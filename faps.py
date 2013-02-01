@@ -1996,9 +1996,9 @@ class Structure(object):
         # updated positions
         if terse:
             # Don't output the bonds
-            keywords = "opti noautobond decimal_only\n"
+            keywords = "opti noautobond decimal_only conj\n"
         else:
-            keywords = "opti noautobond bond decimal_only\n"
+            keywords = "opti noautobond bond decimal_only conj\n"
         gin_file = [
             "# \n# Keywords:\n# \n",
             keywords,
@@ -2007,7 +2007,7 @@ class Structure(object):
             "name %s\n" % self.name,
             # using an rfo minimiser with a preconditioned hessian from the
             # BFGS minimiser seems to be the most efficient
-            "switch rfo gnorm 0.1\n",
+            "switch rfo gnorm 0.3\n",
             "vectors\n"] + self.cell.to_vector_strings() + [
             " 1 1 1\n 1 1 1\n 1 1 1\n",  # constant pressure relaxation
             "cartesian\n"]
@@ -2043,6 +2043,8 @@ class Structure(object):
             gin_file.append("connect %6i %6i %s\n" % (bond[0] + 1, bond[1] + 1, bond_type))
 
         gin_file.append("\nlibrary uff\n")
+
+        gin_file.append("\nstepmx opt 0.05\n")
 
         # Restart file is for final structure
         gin_file.append("\ndump every %s.grs\n" % self.name)

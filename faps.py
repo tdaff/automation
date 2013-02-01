@@ -1671,6 +1671,19 @@ class Structure(object):
                 cell = self.cell.cell
                 for atom, atom_line in zip(self.atoms, grs_out):
                     atom.pos = dot([gfloat(x) for x in atom_line.split()[2:5]], cell)
+                    # FIXME(tdaff) fractionals need to change automatically
+                    # when the position gets updated (or the cell!)
+                    del atom.fractional
+
+        # Make sure everything is good from here
+        if self.check_close_contacts(covalent=1.0):
+            warning("Structure might have atom overlap, check gulp output!")
+            self.bad_structure = True
+
+        if self.bond_length_check():
+            warning("Structure might have strained bonds, check gulp output!")
+            self.bad_structure = True
+
 
     def from_xyz(self, filename, update=False, cell=None):
         """Read a structure from an file."""
@@ -2470,6 +2483,58 @@ class Structure(object):
         debug("Found %i unique atoms in %i" % (len(uniq_atoms), self.natoms))
         self.atoms = uniq_atoms
 
+    def check_close_contacts(self, absolute=1.0, covalent=None):
+        """
+        Check for atoms that are too close. Specify either an absolute distance
+        in Angstrom or a scale factor for the sum of covalent radii. If a
+        covalent factor is specified it will take priority over an absolute
+        distance. Return True if close contacts found, else return False.
+        """
+        close_contact_found = False
+        for atom_idx, atom in enumerate(self.atoms):
+            for other_idx, other in enumerate(self.atoms):
+                if other_idx >= atom_idx:
+                    # short circuit half the calculations
+                    # Can we do combinations with idx in 2.7
+                    break
+                if covalent is not None:
+                    tolerance = covalent * (atom.covalent_radius +
+                                            other.covalent_radius)
+                else:
+                    tolerance = absolute
+                if min_distance(atom, other) < tolerance:
+                    bond_ids = tuple(sorted([atom_idx, other_idx]))
+                    if bond_ids not in self.bonds:
+                        warning("Close atoms: %s(%i) and %s(%i)" %
+                                (atom.site, atom_idx, other.site, other_idx))
+                        close_contact_found = True
+
+        return close_contact_found
+
+    def bond_length_check(self, too_long=1.25, too_short=0.7):
+        """
+        Check if all bonds fall within a sensible range of scale factors
+        of the sum of the covalent radii. Return True if bad bonds are found,
+        otherwise False.
+
+        """
+        bad_bonds = False
+        for bond in self.bonds:
+            atom = self.atoms[bond[0]]
+            other = self.atoms[bond[1]]
+            distance = min_distance(atom, other)
+            bond_dist = (atom.covalent_radius + other.covalent_radius)
+            if distance > bond_dist * too_long:
+                warning("Long bond found: %s(%i) and %s(%i) = %.2f A" %
+                        (atom.site, bond[0], other.site, bond[1], distance))
+                bad_bonds = True
+            elif distance < bond_dist * too_short:
+                warning("Short bond found: %s(%i) and %s(%i) = %.2f A" %
+                        (atom.site, bond[0], other.site, bond[1], distance))
+                bad_bonds = True
+
+        return bad_bonds
+
     def gen_supercell(self, options):
         """Cacluate the smallest satisfactory supercell and set attribute."""
         config_supercell = options.gettuple('mc_supercell', int)
@@ -3059,6 +3124,8 @@ class Atom(object):
     @property
     def covalent_radius(self):
         """Get the covalent radius from the library parameters."""
+        if self.type == 'C' and self.uff_type:
+            COVALENT_RADII[self.uff_type]
         return COVALENT_RADII[self.type]
 
     @property

@@ -3491,6 +3491,30 @@ def mk_egulp_ini():
     return egulp_ini
 
 
+def vaildate_gulp_output(filename):
+    """Check to see if gulp calculation has finished and return the energy."""
+    try:
+        gulp_output = open(filename)
+    except IOError:
+        warning("Gulp output not found; continuing anyway")
+        return False
+
+    final_energy = 0.0
+    final_gnorm = 0.0
+
+    "**** Too many failed attempts to optimise ****"
+    "**** Optimisation achieved ****"
+    "**** Conditions for a minimum have not been satisfied. However ****"
+    "**** no lower point can be found - treat results with caution  ****"
+    "**** unless gradient norm is small (less than 0.1)             ****"
+
+    for line in gulp_output:
+        if "Final energy" in line:
+            final_energy = float(line.split()[-2])
+        elif "Final Gnorm" in line:
+            final_gnorm = float(line.split()[-2])
+
+
 def unique(in_list, key=None):
     """Unique values in list ordered by first occurance"""
     uniq = []

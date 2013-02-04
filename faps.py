@@ -1393,6 +1393,8 @@ class Structure(object):
             self.from_siesta(path.join(opt_path, '%s.STRUCT_OUT' % self.name))
         elif opt_code == 'gulp':
             opt_path = "%s_opt" % opt_path
+            self.optimisation_output = validate_gulp_output(
+                path.join(opt_path, 'faps-%s.out' % self.name))
             self.from_gulp_output(path.join(opt_path, '%s.grs' % self.name))
         else:
             error("Unknown positions to import %s" % opt_code)
@@ -3493,28 +3495,47 @@ def mk_egulp_ini():
     return egulp_ini
 
 
-def vaildate_gulp_output(filename):
+def validate_gulp_output(filename):
     """Check to see if gulp calculation has finished and return the energy."""
+
+    final_energy = None
+    final_gnorm = None
+
     try:
         gulp_output = open(filename)
     except IOError:
         warning("Gulp output not found; continuing anyway")
-        return False
+        return (False, final_energy, final_gnorm)
 
-    final_energy = 0.0
-    final_gnorm = 0.0
-
-    "**** Too many failed attempts to optimise ****"
-    "**** Optimisation achieved ****"
-    "**** Conditions for a minimum have not been satisfied. However ****"
-    "**** no lower point can be found - treat results with caution  ****"
-    "**** unless gradient norm is small (less than 0.1)             ****"
+    finished_optimisation = False
 
     for line in gulp_output:
-        if "Final energy" in line:
-            final_energy = float(line.split()[-2])
-        elif "Final Gnorm" in line:
-            final_gnorm = float(line.split()[-2])
+        if line.startswith("  Cycle:"):
+            line = line.split()
+            final_energy = float(line[3])
+            final_gnorm = float(line[5])
+        elif "Optimisation achieved" in line:
+            # Great
+            finished_optimisation = True
+            break
+        elif "Too many failed attempts to optimise" in line:
+            warning("Gulp reports failed optimisation; check gnorm!")
+            finished_optimisation = True
+            break
+        elif "no lower point can be found" in line:
+            warning("Gulp reports failed optimisation; check gnorm!")
+            finished_optimisation = True
+            break
+
+    if not finished_optimisation:
+        warning("Gulp optimisation did not finish; check output!")
+
+    if final_gnorm > 0.1:
+        warning("Gulp optimisation has gnorm > 0.1; check output!")
+        finished_optimisation = False
+
+    debug("Gulp .out: %s" % [finished_optimisation, final_energy, final_gnorm])
+    return (finished_optimisation, final_energy, final_gnorm)
 
 
 def unique(in_list, key=None):

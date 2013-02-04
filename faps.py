@@ -1149,8 +1149,16 @@ class PyNiss(object):
         zeo_command = zeo_exe + ['-res'] + cssr_file
         info("Running zeo++ pore diameters")
         debug("Running command: '" + " ".join(zeo_command) + "'")
-        zeo_process = subprocess.Popen(zeo_command, stdout=subprocess.PIPE)
+        zeo_process = subprocess.Popen(zeo_command, stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE)
         zeo_process.wait()
+
+        zeo_stderr = " ".join(x.strip() for x in zeo_process.stderr.readlines())
+        print zeo_stderr
+        if "Voronoi volume check failed" in zeo_stderr:
+            warning("Structure is likely bad; zeo++ is unable to complete")
+            warning(zeo_stderr)
+            self.structure.bad_structure = True
 
         res_file = open('%s.res' % job_name).read().split()
         self.structure.pore_diameter = tuple(float(x) for x in res_file[1:])

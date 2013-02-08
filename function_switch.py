@@ -506,20 +506,19 @@ def make_collision_tester(options):
         info('Covalent radii collision test, scale factor: %f' % test_scale)
         def collision(test_atom, atoms, cell, ignore=()):
             """Covalent radii collision test."""
+            # TODO(tdaff): Can't use cleaner .fractional tests as the structure
+            # is not passed around to make _parent; can this be fixed
             pos = test_atom.ipos(cell.cell, cell.inverse)
             ipos = test_atom.ifpos(cell.inverse)
             for idx, atom in enumerate(atoms):
                 # Skip non atoms
-                if atom is None:
-                    continue
-                if idx in ignore:
+                if atom is None or idx in ignore:
                     continue
                 dist = min_vect(pos, ipos, atom.ipos(cell.cell, cell.inverse),
                                 atom.ifpos(cell.inverse), cell.cell)
                 dist = dot(dist, dist)
                 min_dist = test_scale*(test_atom.covalent_radius + atom.covalent_radius)
                 if dist < min_dist:
-                    print dist, min_dist
                     return False
             return True
 
@@ -531,9 +530,7 @@ def make_collision_tester(options):
             ipos = test_atom.ifpos(cell.inverse)
             for idx, atom in enumerate(atoms):
                 # Skip non atoms
-                if atom is None:
-                    continue
-                if idx in ignore:
+                if atom is None or idx in ignore:
                     continue
                 dist = min_vect(pos, ipos, atom.ipos(cell.cell, cell.inverse),
                                 atom.ifpos(cell.inverse), cell.cell)
@@ -551,9 +548,7 @@ def make_collision_tester(options):
             ipos = test_atom.ifpos(cell.inverse)
             for idx, atom in enumerate(atoms):
                 # Skip non atoms
-                if atom is None:
-                    continue
-                if idx in ignore:
+                if atom is None or idx in ignore:
                     continue
                 dist = min_vect(pos, ipos, atom.ipos(cell.cell, cell.inverse),
                                 atom.ifpos(cell.inverse), cell.cell)
@@ -1023,7 +1018,6 @@ def main():
 
     global test_collision
     test_collision = make_collision_tester(job_options)
-    print test_collision
 
     #Define some backends for where to send the structures
     backends = []

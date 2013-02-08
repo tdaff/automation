@@ -416,6 +416,7 @@ def matrix_rotate(source, target):
     vlen = dot(v, v)
     if vlen == 0.0:
         # already aligned, no rotation needed
+        info('align')
         return identity(3)
     c = dot(source, target)
     h = (1 - c)/vlen
@@ -492,7 +493,7 @@ def min_vect(c_coa, f_coa, c_cob, f_cob_in, box):
         return direction3d(c_coa, new_b)
 
 
-def test_collision(test_atom, atoms, cell, overlap=1.3, ignore=()):
+def test_collision_absolute(test_atom, atoms, cell, overlap=1.3, ignore=()):
     """
     Does atom intersect with any others? Use ignore for bonded atom ids.
 
@@ -509,6 +510,28 @@ def test_collision(test_atom, atoms, cell, overlap=1.3, ignore=()):
                         atom.ifpos(cell.inverse), cell.cell)
         dist = dot(dist, dist)
         if dist < overlap:
+            return False
+    return True
+
+
+def test_collision_covalent(test_atom, atoms, cell, overlap=1.3, ignore=()):
+    """
+    Does atom intersect with any others? Use ignore for bonded atom ids.
+
+    """
+    pos = test_atom.ipos(cell.cell, cell.inverse)
+    ipos = test_atom.ifpos(cell.inverse)
+    for idx, atom in enumerate(atoms):
+        # Skip non atoms
+        if atom is None:
+            continue
+        if idx in ignore:
+            continue
+        dist = min_vect(pos, ipos, atom.ipos(cell.cell, cell.inverse),
+                        atom.ifpos(cell.inverse), cell.cell)
+        dist = dot(dist, dist)
+        min_dist = overlap*(test_atom.covalent_radius + atom.covalent_radius)
+        if dist < min_dist:
             return False
     return True
 
@@ -968,6 +991,12 @@ def main():
     # Functional group library is self initialising
     f_groups = FunctionalGroupLibrary()
     info("Groups in library: %s" % str(f_groups.group_list))
+
+    global test_collision
+    if job_options.get('fapswitch_collision_test').lower() in ['covalent']:
+        test_collision = test_collision_covalent
+    else:
+        test_collision = test_collision_absolute
 
     #Define some backends for where to send the structures
     backends = []

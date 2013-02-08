@@ -1536,6 +1536,7 @@ class Structure(object):
                     body = body[len(heads):]
             if '_ccdc_geom_bond_type' in heads:
                 while body:
+                    #TODO(tdaff)multiple distances for the same bond
                     bond_dict = dict(zip(heads, body))
                     # bond is sorted so there are no duplicates
                     # and tuple so it can be hashed

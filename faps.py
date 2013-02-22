@@ -3520,8 +3520,12 @@ def validate_gulp_output(filename):
     for line in gulp_output:
         if line.startswith("  Cycle:"):
             line = line.split()
-            final_energy = float(line[3])
-            final_gnorm = float(line[5])
+            try:
+                final_energy = float(line[3])
+                final_gnorm = float(line[5])
+            except ValueError:
+                final_energy = 999999.9
+                final_gnorm = 999999.9
         elif "Optimisation achieved" in line:
             # Great
             finished_optimisation = True

@@ -2125,9 +2125,14 @@ class Structure(object):
         field.extend(["Framework\n",
                       "NUMMOLS %i\n" % prod(supercell),
                       "ATOMS %i\n" % len(self.atoms)])
-        for atom in self.atoms:
-            field.append("%-6s %12.6f %20.14f %6i %6i\n" %
-                         (atom.type, atom.mass, atom.charge, 1, 1))
+        if options.getbool('mc_zero_charges'):
+            for atom in self.atoms:
+                field.append("%-6s %12.6f %20.14f %6i %6i\n" %
+                             (atom.type, atom.mass, 0.0, 1, 1))
+        else:
+            for atom in self.atoms:
+                field.append("%-6s %12.6f %20.14f %6i %6i\n" %
+                             (atom.type, atom.mass, atom.charge, 1, 1))
         field.append("finish\n")
         # VDW potentials
         atom_set = [atom.type for atom in self.atoms]

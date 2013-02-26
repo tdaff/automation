@@ -126,7 +126,7 @@ def _sharcnet_submit(job_type, options, input_file=None, input_args=None):
 
     else:
         _check_program(exe)
-        sqsub_args.extend(['--mpp=%fg' % options.getfloat('threaded_memory')])
+        sqsub_args.extend(['--mpp=%fg' % options.getfloat('serial_memory')])
     # run-time estimate mandatory; 12 hours is plenty?
     sqsub_args.extend(['-r', '48h'])
     # Some codes need the input file name

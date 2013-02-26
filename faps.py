@@ -901,12 +901,14 @@ class PyNiss(object):
         qeq_code = 'egulp'
         qeq_dir = path.join(self.options.get('job_dir'),
                             'faps_%s_%s' % (job_name, qeq_code))
+        typed_atoms = self.options.getbool('egulp_typed_atoms')
+
         mkdirs(qeq_dir)
         os.chdir(qeq_dir)
         debug("Running in %s" % qeq_dir)
 
         filetemp = open('%s.geo' % job_name, 'w')
-        filetemp.writelines(self.structure.to_egulp())
+        filetemp.writelines(self.structure.to_egulp(typed_atoms))
         filetemp.close()
 
         # EGULP defaults to GULP parameters if not specified
@@ -2072,7 +2074,7 @@ class Structure(object):
         return gin_file
 
 
-    def to_egulp(self):
+    def to_egulp(self, typed_atoms=False):
         """Generate input files for Eugene's QEq code."""
         # bind cell locally for speed and convenience
         cell = self.cell.cell
@@ -2081,11 +2083,38 @@ class Structure(object):
         geometry_file = ['%s\n' % self.name]
         geometry_file.extend(self.cell.to_vector_strings(fmt=' %15.12f'))
         geometry_file.append('%i\n' % self.natoms)
+
+        atomic_numbers = self.atomic_numbers
+
+        if typed_atoms:
+            # Include custom typing:
+            # 800 N=O
+            # 801 S=O
+            # 802 S-O-H
+            for atom_idx, atom in enumerate(self.atoms):
+                if atom.uff_type == 'S_3+6':
+                    for bond in self.bonds:
+                        if atom_idx in bond:
+                            other_idx = other_bond_index(bond, atom_idx)
+                            if self.atoms[other_idx].uff_type == 'O_2':
+                                atomic_numbers[other_idx] = 801
+                            elif self.atoms[other_idx].uff_type == 'O_3':
+                                atomic_numbers[other_idx] = 802
+                elif atom.uff_type == 'N_R':
+                    this_bonds = []
+                    for bond in self.bonds:
+                        if atom_idx in bond:
+                            debug('%s' % (bond, ))
+                            other_idx = other_bond_index(bond, atom_idx)
+                            if self.atoms[other_idx].uff_type == 'O_R':
+                                debug('%s' % other_idx)
+                                atomic_numbers[other_idx] = 800
+        debug('%s' % atomic_numbers)
         geometry_file.extend([
-            ('%6d ' % atom.atomic_number) +
+            ('%6d ' % atomic_number) +
             ('%12.7f %12.7f  %12.7f' % tuple(atom.ipos(cell, inv_cell))) +
             ('%12.7f\n' % atom.charge)
-            for atom in self.atoms
+            for atom, atomic_number in zip(self.atoms, atomic_numbers)
         ])
         return geometry_file
 
@@ -3807,10 +3836,21 @@ def name_from_types(sites, guest):
     return site_name
 
 
+def other_bond_index(bond, index):
+    """Return the atom index for the other atom in a bond."""
+    if bond[0] == index:
+        return bond[1]
+    elif bond[1] == index:
+        return bond[0]
+    else:
+        raise ValueError("Index %s not found in bond %s" % (index, bond))
+
+
 def welcome():
     """Print any important messages."""
     print(LOGO)
     print(("faps 0.999-r%s" % __version__.strip('$Revision: ')).rjust(79))
+
 
 def main():
     """Do a standalone calculation when run as a script."""

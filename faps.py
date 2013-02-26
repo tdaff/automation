@@ -1983,7 +1983,7 @@ class Structure(object):
             for at_type in unique(self.types):
                 gin_file.extend(
                     ["%-5s" % at_type,
-                     "%9.5f %9.5f %9.5f 1 1 1\n" % QEQ_PARAMS[at_type]])
+                     "%9.5f %9.5f %9.5f 1 1 0\n" % QEQ_PARAMS[at_type]])
         else:
             for atom in self.atoms:
                 gin_file.extend(["%-5s core " % atom.type,
@@ -2087,7 +2087,7 @@ class Structure(object):
         atomic_numbers = self.atomic_numbers
 
         if typed_atoms:
-            # Include custom typing:
+            # Include custom typing, new types must be found by hand.
             # 800 N=O
             # 801 S=O
             # 802 S-O-H
@@ -2104,18 +2104,18 @@ class Structure(object):
                     this_bonds = []
                     for bond in self.bonds:
                         if atom_idx in bond:
-                            debug('%s' % (bond, ))
                             other_idx = other_bond_index(bond, atom_idx)
                             if self.atoms[other_idx].uff_type == 'O_R':
-                                debug('%s' % other_idx)
                                 atomic_numbers[other_idx] = 800
-        debug('%s' % atomic_numbers)
+
+        # atomic numbers should have been modified with exotic types by now
         geometry_file.extend([
             ('%6d ' % atomic_number) +
             ('%12.7f %12.7f  %12.7f' % tuple(atom.ipos(cell, inv_cell))) +
             ('%12.7f\n' % atom.charge)
             for atom, atomic_number in zip(self.atoms, atomic_numbers)
         ])
+
         return geometry_file
 
 
@@ -3500,6 +3500,9 @@ def parse_qeq_params(param_tuple):
         except ValueError:
             # assume it is an element symbol instead
             atom_type = param_set[0]
+        except IndexError:
+            # Typed atom, ignore for now
+            continue
         try:
             param_dict[atom_type] = (float(param_set[1]), float(param_set[2]))
         except IndexError:
@@ -3511,13 +3514,18 @@ def parse_qeq_params(param_tuple):
 def mk_egulp_params(param_tuple):
     """Convert an options tuple to an EGULP parameters file filling."""
     # group up into ((atom, electronegativity, 0.5*hardness), ... )
-    param_dict = parse_qeq_params(param_tuple)
+    param_tuple = subgroup(param_tuple, 3)
     # first line is the number of parametr sets
     #TODO(tdaff): try adding some error checking
-    egulp_file = ["%s\n" % len(param_dict)]
-    for atom_type, params in param_dict.items():
-        egulp_file.append("%-4i %f %f\n" % (ATOMIC_NUMBER.index(atom_type),
-                                            params[0], params[1]))
+    egulp_file = ["%s\n" % len(param_tuple)]
+    for paramset in param_tuple:
+        try:
+            # catch if it is an atomic number or element symbol
+            atomic_number = int(paramset[0])
+        except ValueError:
+            atomic_number = ATOMIC_NUMBER.index(paramset[0])
+        egulp_file.append("%-4i %f %f\n" % (atomic_number, float(paramset[1]),
+                                            float(paramset[2])))
 
     return egulp_file
 

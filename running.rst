@@ -15,13 +15,35 @@ extra structure related analysis codes.
 Structure files
 ---------------
 
-Structures can be read from ``CIF``, ``PDB``, ``PQR``, ``VASP``, ``CSSR`` or
-``xyz`` files. One file from this list is **required**. By default the code
-will look for ``$JOBNAME.pdb``, other file formats may be set in the config
-files or on the commandline with the ``initial_structure_format`` option.
+Structures can be read from ``CIF``, ``PDB``, ``PQR``, ``VASP``, ``CSSR``
+``SQL`` or ``xyz`` files. One file from this list is **required**. By default
+the code will look for ``$JOBNAME.pdb``, other file formats may be set in the
+config files or on the commandline with the ``initial_structure_format`` option.
 
-The charges can be specified with the structure for the ``PQR``, ``CSSR`` and
-``xyz`` types. Details are given below.
+The charges can be specified with the structure for the ``CIF``, ``PQR``,
+``CSSR`` and ``xyz`` types. Details are given below.
+
+.. object:: $JOBNAME.cif
+
+  The Crystallogrphic Information File (CIF) is the preferred initial strcuture
+  format and the default in faps. CIF is a very complex self describing format
+  but the parser has been thoroughly tested and is capable of extracting atom
+  positions, applying symmetry operations with a check made to remove duplicated
+  atoms. The cell must be given and atom positions specified in fractional
+  cooridinates.
+
+  The cif parser implements some non-standard fields;
+  `_atom_type_partial_charge` will be read in as the atomic charge.
+  `_atom_site_description` is used to determine the force-field atom type.
+
+  Bonding is also read in if specified and expanded according to the site
+  labels. These are required for forec field optimisations.
+
+  .. warning::
+
+    Be careful with complex structures, symmetry rules and the duplicate atom
+    check might not be perfect.
+
 
 .. object:: $JOBNAME.pdb
 
@@ -41,19 +63,6 @@ The charges can be specified with the structure for the ``PQR``, ``CSSR`` and
       In the lattice settings ensure that the cristal is re-orineted with `'A
       along X and B in XY'`, and in the peridicity make the crtystal `P1`
       symmetry.
-
-
-.. object:: $JOBNAME.cif
-
-   Rudimentary Crystallogrphic Information File (CIF) file processing is
-   available in faps; atom positions are extracted, symmetry operations are
-   applied and a check is made to remove duplicated atoms. The cell must be
-   given and atom positions specified in fractional cooridinates.
-
-   .. warning::
-
-      Be careful with complex structures, symmetry rules and the duplicate atom
-      check might not be perfect.
 
 
 .. object:: {$JOBNAME.{poscar|contcar}|{POSCAR|CONTCAR}}
@@ -126,4 +135,3 @@ Library files
    used as a template for new guests in a :ref:`custom guests.lib
    <custom-guests>` but do not modify this file directly as it will be
    overwritten on updates.
-

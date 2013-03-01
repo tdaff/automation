@@ -1,5 +1,5 @@
 ===================
-Quickstart tutorial
+Quickstart examples
 ===================
 
 Several example calculations are provided to familiarise the user with the most
@@ -67,7 +67,7 @@ information and the program will end. The job should now be running through your
 queueing system and subsequent sections will automatically run through the
 queue. This will generate, in sequence, a DFT hydrogen-optimized structure,
 REPEAT charges, and the GCMC uptake of |CO2| at 298 K and 0.15 bar pressure in a
-:file:`structure-CO2.csv` file. You can check the status of the job by running
+:file:`MIL-47-CO2.csv` file. You can check the status of the job by running
 :command:`faps MIL-47` again.
 
 .. code-block:: text
@@ -87,19 +87,49 @@ REPEAT charges, and the GCMC uptake of |CO2| at 298 K and 0.15 bar pressure in a
   >> DFT still in progress
   >> Faps terminated normally
 
-The DFT calculation might take a while so have a cup of tea and come back in a
-bit.
+The DFT calculation might take a while so you can have a cup of tea and come
+back later to check your results.
+
+All faps output is recorded in the :file:`MIL-47.flog` file, which will also
+show any warnings or erros that occure. The file :file:`MIL-47.niss` stores the
+processed outputs of all the calculations and the current state of the system;
+this file is required to continue a calculation so should be preserved, it can
+also be copied to duplicate the structure in different simulation conditions.
+
+
+---------------------------
+Repeating calcualtion parts
+---------------------------
+
+Since the `.niss` file stores the state of the system calcaultions that have
+already been done will not be repeated. If, however, you change some options you
+may need to redo parts of your simulation. The easiest way to do this is to
+specify the parts on the commandline before the jobname.
+
+To repeat the gcmc section of the previous simulation you would type:
+
+  :command:`faps gcmc MIL-47`
+
+You can also specify multiple parts:
+
+  :command:`faps dft charges gcmc MIL-47`
+
 
 --------------------
 Isotherm calculation
 --------------------
 
-Specify a number of pressures and temperatures and the uptake will be
-calcaulted for every combination.
+Faps comes with sensible defaults for everything, but offers a lot of
+customisability. One way to customise your calculations is with a configuration
+file in the directory where your structure is stored, the `.fap` file. The faps
+file follows standard ini format with ``option = choice`` syntax. We could
+create a :file:`MIL-47.fap` file to calculate a complete isotherm. Simply
+specify a number of pressures and temperatures and the uptake will be calcaulted
+for every combination.
 
 .. code-block:: ini
 
-  # structure.fap
+  # MIL-47.fap
   mc_pressure = 0.01 0.1 0.2 0.4 0.8 1.2
   mc_temperature = 263 273
 
@@ -108,17 +138,27 @@ calcaulted for every combination.
 Uncharged guest
 ---------------
 
-The single site methane model does not have any charged sites, so the charge
-calculation can be skipped altogether (any dft optimisation is also skipped).
-Charges are automatically initialsed to 0.
+Somtimes it is more convenient to have the same settings for several jobs, in
+this case we can create a centralised jobfile. These need to be stored in your
+home directory in a directory called `.faps`. This directory is also used for
+other settings and should be used to store descriptive fap files for all your
+job types. In this example, the single site methane model does not have any
+charged sites, so the charge calculation can be skipped altogether (any dft
+optimisation is also skipped). Charges are automatically initialsed to 0.
 
 
 .. code-block:: ini
 
-   # structure.fap
+   # ~/.faps/methane.fap
+   # Skip the dft and charges as we don't need
+   # them for methane.
    no_dft = true
    no_charges = true
    guests = CH4-TraPPE
+
+To make use of our new jobfile, we run the command:
+
+  :command:`faps -j methane MIL-47`
 
 
 --------------

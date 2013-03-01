@@ -23,7 +23,6 @@ Contents
    running
    options
    guests
-   examples
    fapswitch
 
 ==================

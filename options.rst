@@ -108,6 +108,12 @@ value for each option is given here. For the most up-to-date list, see the
 
   Location of Eugene's QEq code. [str]
 
+.. envvar:: egulp_typed_atoms
+
+  Default: False
+
+  Identify Sulphonic acid and nitro oxygen as separate types in egulp. [bool]
+
 .. envvar:: esp_resolution
 
   Default: 0.1
@@ -301,6 +307,12 @@ value for each option is given here. For the most up-to-date list, see the
 
   Temperature(s) to use in GCMC (Kelvin) combined with pressures to
   collect isotherms. [float, list]
+
+.. envvar:: mc_zero_charges
+
+  Default: False
+
+  Do not use charges in the GCMC even if they have been calculated. [bool]
 
 .. envvar:: no_charges
 

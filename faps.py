@@ -1778,7 +1778,7 @@ class Structure(object):
             error("Final charges not found in gulp output")
             terminate(184)
         elif failures > 1:
-            warn("Gulp charges may not be converged")
+            warning("Gulp charges may not be converged")
         for atom, chg_line in zip(self.atoms, gout[start_line:]):
             atom.charge = float(chg_line.split()[2])
 
@@ -1799,8 +1799,8 @@ class Structure(object):
                 error("Egulp gave infinite charges, check structure")
                 terminate(108)
             elif abs(atom.charge) > 10:
-                warn("Very high charge from egulp: %s %f"
-                     (atom.site, atom.charge))
+                warning("Very high charge from egulp: %s %f"
+                        (atom.site, atom.charge))
 
 
     def to_vasp(self, options):
@@ -3509,7 +3509,7 @@ def parse_qeq_params(param_tuple):
         try:
             param_dict[atom_type] = (float(param_set[1]), float(param_set[2]))
         except IndexError:
-            warn("Cannot read parameters for %s" % atom_type)
+            warning("Cannot read parameters for %s" % atom_type)
 
     return param_dict
 

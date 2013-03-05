@@ -230,7 +230,7 @@ def to_cif(atoms, cell, bonds, name):
         "_atom_site_fract_x\n",
         "_atom_site_fract_y\n",
         "_atom_site_fract_z\n",
-        "_atom_type_parital_charge\n"] + atom_part + [
+        "_atom_type_partial_charge\n"] + atom_part + [
         # bonding loop
         "\nloop_\n",
         "_geom_bond_atom_site_label_1\n",

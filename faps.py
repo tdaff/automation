@@ -16,7 +16,22 @@ doing select parts.
 
 """
 
-__version__ = "$Revision$"
+# Turn on keyword expansion to get revision numbers in version strings
+# in .hg/hgrc put
+# [extensions]
+# keyword =
+#
+# [keyword]
+# faps.py =
+#
+# [keywordmaps]
+# Revision = {rev}
+
+try:
+    __version_info__ = (1, 0, 0, int("$Revision$"))
+except ValueError:
+    __version_info__ = (1, 0, 0, 0)
+__version__ = "%i.%i.%i.%i" % __version_info__
 
 import code
 try:
@@ -3860,13 +3875,13 @@ def other_bond_index(bond, index):
 def welcome():
     """Print any important messages."""
     print(LOGO)
-    print(("faps 0.999-r%s" % __version__.strip('$Revision: ')).rjust(79))
+    print(("faps %s" % __version__).rjust(79))
 
 
 def main():
     """Do a standalone calculation when run as a script."""
     main_options = Options()
-    info("Starting faps version 0.999-r%s" % __version__.strip('$Revision: '))
+    info("Starting faps version %s" % __version__)
     # try to unpickle the job or
     # fall back to starting a new simulation
     job_name = main_options.get('job_name')

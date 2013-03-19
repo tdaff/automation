@@ -945,7 +945,7 @@ class PyNiss(object):
         filetemp.close()
 
         filetemp = open('%s.ini' % job_name, 'w')
-        filetemp.writelines(mk_egulp_ini())
+        filetemp.writelines(mk_egulp_ini(self.options))
         filetemp.close()
 
         egulp_args = ['%s.geo' % job_name,
@@ -3548,16 +3548,23 @@ def mk_egulp_params(param_tuple):
     return egulp_file
 
 
-def mk_egulp_ini():
+def mk_egulp_ini(options):
     """Create a default ini file for egulp to do qeq calculation."""
+    egulp_grid = int(options.getbool('egulp_grid'))
+    egulp_potential = int(options.getbool('egulp_potential'))
+    egulp_potential_difference = int(options.getbool('egulp_potential_difference'))
+
+    egulp_grid_parameters = options.get('egulp_grid_parameters')
+
     egulp_ini = [
-        "build_grid 0\n"
-        "build_grid_from_scratch 1 none 0.25 0.25 0.25 2\n"
-        "save_grid 0 none\n"
-        "calculate_pot_diff  0\n"
-        "skip_everything 0\n"
-        "point_charges_present 0\n"
-        "include_pceq 0\n"
+        "build_grid %i\n" % egulp_grid,
+        "build_grid_from_scratch %s\n" % egulp_grid_parameters,
+        "save_grid %i grid.cube\n" % egulp_grid,
+        "calculate_pot_diff %i\n" % egulp_potential_difference,
+        "calcaulte_pot %i repeat.cube\n" % egulp_potential,
+        "skip_everything 0\n",
+        "point_charges_present 0\n",
+        "include_pceq 0\n",
         "imethod 0\n"]
 
     return egulp_ini

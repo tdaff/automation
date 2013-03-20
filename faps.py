@@ -28,9 +28,9 @@ doing select parts.
 # Revision = {rev}
 
 try:
-    __version_info__ = (1, 0, 0, int("$Revision$".strip("$Revision: ")))
+    __version_info__ = (1, 0, 1, int("$Revision$".strip("$Revision: ")))
 except ValueError:
-    __version_info__ = (1, 0, 0, 0)
+    __version_info__ = (1, 0, 1, 0)
 __version__ = "%i.%i.%i.%i" % __version_info__
 
 import code
@@ -2115,6 +2115,11 @@ class Structure(object):
                                 atomic_numbers[other_idx] = 801
                             elif self.atoms[other_idx].uff_type == 'O_3':
                                 atomic_numbers[other_idx] = 802
+                                for another_bond in self.bonds:
+                                    if other_idx in another_bond:
+                                        another_idx = other_bond_index(another_bond, other_idx)
+                                        if self.atoms[another_idx].uff_type == 'H_':
+                                            atomic_numbers[another_idx] = 1001
                 elif atom.uff_type == 'N_R':
                     this_bonds = []
                     for bond in self.bonds:

@@ -28,9 +28,9 @@ doing select parts.
 # Revision = {rev}
 
 try:
-    __version_info__ = (1, 0, 1, int("$Revision$".strip("$Revision: ")))
+    __version_info__ = (1, 1, 0, int("$Revision$".strip("$Revision: ")))
 except ValueError:
-    __version_info__ = (1, 0, 1, 0)
+    __version_info__ = (1, 1, 0, 0)
 __version__ = "%i.%i.%i.%i" % __version_info__
 
 import code
@@ -115,6 +115,7 @@ class PyNiss(object):
                       'esp': (NOT_RUN, False),
                       'charges': (NOT_RUN, False),
                       'properties': (NOT_RUN, False),
+                      'absl': {},
                       'gcmc': {}}
         self.job_handler = JobHandler(options)
 
@@ -210,6 +211,9 @@ class PyNiss(object):
         self.step_gcmc()
 
         self.step_properties()
+
+        #TODO(ekadants): before or after properties?
+        self.step_absl()
 
         self.send_to_database()
 
@@ -599,6 +603,85 @@ class PyNiss(object):
             self.calculate_properties()
             self.state['properties'] = (UPDATED, False)
             self.dump_state()
+
+    def step_absl(self):
+        """Check the GCMC step of the calculation."""
+        # TODO(ekadants): this was the same as step_gcmc, it runs absl for
+        # simultaneously every gcmc point
+        end_after = False
+        jobids = {}
+        postrun_ids = []
+
+        # check for old simulations with no absl state
+        # TODO(tdaff): remove eventually
+        if 'absl' not in self.state:
+            self.state['absl'] = {}
+
+        if self.options.getbool('no_absl'):
+            info("Skipping ABSL calculation")
+            return
+        elif not self.state['absl'] or 'absl' in self.options.args:
+            # The dictionary is empty before any runs
+            info("Starting absl step")
+            jobids = self.run_absl()
+            sys_argv_strip('absl')
+            self.dump_state()
+
+        for tp_point, jobid in jobids.items():
+            if jobid is True:
+                self.state['absl'][tp_point] = (FINISHED, False)
+            elif jobid is False:
+                self.state['absl'][tp_point] = (SKIPPED, False)
+            else:
+                info("ABSL job in queue. Jobid: %s" % jobid)
+                self.state['absl'][tp_point] = (RUNNING, jobid)
+                postrun_ids.append(jobid)
+                # unfinished ABSL calculations
+                end_after = True
+        else:
+            # when the loop completes write out the state
+            self.dump_state()
+
+        for tp_point in self.state['absl']:
+            tp_state = self.state['absl'][tp_point]
+            if tp_state[0] == RUNNING:
+                new_state = self.job_handler.jobcheck(tp_state[1])
+                if not new_state:
+                    info("Queue reports ABSL %s finished" % (tp_point,))
+                    # need to know we have finished to update below
+                    tp_state = (FINISHED, False)
+                    self.state['absl'][tp_point] = tp_state
+                    self.dump_state()
+                else:
+                    info("ABSL %s still running" % (tp_point,))
+                    # unfinished ABSL so exit later
+                    end_after = True
+
+            # any states that need to be updated should have been done by now
+            if tp_state[0] == FINISHED:
+                startdir = os.getcwd()
+                # wooki seems slow to copy output files back
+                # so we give them a few chances to appear
+                max_attempts = 6
+                for attempt_count in range(max_attempts):
+                    time.sleep(attempt_count)
+                    try:
+                        self.structure.update_absl(tp_point, self.options)
+                        self.state['absl'][tp_point] = (UPDATED, False)
+                        self.dump_state()
+                        break
+                    except IOError:
+                        os.chdir(startdir)
+                else:
+                    #TODO(tdaff): does this matter here?
+                    error('ABSL output never appeared')
+
+        if postrun_ids:
+            self.postrun(postrun_ids)
+
+        if end_after:
+            info("ABSL run has not finished completely")
+            terminate(0)
 
     def import_old(self):
         """Try and import any data from previous stopped simulation."""
@@ -1101,6 +1184,62 @@ class PyNiss(object):
         os.chdir(self.options.get('job_dir'))
         return jobids
 
+    def run_absl(self):
+        """Submit an absl job to the queue."""
+        #TODO(ekadants): this is the code to run the absl jobs
+        # put it here
+
+        job_name = self.options.get('job_name')
+
+        guests = self.structure.guests
+
+        gcmc_dir = path.join(self.options.get('job_dir'),
+                                'faps_%s_%s' % (job_name, mc_code))
+        os.chdir(gcmc_dir)
+
+        config, field = self.structure.to_fastmc(self.options)
+
+        filetemp = open("CONFIG", "w")
+        filetemp.writelines(config)
+        filetemp.close()
+
+        filetemp = open("FIELD", "w")
+        filetemp.writelines(field)
+        filetemp.close()
+
+        # TODO(ekadants): this descends into each gcmc in turn
+        temps = self.options.gettuple('mc_temperature', float)
+        presses = self.options.gettuple('mc_pressure', float)
+        indivs = self.options.gettuple('mc_state_points', float)
+        jobids = {}
+        for tp_point in state_points(temps, presses, indivs, len(guests)):
+            temp = tp_point[0]
+            press = tp_point[1]
+            info("Running GCMC: T=%.1f " % temp +
+                 " ".join(["P=%.2f" % x for x in press]))
+            tp_path = ('T%s' % temp +
+                       ''.join(['P%.2f' % x for x in press]))
+            mkdirs(tp_path)
+            os.chdir(tp_path)
+            try_symlink(path.join('..', 'CONFIG'),'CONFIG')
+            try_symlink(path.join('..', 'FIELD'), 'FIELD')
+            filetemp = open("CONTROL", "w")
+            filetemp.writelines(mk_gcmc_control(temp, press, self.options,
+                                                guests, self.structure.gcmc_supercell))
+            filetemp.close()
+
+            if self.options.getbool('no_submit'):
+                info("ABSL input files generated; "
+                     "skipping job submission")
+                jobids[(temp, press)] = False
+            else:
+                jobid = self.job_handler.submit('absl', self.options)
+                jobids[(temp, press)] = jobid
+            os.chdir('..')
+
+        os.chdir(self.options.get('job_dir'))
+        return jobids
+
     def calculate_properties(self):
         """Calculate general structural properties."""
 
@@ -1459,6 +1598,15 @@ class Structure(object):
             self.fastmc_postproc(tp_path, tp_point, options)
         else:
             error("Unknown gcmc method to import %s" % gcmc_code)
+
+    def update_absl(self, tp_point, options):
+        """Select the source for ABSL results and import."""
+        gcmc_path = path.join('faps_%s_%s' % (self.name, gcmc_code))
+        # Runs in subdirectories
+        tp_path = path.join(gcmc_path, 'T%s' % tp_point[0] +
+                               ''.join(['P%.2f' % x for x in tp_point[1]]))
+        info("Importing results from ABSL")
+        self.absl_postproc(tp_path, tp_point, options)
 
     def from_pdb(self, filename, charges=False):
         """Read an initial structure from a pdb file."""
@@ -2485,6 +2633,31 @@ class Structure(object):
         unneeded_files = options.gettuple('fastmc_delete_files')
         remove_files(unneeded_files)
         keep_files = options.gettuple('fastmc_compress_files')
+        compress_files(keep_files)
+
+        os.chdir(startdir)
+
+
+    def absl_postproc(self, filepath, tp_point, options):
+        """Update structure properties from gcmc OUTPUT."""
+        startdir = os.getcwd()
+        os.chdir(filepath)
+
+        #TODO(ekadants): run the ABSL posprocessing stuff here
+        # maybe do some checks to see if probability is plotted,
+        # if you need to look for the folded cube,
+        # whether enough steps have been done?
+
+        fold = options.getbool('fold')
+        prob_plot = options.getbool('mc_probability_plot')
+        steps_done = options.getint('mc_prod_steps')
+
+        # TODO(ekadants): take a look at self.fold_and_maxima
+        # for how you could deal with the guests
+
+        unneeded_files = options.gettuple('absl_delete_files')
+        remove_files(unneeded_files)
+        keep_files = options.gettuple('absl_compress_files')
         compress_files(keep_files)
 
         os.chdir(startdir)

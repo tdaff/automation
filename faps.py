@@ -28,9 +28,9 @@ doing select parts.
 # Revision = {rev}
 
 try:
-    __version_info__ = (1, 1, 0, int("$Revision$".strip("$Revision: ")))
+    __version_info__ = (1, 1, 1, int("$Revision$".strip("$Revision: ")))
 except ValueError:
-    __version_info__ = (1, 1, 0, 0)
+    __version_info__ = (1, 1, 1, 0)
 __version__ = "%i.%i.%i.%i" % __version_info__
 
 import code
@@ -2380,12 +2380,12 @@ class Structure(object):
                     kappa = ka * (16.0*c2*c2 - c1*c1) / (4.0* c2)
                     itp_file.append("%-5i %-5i %-5i %3i %f %f ; %-5s %-5s %-5s" % (l_idx + 1, idx_a + 1, r_idx + 1, 1, thetamin, kappa, l_atom.uff_type, central_atom.uff_type, r_atom.uff_type))
 
-        with open("moffive.top", 'w') as tempfile:
-            tempfile.writelines(top_file)
-        with open("moffive.gro", 'w') as tempfile:
-            tempfile.writelines(gro_file)
-        with open("moffive.itp", 'w') as tempfile:
-            tempfile.writelines(itp_file)
+        #with open("moffive.top", 'w') as tempfile:
+        #    tempfile.writelines(top_file)
+        #with open("moffive.gro", 'w') as tempfile:
+        #    tempfile.writelines(gro_file)
+        #with open("moffive.itp", 'w') as tempfile:
+        #    tempfile.writelines(itp_file)
 
 
     def to_cssr(self, cartesian=False, no_atom_id=False):

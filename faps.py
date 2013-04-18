@@ -28,9 +28,9 @@ doing select parts.
 # Revision = {rev}
 
 try:
-    __version_info__ = (1, 0, 1, int("$Revision$".strip("$Revision: ")))
+    __version_info__ = (1, 1, 0, int("$Revision$".strip("$Revision: ")))
 except ValueError:
-    __version_info__ = (1, 0, 1, 0)
+    __version_info__ = (1, 1, 0, 0)
 __version__ = "%i.%i.%i.%i" % __version_info__
 
 import code
@@ -2103,7 +2103,7 @@ class Structure(object):
 
         if typed_atoms:
             # Include custom typing, new types must be found by hand.
-            # 800 N=O
+            # 800 N=O -- removed
             # 801 S=O
             # 802 S-O-H
             for atom_idx, atom in enumerate(self.atoms):
@@ -2120,13 +2120,14 @@ class Structure(object):
                                         another_idx = other_bond_index(another_bond, other_idx)
                                         if self.atoms[another_idx].uff_type == 'H_':
                                             atomic_numbers[another_idx] = 1001
-                elif atom.uff_type == 'N_R':
-                    this_bonds = []
-                    for bond in self.bonds:
-                        if atom_idx in bond:
-                            other_idx = other_bond_index(bond, atom_idx)
-                            if self.atoms[other_idx].uff_type == 'O_R':
-                                atomic_numbers[other_idx] = 800
+# TODO(tdaff): delete code in future version; removed NO2 typing
+#                elif atom.uff_type == 'N_R':
+#                    this_bonds = []
+#                    for bond in self.bonds:
+#                        if atom_idx in bond:
+#                            other_idx = other_bond_index(bond, atom_idx)
+#                            if self.atoms[other_idx].uff_type == 'O_R':
+#                                atomic_numbers[other_idx] = 800
 
         # atomic numbers should have been modified with exotic types by now
         geometry_file.extend([

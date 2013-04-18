@@ -28,9 +28,9 @@ doing select parts.
 # Revision = {rev}
 
 try:
-    __version_info__ = (1, 1, 1, int("$Revision$".strip("$Revision: ")))
+    __version_info__ = (1, 1, 2, int("$Revision$".strip("$Revision: ")))
 except ValueError:
-    __version_info__ = (1, 1, 1, 0)
+    __version_info__ = (1, 1, 2, 0)
 __version__ = "%i.%i.%i.%i" % __version_info__
 
 import code
@@ -1254,8 +1254,9 @@ class PyNiss(object):
         info("Calculating surface area: %.3f probe, %s points, %.3f res" %
              (rprobe, ("random","uniform")[uniform], resolution))
         total_area = 0.0
-        negative_charge = 0.0
-        positive_charge = 0.0
+        hydrophilic_area = 0.0
+        # gromacs default of 0.2 seems very constrained
+        hydrophilic_threshold = 0.3
         cell = self.structure.cell.cell
         inv_cell = np.linalg.inv(cell.T)
         # Pre-calculate and organise the in-cell atoms
@@ -1309,10 +1310,6 @@ class PyNiss(object):
                         # No more atoms within the radius, point valid
                         ncount += 1
                         xyz.append((atom.type, point, atom.charge))
-                        if atom.charge < 0:
-                            negative_charge += atom.charge
-                        else:
-                            positive_charge += atom.charge
                         break
                     elif vecdist3(point, a2_pos) < a2_sigma:
                         # Point collision
@@ -1324,12 +1321,10 @@ class PyNiss(object):
                     # Loop over all atoms finished; point valid
                     ncount += 1
                     xyz.append((atom.type, point, atom.charge))
-                    if atom.charge < 0:
-                        negative_charge += atom.charge
-                    else:
-                        positive_charge += atom.charge
 
             # Fraction of the accessible surface area for sphere to real area
+            if abs(atom.charge) > hydrophilic_threshold:
+                hydrophilic_area += (surface_area*ncount)/nsamples
             total_area += (surface_area*ncount)/nsamples
         if self.options.getbool('surface_area_save'):
             job_name = self.options.get('job_name')
@@ -1340,8 +1335,8 @@ class PyNiss(object):
                 xyz_out.write(('%-6s' % ppt[0]) +
                               ('%10.6f %10.6f %10.6f' % tuple(ppt[1])) +
                               ('%10.6f\n' % ppt[2]))
-        info("Total positive charge: %f" % positive_charge)
-        info("Total negative charge: %f" % negative_charge)
+        info("Hydrophilic area (A^2) and fraction (probe: %f): %f, %f" %
+             (rprobe, hydrophilic_area, hydrophilic_area/total_area))
         return total_area
 
 class Structure(object):

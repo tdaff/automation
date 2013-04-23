@@ -252,7 +252,6 @@ VASP_PSEUDO_PREF = {
     "Rb": "Rb_sv",
     "Cs": "Cs_sv",
     "Ba": "Ba_sv",
-    "Cu": "Cu_new",
     "Ti": "Ti_pv",
     "V": "V_pv",
     "Cr": "Cr_pv",

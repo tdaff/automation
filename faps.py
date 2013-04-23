@@ -28,9 +28,9 @@ doing select parts.
 # Revision = {rev}
 
 try:
-    __version_info__ = (1, 1, 2, int("$Revision$".strip("$Revision: ")))
+    __version_info__ = (1, 1, 3, int("$Revision$".strip("$Revision: ")))
 except ValueError:
-    __version_info__ = (1, 1, 2, 0)
+    __version_info__ = (1, 1, 3, 0)
 __version__ = "%i.%i.%i.%i" % __version_info__
 
 import code
@@ -284,10 +284,16 @@ class PyNiss(object):
             if hasattr(guest, 'probe_radius'):
                 if guest.probe_radius != 1.0 and guest.probe_radius in void_volume:
                     guest_excess = 'xs-molc/uc,xs-mmol/g,xs-v/v,xs-wt%,'
+            if hasattr(guest, 'c_v') and guest.c_v:
+                #TODO(tdaff): Make standard in 2.0
+                # makes sure that c_v is there and not empty
+                cv_header = "C_v,stdev,"
+            else:
+                cv_header = ""
             # Generate headers separately
             csv = ["#T/K,p/bar,molc/uc,mmol/g,stdev,",
                    "v/v,stdev,wt%,stdev,hoa/kcal/mol,stdev,",
-                   guest_excess, he_excess,
+                   guest_excess, he_excess, cv_header,
                    ",".join("p(g%i)" % gidx for gidx in range(nguests)), "\n"]
             info(guest.name)
             info("---------------------------------------")
@@ -349,6 +355,8 @@ class PyNiss(object):
                                 (self.structure.weight + xs_uptake*guest.weight))
                     csv.append("%f,%f,%f,%f," % (
                         xs_uptake, muptake, vuptake, wtpc,))
+                if cv_header:
+                    csv.append("%f,%f," % (guest.c_v[tp_point]))
                 # list all the other guest pressures and start a new line
                 csv.append(",".join("%f" % x for x in tp_point[1]) + "\n")
 
@@ -2444,11 +2452,30 @@ class Structure(object):
         # Keep track of supercell so we can get unit cell values
         supercell_mult = prod(self.gcmc_supercell)
         # Still positional as we need multiple values simultaneously
-        # and very old versions cahnged wording of heat of adsorption
+        # and very old versions changed wording of heat of adsorption
         # and enthalpy of guest
+        # TODO(tdaff, r2.0): deprecate reading older fastmc files
+        # and put Cv in the guest definition
+        for line in output[::-1]:
+            if "+/-" in line:
+                # This is version 1.3 of fastmc
+                debug("NEW OUTPUT")
+                line_offset = 5
+                read_cv = True
+                # In future this should be assumed to exist
+                for guest in self.guests:
+                    if not hasattr(guest, 'c_v'):
+                        guest.c_v = {}
+                break
+        else:
+            # +/- not found, assume old style output
+            debug("OLD OUTPUT")
+            line_offset = 0
+            read_cv = False
         for idx, line in enumerate(output):
             # Assume that block will always start like this
             if 'final stats' in line:
+                idx += line_offset
                 guest_id = int(line.split()[4]) - 1
                 self.guests[guest_id].uptake[tp_point] = (
                     float(output[idx + 1].split()[-1]),
@@ -2458,6 +2485,10 @@ class Structure(object):
                 self.guests[guest_id].hoa[tp_point] = (
                     float(output[idx + 3].split()[-1]),
                     float(output[idx + 4].split()[-1]))
+                if read_cv:
+                    self.guests[guest_id].c_v[tp_point] = (
+                    float(output[idx + 5].split()[-1]),
+                    float(output[idx + 6].split()[-1]))
             elif 'total accepted steps' in line:
                 counted_steps = int(line.split()[-1])
                 if counted_steps < 10000:
@@ -3211,6 +3242,7 @@ class Guest(object):
         self.source = "Unknown source"
         self.uptake = {}
         self.hoa = {}
+        self.c_v = {}
         # only load if asked, set the ident in the loader
         if ident:
             self.load_guest(ident, guest_path=None)

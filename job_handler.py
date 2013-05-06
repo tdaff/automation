@@ -247,12 +247,12 @@ def _wooki_submit(job_type, options, *args, **kwargs):
     node types, because it is too fiddly to care about.
     """
     submit_scripts = {
-        'vasp': 'vaspsubmit-faps',
-        'repeat': 'repeatsubmit-faps',
-        'siesta': 'siestasubmit-faps',
-        'fastmc': 'fastmcsubmit-faps',
-        'gulp': 'gulpsubmit-faps',
-        'egulp': 'egulppotsubmit-faps'
+        'vasp': 'vasp-submit',
+        'repeat': 'repeat-submit-faps',
+        'siesta': 'siesta-submit',
+        'fastmc': 'fastmc-submit',
+        'gulp': 'gulp-submit-faps',
+        'egulp': 'egulp-submit'
     }
     job_name = options.get('job_name')
     try:
@@ -262,17 +262,15 @@ def _wooki_submit(job_type, options, *args, **kwargs):
 
     submit_args = [submit_scripts[job_type], job_name, "%i" % nodes]
 
-    if nodes != 1:
-        submit_args.append("%i" % nodes)
-
     debug("Submission command: %s" % " ".join(submit_args))
     submitted = False
     submit_count = 0
     while not submitted and submit_count <= MAX_RETRY:
         submit = Popen(submit_args, stdout=subprocess.PIPE)
         for line in submit.stdout.readlines():
-            if "wooki" in line:
-                jobid = line.split(".")[0]
+            # Your job 123 ("vasp.testzif") has been submitted
+            if "has been submitted" in line:
+                jobid = line.split()[2]
                 submitted = True
                 break
         else:
@@ -294,40 +292,42 @@ def _wooki_postrun(waitid):
     else:
         waitid = frozenset([("%s" % waitid).strip()])
     # No jobcheck here as we assume wooki works
-    pbs_script = ['#PBS -N faps-post-%s\n' % '-'.join(sorted(waitid)),
-                  '#PBS -m n\n',
-                  '#PBS -o faps-post-%s.out\n' % '-'.join(sorted(waitid)),
-                  '#PBS -j oe\n',
-                  '#PBS -W depend=afterok:%s\n' % ':'.join(waitid),
-                  'cd $PBS_O_WORKDIR\n',
+    sge_script = ['#!/bin/bash\n',
+                  '#$ -cwd\n',
+                  '#$ -V\n',
+                  '#$ -j y\n',
+                  '#$ -N faps-post-%s\n' % '-'.join(sorted(waitid)),
+                  '#$ -o faps-post-%s.out\n' % '-'.join(sorted(waitid)),
+                  '#$ -hold_jid %s\n' % ','.join(waitid),
                   'python ',
                   ' '.join(_argstrip(sys.argv))]
 
-    pbs_script = ''.join(pbs_script)
-    submit = Popen("/usr/local/bin/qsub", shell=False, stdin=PIPE)
-    submit.communicate(input=pbs_script)
+    sge_script = ''.join(sge_script)
+    submit = Popen("qsub", shell=False, stdin=PIPE)
+    submit.communicate(input=sge_script)
 
 
 def _wooki_jobcheck(jobid):
     """Return true if job is still running or queued, or check fails."""
     # can deal with jobid as an int or a string
     jobid = ("%s" % jobid).strip()
-    running_status = ['Q', 'R', 'Z']
-    qstat = Popen(['/usr/local/bin/qstat', jobid], stdout=PIPE, stderr=STDOUT)
+#    running_status = ['Q', 'R', 'Z']
+    qstat = Popen(['qstat', '-j', jobid], stdout=PIPE, stderr=STDOUT)
     for line in qstat.stdout.readlines():
-        if "Unknown Job Id" in line:
+        if "Following jobs do not exist" in line:
             # Job finished and removed
             return False
-        elif jobid in line:
+#TODO(tdaff): any way to get the job information?
+#        elif jobid in line:
             # use of 'in' should be fine as only this job will be shown
-            status = line[68:69]
-            if status in running_status:
-                return True
-            else:
+#            status = line[68:69]
+#            if status in running_status:
+#                return True
+#            else:
                 # Not running
-                return False
+#                return False
     else:
-        print("Failed to get job information.")  # qstat parsing failed?
+        #print("Failed to get job information.")  # qstat parsing failed?
         # Act as if the job is still running, in case it hasn't finished
         return True
 

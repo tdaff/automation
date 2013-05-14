@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 """
 create_functional_group.py
 
@@ -12,7 +14,7 @@ import argparse
 import openbabel as ob
 import numpy as np
 import pybel
-from numpy import asarray, cross, dot, array
+from numpy import asarray, cross, dot, array, identity
 from numpy.linalg import norm
 
 

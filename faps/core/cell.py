@@ -6,7 +6,6 @@ matrix and parameter representations.
 
 """
 
-from itertools import count
 from logging import warning, debug, error, info, critical
 from math import ceil
 
@@ -230,6 +229,9 @@ class Cell(object):
 
     @property
     def to_dict(self):
+        """
+        Dictionary representation of cell for document interchange.
+        """
         drepr = {"@module": self.__class__.__module__,
                  "@class": self.__class__.__name__,
                  "cell": self.cell.tolist()}

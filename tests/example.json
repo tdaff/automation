@@ -1,0 +1,35 @@
+{
+    "faps json": 0,
+    "name": "Example MOF",
+    "job_name": "example",
+    "simulation": [
+        "gulp_opt"
+    ],
+    "structures": [
+        {
+            "id": 1735,
+            "base_structure": "str_m1_o13_o7",
+            "topology": "tbo",
+            "simulations": {
+                "force_field_opt": "gulp",
+                "charges": "egulp"
+            },
+            "atoms": [
+                {
+                    "element": 6,
+                    "type": "C",
+                    "force_field_type": "C_R",
+                    "site": "C23",
+                    "charge": 0.234
+                },
+                {
+                    "element": 6,
+                    "type": "C",
+                    "force_field_type": "C_R",
+                    "site": "C7",
+                    "charge": -0.234
+                }
+            ]
+        }
+    ]
+}

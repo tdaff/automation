@@ -33,6 +33,7 @@ from logging import debug, error
 
 import __main__
 
+job_path = os.getcwd()
 
 class Options(object):
     """

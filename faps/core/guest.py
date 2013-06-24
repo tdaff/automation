@@ -20,46 +20,50 @@ from elements import WEIGHT, ATOMIC_NUMBER, UFF, VASP_PSEUDO_PREF
 from elements import CCDC_BOND_ORDERS, GULP_BOND_ORDERS, METALS
 from elements import COVALENT_RADII, UFF_FULL, QEQ_PARAMS
 
+from faps.core import Atom
 from faps.util.text import strip_blanks
+from faps.settings import data_path, dot_faps_path
+from faps.settings import config
 
 
 class Guest(object):
-    """Guest molecule and properties."""
-    def __init__(self, ident=None, guest_path=None):
+    """
+    Parameters for a guest molecule for various simulations (mostly GCMC), and
+    chemical and physical properties needed for calculations.
+
+    """
+    def __init__(self, ident=None):
         """Populate an empty guest then load from library if required."""
         self.ident = ''
-        self.name = "Unknown guest"
+        self.name = "No Guest"
         self.potentials = {}
         self.probability = []
         self.atoms = []
-        self.source = "Unknown source"
-        self.uptake = {}
-        self.hoa = {}
-        self.c_v = {}
+        self.source = "None"
         # only load if asked, set the ident in the loader
-        if ident:
-            self.load_guest(ident, guest_path=None)
+        if ident is not None:
+            self.load_guest(ident)
 
-    def load_guest(self, ident, guest_path=None):
-        """Look in guests.lib in submit directory and default."""
+    def load_guest(self, ident):
+        """
+        Look in guests.lib in submit directory, .faps directory and
+        default data directory.
+
+        """
+
         # Ident set here to keep consistent
         self.ident = ident
-        # Need the different directories
-        if guest_path is None:
-            guest_path = os.getcwd()
-        if __name__ != '__main__':
-            script_dir = path.dirname(__file__)
-        else:
-            script_dir = path.abspath(sys.path[0])
-        dot_faps_dir = path.join(path.expanduser('~'), '.faps')
+
         # A parser for each location
         job_guests = configparser.SafeConfigParser()
         dot_faps_guests = configparser.SafeConfigParser()
         lib_guests = configparser.SafeConfigParser()
+
         # Try and find guest in guests.lib
-        job_guests.read(path.join(guest_path, 'guests.lib'))
-        dot_faps_guests.read(path.join(dot_faps_dir, 'guests.lib'))
-        lib_guests.read(path.join(script_dir, 'guests.lib'))
+        job_guests.read(path.join(config.job_path, 'guests.lib'))
+        dot_faps_guests.read(path.join(dot_faps_path, 'guests.lib'))
+        lib_guests.read(path.join(data_path, 'guests.lib'))
+
         # Job dir and user defined have priority
         if job_guests.has_section(ident):
             debug("%s found in job dir" % ident)
@@ -131,10 +135,10 @@ class Guest(object):
     def to_dict(self):
         drepr = {"@module": self.__class__.__module__,
                  "@class": self.__class__.__name__,
-                 "cell": self.cell.tolist()}
+                 "ident": self.ident()}
         return drepr
 
     @staticmethod
     def dict(drepr):
-        return Cell(cell=drepr['cell'])
+        return Guest(ident=drepr['ident'])
 

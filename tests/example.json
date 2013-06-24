@@ -3,7 +3,8 @@
     "name": "Example MOF",
     "job_name": "example",
     "simulation": [
-        "gulp_opt"
+        "gulp_opt",
+        "egulp_charges"
     ],
     "structures": [
         {
@@ -14,6 +15,17 @@
                 "force_field_opt": "gulp",
                 "charges": "egulp"
             },
+            "gcmc": [
+                {
+                    "guests": ["CO2", "N2"],
+                    "uptake": {
+                        "CO2": {
+                            "gravimetric": 3.2354,
+                            "gravimetric-stdev": 0.4
+                        }
+                    }
+                }
+            ],
             "atoms": [
                 {
                     "element": 6,
@@ -28,6 +40,15 @@
                     "force_field_type": "C_R",
                     "site": "C7",
                     "charge": -0.234
+                }
+            ],
+            "bonds": [
+                {
+                    "atom1": 0,
+                    "atom2": 1,
+                    "order": 1.5,
+                    "length": 1.32
+
                 }
             ]
         }

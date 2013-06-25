@@ -9,18 +9,12 @@ try:
     import configparser
 except ImportError:
     import ConfigParser as configparser
-import os
-import sys
 from logging import warning, debug, error, info, critical
 from os import path
 
 import numpy as np
 
-from elements import WEIGHT, ATOMIC_NUMBER, UFF, VASP_PSEUDO_PREF
-from elements import CCDC_BOND_ORDERS, GULP_BOND_ORDERS, METALS
-from elements import COVALENT_RADII, UFF_FULL, QEQ_PARAMS
-
-from faps.core import Atom
+from faps.core.atom import Atom
 from faps.util.text import strip_blanks
 from faps.settings import data_path, dot_faps_path
 from faps.settings import config

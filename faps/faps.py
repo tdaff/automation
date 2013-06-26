@@ -16,23 +16,6 @@ doing select parts.
 
 """
 
-# Turn on keyword expansion to get revision numbers in version strings
-# in .hg/hgrc put
-# [extensions]
-# keyword =
-#
-# [keyword]
-# faps.py =
-#
-# [keywordmaps]
-# Revision = {rev}
-
-try:
-    __version_info__ = (1, 2, 0, int("$Revision$".strip("$Revision: ")))
-except ValueError:
-    __version_info__ = (1, 2, 0, 0)
-__version__ = "%i.%i.%i.%i" % __version_info__
-
 import code
 try:
     import configparser

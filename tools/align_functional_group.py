@@ -167,7 +167,7 @@ def main():
     # no bonds < idx 11
     for bond in sorted(bonds):
         if not bond[0] < 0 and not bond[1] < 0:
-            bonds_block.append("    {0[0]:4} {0[1]:4} {1[1]:5.1f}\n".format(bond, bonds[bond]))
+            bonds_block.append("    {0[0]:4} {0[1]:4} {1[1]:5.2f}\n".format(bond, bonds[bond]))
 
     output_text.append('bonds =\n')
     output_text.extend(bonds_block[:])
@@ -186,6 +186,7 @@ def main():
         output_text[2:2] = ['#\n'] + ascii_mol + ['#\n']
 
     pybel_mol.write(format='svg', filename='{}.svg'.format(args.name), opt={'C': None})
+    pybel_mol.write(format='mol', filename='{}.mol'.format(args.name))
 
     # Always output to a library
     with open('{}.lib'.format(args.name), 'w') as out_lib:

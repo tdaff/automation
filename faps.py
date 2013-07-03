@@ -3197,7 +3197,11 @@ class Atom(object):
 
     def del_fractional_coordinate(self):
         """Remove the fractional coordinate; run after updating cell."""
-        del self._fractional
+        try:
+            del self._fractional
+        except AttributeError:
+            # Attribute does not exist, so can't delete it
+            pass
 
     fractional = property(get_fractional_coordinate, set_fractional_coordinate, del_fractional_coordinate)
 

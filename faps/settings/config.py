@@ -60,7 +60,6 @@ class Options(object):
         self.job_ini = configparser.SafeConfigParser()
         # populate options
         self._init_paths()
-        self.commandline()
         self._init_logging()
         self.load_defaults()
         self.load_site_defaults()
@@ -156,59 +155,6 @@ class Options(object):
         # Where we run the job.
         self.job_dir = os.getcwd()
 
-
-    def commandline(self):
-        """Specified options, highest priority."""
-        usage = "usage: %prog [options] [COMMAND] JOB_NAME"
-        # use description for the script, not for this module
-        parser = OptionParser(usage=usage, version="%prog 0.1",
-                              description=__main__.__doc__)
-        parser.add_option("-v", "--verbose", action="store_true",
-                          dest="verbose",
-                          help="output extra debugging information")
-        parser.add_option("-q", "--quiet", action="store_true",
-                          dest="quiet", help="only output warnings and errors")
-        parser.add_option("-s", "--silent", action="store_true",
-                          dest="silent", help="no terminal output")
-        parser.add_option("-p", "--plain", action="store_true",
-                          dest="plain", help="do not colourise or wrap output")
-        parser.add_option("-o", "--option", action="append", dest="cmdopts",
-                          help="set custom options as key=value pairs")
-        parser.add_option("-i", "--interactive", action="store_true",
-                          dest="interactive", help="enter interactive mode")
-        parser.add_option("-m", "--import", action="store_true",
-                          dest="import", help="try and import old data")
-        parser.add_option("-n", "--no-submit", action="store_true",
-                          dest="no_submit",
-                          help="create input files only, do not run any jobs")
-        parser.add_option("-j", "--job-type", dest="job_type",
-                          help="user preconfigured job settings")
-        parser.add_option("-d", "--daemon", action="store_true", dest="daemon",
-                          help="run [lube] as a server and await input")
-        (local_options, local_args) = parser.parse_args()
-
-        # job_name may or may not be passed or set initially
-        if self.job_name:
-            if self.job_name in local_args:
-                local_args.remove(self.job_name)
-        elif len(local_args) == 0:
-            parser.error("No arguments given (try %prog --help)")
-        else:
-            # Take the last argument as the job name
-            self.job_name = local_args.pop()
-
-        # key value options from the command line
-        if local_options.cmdopts is not None:
-            for pair in local_options.cmdopts:
-                if '=' in pair:
-                    pair = pair.split('=')
-                    self.cmdopts[pair[0]] = pair[1]
-                else:
-                    self.cmdopts[pair] = True
-
-        self.options = local_options
-        # Args are only the COMMANDS for the run
-        self.args = [arg.lower() for arg in local_args]
 
     def load_defaults(self):
         """Load program defaults."""

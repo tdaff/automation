@@ -6,14 +6,9 @@ begins weird things will happen.
 
 """
 
-__all__ = ['flog']
-
 import copy
 import logging
-import os
-import re
 import sys
-import textwrap
 
 
 def init_logging(basename, verbosity=0):
@@ -53,7 +48,8 @@ def init_logging(basename, verbosity=0):
     # Easier to do simple file configuration then add the stdout
     file_handler = logging.FileHandler(flog_filename)
     file_handler.setLevel(file_level)
-    formatter = logging.Formatter('[%(asctime)s] %(levelname)s %(message)s', datefmt='%Y%m%d %H:%M:%S')
+    formatter = logging.Formatter('[%(asctime)s] %(levelname)s %(message)s',
+                                  datefmt='%Y%m%d %H:%M:%S')
     file_handler.setFormatter(formatter)
     root_logger.addHandler(file_handler)
 

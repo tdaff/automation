@@ -5,27 +5,7 @@ Command line argument parsing.
 
 """
 
-
 import argparse
-
-# Python 3 fix
-try:
-    import configparser
-except ImportError:
-    import ConfigParser as configparser
-import copy
-import logging
-import os
-import re
-import sys
-import textwrap
-# Python 3 fix
-try:
-    from StringIO import StringIO
-except ImportError:
-    from io import StringIO
-from optparse import OptionParser
-from logging import debug, error
 
 
 DESCRIPTION = """
@@ -49,7 +29,6 @@ class DecreaseAction(argparse.Action):
 
 def commandline():
     """Pull everything from the command line."""
-    usage = "usage: %prog [options] [COMMAND] JOB_NAME"
     # use description for the script, not for this module
     parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument("-v", "--verbose", action="count", default=0,

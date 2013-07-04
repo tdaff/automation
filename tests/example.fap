@@ -1,0 +1,7 @@
+# dot fap file demonstrating features available
+# for a complete simulation
+
+[faps]
+
+[simulation]
+requires = charges:repeat gcmc properties

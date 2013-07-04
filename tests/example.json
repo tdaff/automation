@@ -8,12 +8,14 @@
     ],
     "structures": [
         {
-            "id": 1735,
+			"id": 1735,
             "base_structure": "str_m1_o13_o7",
+			"force_field": "UFF",
             "topology": "tbo",
-            "simulations": {
+            "attributes": {
                 "force_field_opt": "gulp",
-                "charges": "egulp"
+                "charges": "egulp",
+				"properties": "zeo++"
             },
             "gcmc": [
                 {
@@ -26,15 +28,26 @@
                     }
                 }
             ],
+			"properties": {
+				"probe": 1.3,
+				"surface_area": "4534",
+				"void_farction": 0.5,
+			}
+			"cell": {
+				"cell": [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 10.0]
+			},
             "atoms": [
                 {
+				    "position": [1.34, 5.78, 2.34],
                     "element": 6,
                     "type": "C",
                     "force_field_type": "C_R",
                     "site": "C23",
-                    "charge": 0.234
+                    "charge": 0.234,
+					"fixed": True
                 },
                 {
+				    "position": [5.43, 1.28, 6.45],
                     "element": 6,
                     "type": "C",
                     "force_field_type": "C_R",
@@ -48,7 +61,6 @@
                     "atom2": 1,
                     "order": 1.5,
                     "length": 1.32
-
                 }
             ]
         }

@@ -156,52 +156,6 @@ class Options(object):
         # Where we run the job.
         self.job_dir = os.getcwd()
 
-    def _init_logging(self):
-        """
-        Setup the logging to terminal and .flog file, with levels as required.
-        Must run before any logging calls so we need to access attributes
-        rather than using self.get()!
-
-        """
-
-        # Quiet always overrides verbose; always at least INFO in .flog
-        if self.options.silent:
-            stdout_level = logging.CRITICAL
-            file_level = logging.INFO
-        elif self.options.quiet:
-            stdout_level = logging.ERROR
-            file_level = logging.INFO
-        elif self.options.verbose:
-            stdout_level = logging.DEBUG
-            file_level = logging.DEBUG
-        else:
-            stdout_level = logging.INFO
-            file_level = logging.INFO
-
-        # Easier to do simple file configuration then add the stdout
-        logging.basicConfig(level=file_level,
-                            format='[%(asctime)s] %(levelname)s %(message)s',
-                            datefmt='%Y%m%d %H:%M:%S',
-                            filename=self.job_name + '.flog',
-                            filemode='a')
-
-        # Make these uniform widths
-        logging.addLevelName(10, '--')
-        logging.addLevelName(20, '>>')
-        logging.addLevelName(30, '**')
-        logging.addLevelName(40, '!!')
-        logging.addLevelName(50, 'XX')
-
-        if self.options.plain:
-            console = logging.StreamHandler(sys.stdout)
-        else:
-            # Use nice coloured console output
-            console = ColouredConsoleHandler(sys.stdout)
-        console.setLevel(stdout_level)
-        formatter = logging.Formatter('%(levelname)s %(message)s')
-        console.setFormatter(formatter)
-        # add the handler to the root logger
-        logging.getLogger('').addHandler(console)
 
     def commandline(self):
         """Specified options, highest priority."""
@@ -327,68 +281,6 @@ class Options(object):
             job_type_ini = StringIO('[job_config]\n')
         self.job_type_ini.readfp(job_type_ini)
 
-def options_test():
-    """Try and read a few options from different sources."""
-    testopts = Options()
-    print(testopts.get('job_name'))
-    print(testopts.get('cmdopts'))
-    print(testopts.get('args'))
-    print(testopts.get('verbose'))
-    print(testopts.get('script_dir'))
-    print(testopts.getbool('interactive'))
-    for arg in testopts.get('args'):
-        print('%s: %s' % (arg, testopts.get(arg)))
-        try:
-            print(testopts.getbool(arg))
-        except ValueError:
-            print('%s is not a bool' % arg)
-        try:
-            print(testopts.getint(arg))
-        except ValueError:
-            print('%s is not an int' % arg)
-        try:
-            print(testopts.getfloat(arg))
-        except ValueError:
-            print('%s is not a float' % arg)
-        try:
-            print(testopts.gettuple(arg))
-        except ValueError:
-            print('%s is not a tuple' % arg)
-    print(testopts.get('not an option'))
-
-
-class ColouredConsoleHandler(logging.StreamHandler):
-    """Makes colourised and wrapped output for the console."""
-    def emit(self, record):
-        """Colourise and emit a record."""
-        # Need to make a actual copy of the record
-        # to prevent altering the message for other loggers
-        myrecord = copy.copy(record)
-        levelno = myrecord.levelno
-        if levelno >= 50:  # CRITICAL / FATAL
-            front = '\033[30;41m'  # black/red
-            text = '\033[30;41m'  # black/red
-        elif levelno >= 40:  # ERROR
-            front = '\033[30;41m'  # black/red
-            text = '\033[1;31m'  # bright red
-        elif levelno >= 30:  # WARNING
-            front = '\033[30;43m'  # black/yellow
-            text = '\033[1;33m'  # bright yellow
-        elif levelno >= 20:  # INFO
-            front = '\033[30;42m'  # black/green
-            text = '\033[1m'  # bright
-        elif levelno >= 10:  # DEBUG
-            front = '\033[30;46m'  # black/cyan
-            text = '\033[0m'  # normal
-        else:  # NOTSET and anything else
-            front = '\033[0m'  # normal
-            text = '\033[0m'  # normal
-
-        myrecord.levelname = '%s%s\033[0m' % (front, myrecord.levelname)
-        myrecord.msg = textwrap.fill(
-            myrecord.msg, initial_indent=text, width=76,
-            subsequent_indent='\033[0m   %s' % text) + '\033[0m'
-        logging.StreamHandler.emit(self, myrecord)
 
 
 class NullConfigParser(object):

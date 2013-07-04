@@ -16,7 +16,7 @@ import sys
 import textwrap
 
 
-def init_logging(basename, verbosity_count=0):
+def init_logging(basename, verbosity=0):
     """
     Setup the logging to terminal and .flog file, with levels as required.
     Packages are expected to import the provided logger and functions rather
@@ -37,13 +37,13 @@ def init_logging(basename, verbosity_count=0):
     file_level = logging.INFO
     flog_filename = '{}.flog'.format(basename)
 
-    if verbosity_count <= -2:
+    if verbosity <= -2:
         # -qq
         stdout_level = logging.CRITICAL
-    elif verbosity_count <= -1:
+    elif verbosity <= -1:
         # -q
         stdout_level = logging.ERROR
-    elif verbosity_count >= 1:
+    elif verbosity >= 1:
         # -v
         stdout_level = logging.DEBUG
         file_level = logging.DEBUG

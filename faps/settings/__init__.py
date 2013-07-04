@@ -13,3 +13,7 @@ from os import path
 settings_path = os.path.dirname(os.path.abspath(__file__))
 data_path = path.join(settings_path, '..', 'data')
 dot_faps_path = path.join(path.expanduser('~'), '.faps')
+
+from flog import init_logging
+
+init_logging('something', verbosity_count=0)

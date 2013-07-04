@@ -4,3 +4,8 @@ syntax: glob
 *.pyc
 *~
 
+*.pyproj
+*.sln
+*.suo
+*.flog
+

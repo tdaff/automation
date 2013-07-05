@@ -20,6 +20,8 @@
             "gcmc": [
                 {
                     "guests": ["CO2", "N2"],
+					"pressures": [0.15, 0.75],
+					"temperature": 298,
                     "uptake": {
                         "CO2": {
                             "gravimetric": 3.2354,
@@ -31,8 +33,8 @@
 			"properties": {
 				"probe": 1.3,
 				"surface_area": "4534",
-				"void_farction": 0.5,
-			}
+				"void_farction": 0.5
+			},
 			"cell": {
 				"cell": [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 10.0]
 			},
@@ -44,7 +46,7 @@
                     "force_field_type": "C_R",
                     "site": "C23",
                     "charge": 0.234,
-					"fixed": True
+					"fixed": true
                 },
                 {
 				    "position": [5.43, 1.28, 6.45],

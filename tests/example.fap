@@ -1,7 +1,14 @@
 # dot fap file demonstrating features available
 # for a complete simulation
 
-[faps]
+[all]
 
-[simulation]
-requires = charges:repeat gcmc properties
+[simulation_one]
+requires = forec_field_optimisation charges:repeat gcmc properties
+gcmc.guests = CO2 N2
+gcmc.pressures = (0.15, 0.75)
+
+[simulation_another]
+requires = force_field_optimisation charges:egulp gcmc properties
+gcmc.guests = CO2
+gcmc.pressures = 0.01, 0.15, 0.3, 0.6, 0.9

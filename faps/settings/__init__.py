@@ -16,4 +16,4 @@ dot_faps_path = path.join(path.expanduser('~'), '.faps')
 
 from flog import init_logging
 
-init_logging('something', verbosity_count=0)
+#init_logging('something', verbosity=0)

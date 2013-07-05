@@ -1,9 +1,10 @@
-#!/usr/bin/env python
+"""
+The core Structure is the central basis for storing atomic configurations
+and everything attached to them, including the route to derive the
+coordinates and the attributes.
 
 """
-The core Structure as the central basis for storing atomic configurations.
 
-"""
 
 from copy import copy
 from itertools import count
@@ -15,46 +16,45 @@ from numpy import dot
 
 class Structure(object):
     """
-    The current state of the structure; update as the calculations proceed.
+    The current state of the structure.
 
-    Structure provides methods to produce input files for and take output from
-    various computational chemistry packages but needs to be told what to do.
+    Structure holds data on atomic postitions, it should also optionally 
+    define unique sets of attributes for each configuration.
     Internal energy units are kcal/mol.
 
-    Methods are grouped:
-    * Initial structure parsers
-    * Output file parsers to update structure
-    * Input file generation
-    * Internal manipulation methods
-
     """
-    # TODO: dft energy?
-    def __init__(self, name):
-        """Just instance an empty structure initially."""
-        self.name = name
-        self.cell = Cell()
+
+    def __init__(self, drepr=None):
+        """Instance an empty container with nothing in it."""
+        super(Structure, self).__setattr__('_attribute_register',set())
+        self.name = None
+        self.cell = None
         self.atoms = []
-        self.esp = None
-        self.dft_energy = 0.0
-        self.guests = []
         self.properties = {}
-        self.space_group = None
+
+    def __setattr__(self, name, value):
+        self._attribute_register.add(name)
+        return super(Structure, self).__setattr__(name, value)
+
+    def __getattribute__(self, name):
+        print("getarrt")
+        return super(Structure, self).__getattribute__(name)
 
     def remove_duplicates(self, tolerance=0.02):
         """Find overlapping atoms and remove them."""
-        uniq_atoms = []
+        unique_atoms = []
         found_atoms = []
         for atom in self.atoms:
-            for uniq_atom in uniq_atoms:
-                if atom.type != uniq_atom.type:
+            for unique_atom in unique_atoms:
+                if atom.type != unique_atom.type:
                     continue
-                elif min_distance(atom, uniq_atom) < tolerance:
+                elif min_distance(atom, unique_atom) < tolerance:
                     break
             # else excutes when not found here
             else:
-                uniq_atoms.append(atom)
-        debug("Found %i unique atoms in %i" % (len(uniq_atoms), self.natoms))
-        self.atoms = uniq_atoms
+                unique_atoms.append(atom)
+        debug("Found %i unique atoms in %i" % (len(unique_atoms), self.natoms))
+        self.atoms = unique_atoms
 
     def check_close_contacts(self, absolute=1.0, covalent=None):
         """
@@ -278,5 +278,25 @@ class Structure(object):
         self.properties['supercell'] = value
 
     gcmc_supercell = property(get_gcmc_supercell, set_gcmc_supercell)
-    # TODO(tdaff): properties: density, surface area, dft_energy, absorbance
 
+    @property
+    def to_dict(self):
+        """
+        Dictionary representation of structure for document interchange.
+        """
+        drepr = {"@module": self.__class__.__module__,
+                 "@class": self.__class__.__name__,
+                 "cell": self.cell.to_dict or None}
+        return drepr
+
+    @staticmethod
+    def from_dict(drepr):
+        return Structure(drepr=drepr)
+
+
+if __name__ == "__main__":
+    lol = Structure()
+    lol.cow = 12
+    print(lol)
+    print(lol.__dict__)
+    print(lol.to_dict)

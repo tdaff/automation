@@ -228,7 +228,7 @@ class Cell(object):
         self._params = (cell_a, cell_b, cell_c, alpha, beta, gamma)
 
     @property
-    def to_dict(self):
+    def as_dict(self):
         """
         Dictionary representation of cell for document interchange.
         """

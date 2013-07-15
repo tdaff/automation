@@ -13,6 +13,7 @@ from os import path
 
 from numpy import dot
 
+from faps.core.cell import Cell
 
 class Structure(object):
     """
@@ -26,19 +27,24 @@ class Structure(object):
 
     def __init__(self, drepr=None):
         """Instance an empty container with nothing in it."""
-        super(Structure, self).__setattr__('_attribute_register',set())
+        super(Structure, self).__setattr__('_attribute_register', set())
         self.name = None
-        self.cell = None
+        self.cell = Cell()
         self.atoms = []
         self.properties = {}
 
     def __setattr__(self, name, value):
+        """Add attributes to object and register for the dict repr."""
         self._attribute_register.add(name)
         return super(Structure, self).__setattr__(name, value)
 
     def __getattribute__(self, name):
-        print("getarrt")
         return super(Structure, self).__getattribute__(name)
+
+    def __delattr__(self, name):
+        """Remove attributes from object and deregister from the dict repr."""
+        self._attribute_register.discard(name)
+        return super(Structure, self).__delattr__(name)
 
     def remove_duplicates(self, tolerance=0.02):
         """Find overlapping atoms and remove them."""
@@ -280,23 +286,21 @@ class Structure(object):
     gcmc_supercell = property(get_gcmc_supercell, set_gcmc_supercell)
 
     @property
-    def to_dict(self):
+    def as_dict(self):
         """
         Dictionary representation of structure for document interchange.
         """
         drepr = {"@module": self.__class__.__module__,
-                 "@class": self.__class__.__name__,
-                 "cell": self.cell.to_dict or None}
+                 "@class": self.__class__.__name__}
+        for attribute in self._attribute_register:
+            value = getattr(self, attribute)
+            if hasattr(value, 'as_dict'):
+                drepr[attribute] = value.as_dict
+            else:
+                drepr[attribute] = value
         return drepr
 
     @staticmethod
     def from_dict(drepr):
         return Structure(drepr=drepr)
 
-
-if __name__ == "__main__":
-    lol = Structure()
-    lol.cow = 12
-    print(lol)
-    print(lol.__dict__)
-    print(lol.to_dict)

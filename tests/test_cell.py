@@ -13,7 +13,9 @@ sys.path.append('..')
 from faps.core.cell import Cell
 
 class TestInitialiseCell(unittest.TestCase):
-    def test(self):
+
+    def test_initialise_cell(self):
+        """Just make a new cell and test the defaults."""
         new_cell = Cell()
         self.assertEqual(new_cell.cell.tolist(),
                          [[1.0, 0.0, 0.0],

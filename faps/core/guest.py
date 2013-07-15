@@ -126,7 +126,7 @@ class Guest(object):
             return 22.414
 
     @property
-    def to_dict(self):
+    def as_dict(self):
         drepr = {"@module": self.__class__.__module__,
                  "@class": self.__class__.__name__,
                  "ident": self.ident()}

@@ -12,7 +12,7 @@ DESCRIPTION = """
 faps -- Frontend for Automated Adsorption Analysis of Porous Solids.
 
 Strucutre adsorption property analysis for high throughput processing.
-When run a script, faps will automatically run complete analysis on a 
+When run a script, faps will automatically run complete analysis on a
 structure. Sensible defaults are implemented, but calculations can be
 easily customised.
 """
@@ -44,8 +44,10 @@ def commandline():
     parser.add_argument("-j", "--job-type", dest="job_type",
                         help="Read preconfigured job settings from "
                         "job-type.fap in the user ~/.faps/ directory")
+    # Always have the job name at the end
     parser.add_argument('job_name', help="Name for job")
-    #TODO(tdaff): cleanup or implement    
+
+    #TODO(tdaff): cleanup or implement later
     #parser.add_option("-i", "--interactive", action="store_true",
     #                    dest="interactive", help="enter interactive mode")
     #parser.add_option("-m", "--import", action="store_true",
@@ -55,22 +57,7 @@ def commandline():
     #                    help="create input files only, do not run any jobs")
     #parser.add_option("-d", "--daemon", action="store_true", dest="daemon",
     #                    help="run [lube] as a server and await input")
+
     local_args = parser.parse_args()
 
-    cmdopts = {}
-    # key value options from the command line
-    if local_args.cmdopts is not None:
-        for pair in local_args.cmdopts:
-            if '=' in pair:
-                pair = pair.split('=')
-                cmdopts[pair[0]] = pair[1]
-            else:
-                cmdopts[pair] = True
-    
-    return(local_args, cmdopts)
-
-#    self.options = local_options
-    # Args are only the COMMANDS for the run
-#    self.args = [arg.lower() for arg in local_args]
-
-print(commandline())
+    return local_args

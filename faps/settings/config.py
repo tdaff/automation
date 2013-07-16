@@ -60,7 +60,6 @@ class Options(object):
         self.job_ini = configparser.SafeConfigParser()
         # populate options
         self._init_paths()
-        self._init_logging()
         self.load_defaults()
         self.load_site_defaults()
         self.load_job_defaults()
@@ -154,6 +153,18 @@ class Options(object):
             self.script_dir = os.path.abspath(sys.path[0])
         # Where we run the job.
         self.job_dir = os.getcwd()
+
+    def load_cmdopts(self, cmdopts):
+        cmdopts = {}
+        # key value options from the command line
+        if local_args.cmdopts is not None:
+            for pair in local_args.cmdopts:
+                if '=' in pair:
+                    pair = pair.split('=')
+                    cmdopts[pair[0]] = pair[1]
+                else:
+                    cmdopts[pair] = True
+
 
 
     def load_defaults(self):

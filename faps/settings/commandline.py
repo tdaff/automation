@@ -32,20 +32,21 @@ def commandline():
     # use description for the script, not for this module
     parser = argparse.ArgumentParser(description=DESCRIPTION)
     parser.add_argument("-v", "--verbose", action="count", default=0,
-                        dest="verbose", help="Increase verbosity. Specify "
+                        dest="verbosity", help="Increase verbosity. Specify "
                         "more times for more debugging information. Cancels "
                         "'--quiet'.")
     parser.add_argument("-q", "--quiet", action=DecreaseAction, nargs=0,
-                        dest="verbose", help="Decrease verbosity. Specify "
+                        dest="verbosity", help="Decrease verbosity. Specify "
                         "more times for less output. Cancels '--verbose'.")
     parser.add_argument("-o", "--option", action="append", dest="cmdopts",
                         help="Set program options as key=value pairs. Use "
                         "\"quotation marks\" if options contain spaces.")
-    parser.add_argument("-j", "--job-type", dest="job_type",
+    parser.add_argument("-j", "--job-type", dest="job_type", action="append",
                         help="Read preconfigured job settings from "
                         "job-type.fap in the user ~/.faps/ directory")
     # Always have the job name at the end
-    parser.add_argument('job_name', help="Name for job")
+    parser.add_argument('job_name', help="Name for job", nargs='?',
+                        default='default')
 
     #TODO(tdaff): cleanup or implement later
     #parser.add_option("-i", "--interactive", action="store_true",

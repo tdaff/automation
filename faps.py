@@ -1343,8 +1343,12 @@ class PyNiss(object):
                 xyz_out.write(('%-6s' % ppt[0]) +
                               ('%10.6f %10.6f %10.6f' % tuple(ppt[1])) +
                               ('%10.6f\n' % ppt[2]))
+        try:
+            hydrophilic_fraction = hydrophilic_area/total_area
+        except ZeroDivisionError:
+            hydrophilic_fraction = 0.0
         info("Hydrophilic area (A^2) and fraction (probe: %f): %f, %f" %
-             (rprobe, hydrophilic_area, hydrophilic_area/total_area))
+             (rprobe, hydrophilic_area, hydrophilic_fraction))
         return total_area
 
 class Structure(object):

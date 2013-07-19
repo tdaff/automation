@@ -39,8 +39,9 @@ def commandline():
                         dest="verbosity", help="Decrease verbosity. Specify "
                         "more times for less output. Cancels '--verbose'.")
     parser.add_argument("-o", "--option", action="append", dest="cmdopts",
-                        help="Set program options as key=value pairs. Use "
-                        "\"quotation marks\" if options contain spaces.")
+                        help="Set program options as section.key=value "
+                        "pairs. Use \"quotation marks\" if options contain "
+                        "spaces.")
     parser.add_argument("-j", "--job-type", dest="job_type", action="append",
                         help="Read preconfigured job settings from "
                         "job-type.fap in the user ~/.faps/ directory")

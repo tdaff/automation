@@ -14,9 +14,9 @@ __all__ = ['Options']
 
 # Python 3 fix
 try:
-    import configparser
+    from configparser import SafeConfigParser
 except ImportError:
-    import ConfigParser as configparser
+    from ConfigParser import SafeConfigParser
 import copy
 import logging
 import os
@@ -28,46 +28,88 @@ try:
     from StringIO import StringIO
 except ImportError:
     from io import StringIO
-from optparse import OptionParser
-from logging import debug, error
+from collections import namedtuple
+from logging import info, debug, error
 
-import __main__
-
-job_path = os.getcwd()
+DefaultOption = namedtuple('DefaultOption', ['key', 'value', 'type', 'help'])
 
 class Options(object):
     """
     Transparent options handling.
 
-    A single unified way of dealing with input files and command line options
+    A single unified way of dealing with input files and command line options,
     delivering sensible defaults for unspecified values. Access options with
-    the .get() method, or the method that specifies the expected type. It is
-    recommended to replace with a new instance each time the script is run,
-    otherwise commandline options or changed input files will not be picked up.
+    the .get() method which are typed by the default setting to the
+    expected type.
+
+    All components must interface to .add_defaults() to register their 
+    expected types and fallbacks.
 
     """
-    def __init__(self, job_name=None):
-        """Initialize options from all .ini files and the commandline."""
-        # use .get{type}() to read attributes, only access args directly
-        self.job_dir = ''
-        self.script_dir = ''
-        self.job_name = job_name
-        self.args = []
+    def __init__(self, arguments=None, path=None):
+        """
+        Initialize options from all config files and the commandline. 
+        It is expected that arguments has a job_name attribute and path
+        contains the paths to look for config files.
+        
+        """
+        self.job_name = getattr(arguments, 'job_name', 'default')
+        self.path = path
+        # use .get() to read attributes, only access args directly
+        self.defaults = {}
+        # get any defaults first
+
+        # combine user options in the order:
+        #  -> job types, in order
+        #  -> job options
+        #  -> command line options
+
         self.options = {}
-        self.cmdopts = {}
-        self.defaults = configparser.SafeConfigParser()
-        self.site_ini = configparser.SafeConfigParser()
-        self.job_ini = configparser.SafeConfigParser()
-        # populate options
-        self._init_paths()
-        self.load_defaults()
-        self.load_site_defaults()
-        self.load_job_defaults()
-        if self.options.job_type:
-            self.job_type_ini = configparser.SafeConfigParser()
-            self.load_job_type(self.options.job_type)
-        else:
-            self.job_type_ini = NullConfigParser()
+
+        # build a list of all possible config files:
+        config_files = []
+
+        # Preset job types pulled in at the bottom
+        if hasattr(path, 'settings'):
+            presets = os.path.join(path.settings, 'presets')
+            for job_type in getattr(arguments, 'job_type', []):
+                job_fap = '{}.fap'.format(job_type)
+                config_files.append(os.path.join(presets, job_fap))
+
+        # User custom job types
+        if hasattr(path, 'dot_faps'):
+            dot_faps = path.dot_faps
+            for job_type in getattr(arguments, 'job_type', []):
+                job_fap = '{}.fap'.format(job_type)
+                config_files.append(os.path.join(dot_faps, job_fap))
+
+        all_configs = DictConfigParser()
+        # Returns a list of everything that was found
+        parsed_configs = all_configs.read(config_files)
+        info("Combined settings files".format(", ".join(parsed_configs)))
+        self.options = all_configs.as_dict()
+
+        # parse and update the options with
+        # section.key=value options from the command line
+        if hasattr(arguments, 'cmdopts'):
+            for cmdopt in arguments.cmdopts:
+                try:
+                    section, kv_pair = cmdopt.split('.', 1)  # maxsplit=1
+                    if '=' in kv_pair:
+                        key, value = kv_pair.split('=')
+                    else:
+                        key, value = kv_pair, "True"
+                    # Section might not exist already
+                    if not section in self.options:
+                        self.options['section'] = {}
+                    # Should be fine to insert now
+                    self.options['section'][key] = value
+                except ValueError:
+                    # Probably no section specified
+                    error("Invalid option in command line: {}".format(cmdopt))
+        
+        debug("My options look like {}".format(self.options))
+
 
     def get(self, item):
         """Map values from different sources based on priorities."""
@@ -144,112 +186,16 @@ class Options(object):
         else:
             return tuple(value)
 
-    def _init_paths(self):
-        """Find the script directory and set up working directory"""
-        # Where the script is has the config defaults.
-        if __name__ != '__main__':
-            self.script_dir = os.path.dirname(__file__)
-        else:
-            self.script_dir = os.path.abspath(sys.path[0])
-        # Where we run the job.
-        self.job_dir = os.getcwd()
 
-    def load_cmdopts(self, cmdopts):
-        cmdopts = {}
-        # key value options from the command line
-        if local_args.cmdopts is not None:
-            for pair in local_args.cmdopts:
-                if '=' in pair:
-                    pair = pair.split('=')
-                    cmdopts[pair[0]] = pair[1]
-                else:
-                    cmdopts[pair] = True
+class DictConfigParser(SafeConfigParser):
+    """
+    Derivative of configparser class that provides dict and some
+    extra sectioning.
 
-
-
-    def load_defaults(self):
-        """Load program defaults."""
-        # ConfigParser requires header sections so we add them to a StringIO
-        # of the file if they are missing. 2to3 should also deal with the
-        # renamed modules.
-        default_ini_path = os.path.join(self.script_dir, 'defaults.ini')
-        try:
-            filetemp = open(default_ini_path, 'r')
-            default_ini = filetemp.read()
-            filetemp.close()
-            if not '[defaults]' in default_ini.lower():
-                default_ini = '[defaults]\n' + default_ini
-            default_ini = StringIO(default_ini)
-        except IOError:
-            # file does not exist so we just use a blank string
-            debug('Default options not found! Something is very wrong.')
-            default_ini = StringIO('[defaults]\n')
-        self.defaults.readfp(default_ini)
-
-    def load_site_defaults(self):
-        """Find where the script is and load defaults"""
-        site_ini_path = os.path.join(self.script_dir, 'site.ini')
-        try:
-            filetemp = open(site_ini_path, 'r')
-            site_ini = filetemp.read()
-            filetemp.close()
-            if not '[site_config]' in site_ini.lower():
-                site_ini = '[site_config]\n' + site_ini
-            site_ini = StringIO(site_ini)
-        except IOError:
-            # file does not exist so we just use a blank string
-            debug("No site options found; using defaults")
-            site_ini = StringIO('[site_config]\n')
-        self.site_ini.readfp(site_ini)
-
-    def load_job_defaults(self):
-        """Find where the job is running and load defaults"""
-        job_ini_path = os.path.join(self.job_dir, self.job_name + '.fap')
-        try:
-            filetemp = open(job_ini_path, 'r')
-            job_ini = filetemp.read()
-            filetemp.close()
-            if not '[job_config]' in job_ini.lower():
-                job_ini = '[job_config]\n' + job_ini
-            job_ini = StringIO(job_ini)
-            debug("Job options read from %s" % job_ini_path)
-        except IOError:
-            # file does not exist so we just use a blank string
-            debug("No job options found; using defaults")
-            job_ini = StringIO('[job_config]\n')
-        self.job_ini.readfp(job_ini)
-
-    def load_job_type(self, job_type):
-        """Find where the job is running and load defaults"""
-        home_dir = os.path.expanduser('~')
-        job_type_ini_path = os.path.join(home_dir, '.faps', job_type + '.fap')
-        try:
-            filetemp = open(job_type_ini_path, 'r')
-            job_type_ini = filetemp.read()
-            filetemp.close()
-            if not '[job_type]' in job_type_ini.lower():
-                job_type_ini = '[job_type]\n' + job_type_ini
-            job_type_ini = StringIO(job_type_ini)
-            debug("Job type options read from %s" % job_type_ini_path)
-        except IOError:
-            # file does not exist so we just use a blank string
-            error("Job type '%s' specified but options file '%s' not found" %
-                  (job_type, job_type_ini_path))
-            job_type_ini = StringIO('[job_config]\n')
-        self.job_type_ini.readfp(job_type_ini)
-
-
-
-class NullConfigParser(object):
-    """Use in place of a blank ConfigParser that has no options."""
-    def __init__(self, *args, **kwargs):
-        """This is empty, so do nothing."""
-        pass
-
-    def has_option(*args, **kwargs):
-        """Always return Fasle as there are no options."""
-        return False
-
-
-if __name__ == '__main__':
-    options_test()
+    """
+    def as_dict(self):
+        """Return a simple non-ordered dict of all the options."""
+        drepr = {}
+        for section in self.sections():
+            drepr[section] = dict(self.items(section))
+        return drepr

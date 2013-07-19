@@ -61,7 +61,7 @@ path.dot_faps = _path.join(_path.expanduser('~'), '.faps')
 # Configuration data needs to get collected once everything has been set up
 # for the logging and command line
 
-#from faps.settings.config_files import Options
+from faps.settings.config_files import Options
 
-#config = Options(commandline_arguments)
+config = Options(arguments=_arguments, path=path)
 

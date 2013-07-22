@@ -23,15 +23,15 @@ import os
 import re
 import sys
 import textwrap
-# Python 3 fix
-try:
-    from StringIO import StringIO
-except ImportError:
-    from io import StringIO
+
 from collections import namedtuple
 from logging import info, debug, error
 
 DefaultOption = namedtuple('DefaultOption', ['key', 'value', 'type', 'help'])
+
+# Use in the case of unspecified defaults
+_default = DefaultOption(key='', value='', type='str', help='Empty option')
+
 
 class Options(object):
     """
@@ -42,16 +42,16 @@ class Options(object):
     the .get() method which are typed by the default setting to the
     expected type.
 
-    All components must interface to .add_defaults() to register their 
+    All components must interface to .add_defaults() to register their
     expected types and fallbacks.
 
     """
     def __init__(self, arguments=None, path=None):
         """
-        Initialize options from all config files and the commandline. 
+        Initialize options from all config files and the commandline.
         It is expected that arguments has a job_name attribute and path
         contains the paths to look for config files.
-        
+
         """
         self.job_name = getattr(arguments, 'job_name', 'default')
         self.path = path
@@ -81,12 +81,13 @@ class Options(object):
             dot_faps = path.dot_faps
             for job_type in getattr(arguments, 'job_type', []):
                 job_fap = '{}.fap'.format(job_type)
+                print(job_fap)
                 config_files.append(os.path.join(dot_faps, job_fap))
 
         all_configs = DictConfigParser()
         # Returns a list of everything that was found
         parsed_configs = all_configs.read(config_files)
-        info("Combined settings files".format(", ".join(parsed_configs)))
+        info("Combined settings files {}".format(", ".join(parsed_configs)))
         self.options = all_configs.as_dict()
 
         # parse and update the options with
@@ -98,6 +99,7 @@ class Options(object):
                     if '=' in kv_pair:
                         key, value = kv_pair.split('=')
                     else:
+                        # Set as true when no value specified
                         key, value = kv_pair, "True"
                     # Section might not exist already
                     if not section in self.options:
@@ -107,84 +109,74 @@ class Options(object):
                 except ValueError:
                     # Probably no section specified
                     error("Invalid option in command line: {}".format(cmdopt))
-        
+
         debug("My options look like {}".format(self.options))
 
 
-    def get(self, item):
-        """Map values from different sources based on priorities."""
-        if item in self.__dict__:
-            # Instance attributes, such as job_name and job_dir
-            debug("an attribute: %s" % item)
-            return object.__getattribute__(self, item)
-        elif self.options.__dict__.get(item) is not None:
-            # Commandline options from optparse where option is set
-            debug("an option: %s" % item)
-            return self.options.__dict__[item]
-        elif item in self.cmdopts:
-            # Commandline -o custom key=value options
-            debug("a custom -o option: %s" % item)
-            return self.cmdopts[item]
-        elif self.job_ini.has_option('job_config', item):
-            # jobname.fap per-job setings
-            debug("a job option: %s" % item)
-            return self.job_ini.get('job_config', item)
-        elif self.job_type_ini.has_option('job_type', item):
-            debug("a job_type option: %s" % item)
-            return self.job_type_ini.get('job_type', item)
-        elif self.site_ini.has_option('site_config', item):
-            debug("a site option: %s" % item)
-            return self.site_ini.get('site_config', item)
-        elif self.defaults.has_option('defaults', item):
-            debug("a default: %s" % item)
-            return self.defaults.get('defaults', item)
-        else:
-            # Most things have a default, but not always. Error properly.
-            debug("unspecified option: %s" % item)
-            raise AttributeError(item)
+    def get(self, section, item):
+        """Return the (typed) value for the option."""
+        # A lookup for the conversion functions helps deal with strings
+        vtypes = {
+            'str': str,
+            'float': float,
+            'int': int,
+            'bool': _bool,
+            'tuple': _tuple,
+        }
 
-    def getbool(self, item):
+        # Make sure that we know the option
+        try:
+            default = self.defaults[item]
+        except KeyError:
+            warning('Unknown option {}'.format(item))
+            default = _default
+
+        # need to know the expected options type
+        vtype = default.type
+        if 'tuple' in vtype or 'list' in vtype:
+            # split on non word character
+            dtype = re.split('\W*', vtype)[1]
+            if dtype not in vtypes:
+                warning("Unknown tuple dtype {}".format(dtype))
+                dtype = 'str'
+        elif vtype not in vtypes:
+            warning("Unknown option type {}".format(vtype))
+            vtype = 'str'
+
+        # Check that options will be okay with the request
+        if not section in self.options:
+            warning("Unidentified section - shouldn't happen! Using default")
+            return vtypes[vtype](default.value)
+            #raise AttributeError(item)
+        elif not item in self.options[section]:
+            # Just use the default
+            return vtypes[vtype](default.value)
+        else:
+            # Assume everything is fine here
+            return vtypes[vtype](self.options[section][item])
+
+
+    def make_section_getter(self, section):
+        """Wrap the getter function for a fixed section of the options."""
+        # closured section cleans up the interface a bit
+        def section_getter(item):
+            """return .get() for the item, expects section from outer scope."""
+            return self.get(section, item)
+
+
+    def register_default(self, key, value, type, help):
         """
-        Parse option and if the value of item is not already a bool return
-        True for "1", "yes", "true" and "on" and False for "0", "no", "false"
-        and "off". Case-insensitive.
+        Make a new default available in the options. Required arguments are:
+
+        key:   The option name as it would be in the options file.
+        value: The default value of the option, strings
+               are fine as they will be converted.
+        type:  The datatype expected for the option.
+        help:  A description of the option for documentation.
 
         """
-        value = self.get(item)
-        if isinstance(value, bool):
-            return value
-        # Can't use isinstance with basestring to be 2.x and 3.x compatible
-        # fudge it by assuming strings can be lowered
-        elif hasattr(value, 'lower'):
-            if value.lower() in ["1", "yes", "true", "on"]:
-                return True
-            elif value.lower() in ["0", "no", "false", "off"]:
-                return False
-            else:
-                # Not a valid bool
-                raise ValueError(value)
-        else:
-            return bool(item)
-
-    def getint(self, item):
-        """Return item's value as an integer."""
-        value = self.get(item)
-        return int(value)
-
-    def getfloat(self, item):
-        """Return item's value as a float."""
-        value = self.get(item)
-        return float(value)
-
-    def gettuple(self, item, dtype=None):
-        """Return item's value interpreted as a tuple of 'dtype' [strings]."""
-        value = self.get(item)
-        # Regex strips bracketing so can't nest, but safer than eval
-        value = [x for x in re.split('[\s,\(\)\[\]]*', value) if x]
-        if dtype is not None:
-            return tuple([dtype(x) for x in value])
-        else:
-            return tuple(value)
+        new_default = DefaultOption(key, value, type, help)
+        self.defaults[key] = new_default
 
 
 class DictConfigParser(SafeConfigParser):
@@ -199,3 +191,38 @@ class DictConfigParser(SafeConfigParser):
         for section in self.sections():
             drepr[section] = dict(self.items(section))
         return drepr
+
+
+
+def _bool(value):
+    """
+    Parse the value and return a boolean. Strings (case-insensitive) return
+    True for "1", "yes", "true" and "on" and False for "0", "no", "false"
+    and "off". Other types return their Python boolean values.
+
+    """
+    if isinstance(value, bool):
+        return value
+    # Can't use isinstance with basestring to be 2.x and 3.x compatible
+    # fudge it by assuming strings can be lowered
+    elif hasattr(value, 'lower'):
+        if value.lower() in ["1", "yes", "true", "on"]:
+            return True
+        elif value.lower() in ["0", "no", "false", "off"]:
+            return False
+        else:
+            # Not a valid bool
+            raise ValueError(value)
+    else:
+        return bool(item)
+
+def _tuple(value, dtype=None):
+    """
+    Split value into a tuple, ignoring whitespace and bracketing, and
+    optionally apply 'dtype' function to each item [str]."""
+    # Regex strips bracketing so can't nest, but safer than eval
+    value = [x for x in re.split('[\s,\(\)\[\]]*', value) if x]
+    if dtype is not None:
+        return tuple([dtype(x) for x in value])
+    else:
+        return tuple(value)

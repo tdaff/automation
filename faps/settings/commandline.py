@@ -39,12 +39,12 @@ def commandline():
                         dest="verbosity", help="Decrease verbosity. Specify "
                         "more times for less output. Cancels '--verbose'.")
     parser.add_argument("-o", "--option", action="append", dest="cmdopts",
-                        help="Set program options as section.key=value "
-                        "pairs. Use \"quotation marks\" if options contain "
-                        "spaces.")
+                        default=[], help="Set program options as "
+                        "section.key=value pairs. Use \"quotation marks\" "
+                        "if options contain spaces.")
     parser.add_argument("-j", "--job-type", dest="job_type", action="append",
-                        help="Read preconfigured job settings from "
-                        "job-type.fap in the user ~/.faps/ directory")
+                        default=[], help="Read preconfigured job settings "
+                        "from job-type.fap in the user ~/.faps/ directory")
     # Always have the job name at the end
     parser.add_argument('job_name', help="Name for job", nargs='?',
                         default='default')

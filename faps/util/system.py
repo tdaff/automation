@@ -10,7 +10,7 @@ import os
 import shutil
 import subprocess
 import sys
-from logging import warning, debug, error, info, critical
+from faps.settings import warning, debug, error, info, critical
 from os import path
 
 
@@ -28,6 +28,16 @@ def terminate(exit_code=0):
     else:
         warning("Abnormal termination of faps; exit code %i" % exit_code)
         raise SystemExit(exit_code)
+
+### Exit codes and their meanings:
+# 44: The simulation could not be loaded from the json file
+#        file that stores the system state. Check to see if the file
+#        exists or has become corrupted. It will be called
+#        jobname.json.
+# 45: It was not possible to load the file that conatins the simulation.
+#        This may indicate filesystem problems or a locked file. If the
+#        problem persists, consult your system administrator.
+
 
 
 def move_and_overwrite(src, dest):

@@ -148,12 +148,15 @@ class Options(object):
             warning("Unidentified section - shouldn't happen! Using default")
             return vtypes[vtype](default.value)
             #raise AttributeError(item)
-        elif not item in self.options[section]:
+        elif item in self.options[section]:
+            # Directly specified
+            return vtypes[vtype](self.options[section][item])
+        elif item in self.options['global']:
+            # Specified globally
+            return vtypes[vtype](self.options['global'][item])
+        else:
             # Just use the default
             return vtypes[vtype](default.value)
-        else:
-            # Assume everything is fine here
-            return vtypes[vtype](self.options[section][item])
 
 
     def make_section_getter(self, section):
@@ -177,6 +180,15 @@ class Options(object):
         """
         new_default = DefaultOption(key, value, type, help)
         self.defaults[key] = new_default
+
+    @property
+    def targets(self):
+        option_targets = set(self.options)
+        option_targets.remove('global')
+        if len(option_targets) == 0:
+            return {'default'}
+        else:
+            return option_targets
 
 
 class DictConfigParser(SafeConfigParser):

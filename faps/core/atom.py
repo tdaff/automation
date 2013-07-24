@@ -10,6 +10,7 @@ from logging import warning, debug, error, info, critical
 
 from numpy import identity, dot
 
+#TODO(tdaff): look at materials studio properties
 
 class Atom(object):
     """Base atom object."""

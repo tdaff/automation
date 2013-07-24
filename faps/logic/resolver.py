@@ -16,10 +16,18 @@ def resolve(simulation):
     to be carried out to resolve all the dependencies.
 
     """
+    dep_graph = {}
+
     calcualtors = Calculator()
     strcuture_readers = StructureReader()
     structure_writers = StructureWriter()
+
+
     for target in config.targets:
+        requirements = config.get(target, 'requires')
+        for requirement in requirements:
+            code
+
         # get dependencies
         # see what needs to be done
         # find a minimal set

@@ -1,14 +1,19 @@
 # dot fap file demonstrating features available
 # for a complete simulation
 
-[all]
+[global]
+vasp.an_option
+
 
 [simulation_one]
-requires = forec_field_optimisation charges:repeat gcmc properties
-gcmc.guests = CO2 N2
-gcmc.pressures = (0.15, 0.75)
+description = A human readable description of the target
+requires = force_field_optimisation charges=repeat gcmc properties
+gulp.qeq_parameters =
+    Cu 12.0 4.4
+fastmc.guests = CO2 N2
+fastmc.pressures = (0.15, 0.75)
 
 [simulation_another]
-requires = force_field_optimisation charges:egulp gcmc properties
-gcmc.guests = CO2
-gcmc.pressures = 0.01, 0.15, 0.3, 0.6, 0.9
+requires = force_field_optimisation charges=egulp gcmc properties
+fastmc.guests = CO2
+fastmc.pressures = 0.01, 0.15, 0.3, 0.6, 0.9

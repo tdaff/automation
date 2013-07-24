@@ -1,3 +1,11 @@
+from faps.calculators import Calculator
+from faps.io import StructureWriter
+
+class FastMCCalculator(Calculator):
+    provides = ['gcmc']
+    requires = ['structure']
+
+
     def fastmc_postproc(self, filepath, tp_point, options):
         """Update structure properties from gcmc OUTPUT."""
         startdir = os.getcwd()

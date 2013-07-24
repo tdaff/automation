@@ -11,7 +11,7 @@ from abc import ABCMeta
 class Calculator(object):
     """
     Abstract base class for calculators.
-    Calculators must be a subclass of Calculator and 
+    Calculators must be a subclass of Calculator and
     register the attributes that they 'provides'.
 
     """
@@ -21,7 +21,7 @@ class Calculator(object):
     provides = {}
     requires = {}
 
-    def __init__(self, ):
+    def __init__(self):
         self.register_calculators()
 
     @classmethod

@@ -1179,7 +1179,7 @@ class PyNiss(object):
         zeo_process.wait()
 
         zeo_stderr = " ".join(x.strip() for x in zeo_process.stderr.readlines())
-        print zeo_stderr
+        debug(zeo_stderr)
         if "Voronoi volume check failed" in zeo_stderr:
             warning("Structure is likely bad; zeo++ is unable to complete")
             warning(zeo_stderr)

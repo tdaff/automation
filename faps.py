@@ -3342,6 +3342,22 @@ class Guest(object):
         else:
             return 22.414
 
+    @property
+    def natoms(self):
+        """Number of atoms in the guest."""
+        return len(self.atoms)
+
+    @property
+    def com(self):
+        """Centre of mass of the guest molecule."""
+        com = [0.0, 0.0, 0.0]
+        for atom in self.atoms:
+            com = [com[0] + atom.pos[0] * atom.mass,
+                   com[1] + atom.pos[1] * atom.mass,
+                   com[2] + atom.pos[2] * atom.mass]
+        com = [x/self.weight for x in com]
+        return com
+
 
 class Symmetry(object):
     """Apply symmetry operations to atomic coordinates."""

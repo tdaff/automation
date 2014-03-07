@@ -1067,7 +1067,7 @@ class PyNiss(object):
         mkdirs(gcmc_dir)
         os.chdir(gcmc_dir)
 
-        config, field = self.structure.to_fastmc(self.options)
+        config, field = self.structure.to_config_field(self.options, fastmc=True)
 
         filetemp = open("CONFIG", "w")
         filetemp.writelines(config)
@@ -2127,7 +2127,7 @@ class Structure(object):
                                         another_idx = other_bond_index(another_bond, other_idx)
                                         if self.atoms[another_idx].uff_type == 'H_':
                                             atomic_numbers[another_idx] = 1001
-# TODO(tdaff): delete code in future version; removed NO2 typing
+#                TODO(tdaff): delete code in future version; removed NO2 typing
 #                elif atom.uff_type == 'N_R':
 #                    this_bonds = []
 #                    for bond in self.bonds:
@@ -2147,8 +2147,34 @@ class Structure(object):
         return geometry_file
 
 
-    def to_fastmc(self, options):
-        """Return the FIELD and CONFIG needed for a fastmc run."""
+    def to_config_field(self, options, fastmc=False, include_guests=None,
+                        dummy=False):
+        """
+        Return CONFIG and FIELD files in DL_POLY style
+
+        Parameters
+        ----------
+
+        fastmc : boolean
+            When set to True, the FIELD file will contain the positions for MC
+            guests and will give incorrect results with DL_POLY.
+        include_guests : dict or None
+            A dictionary with guests to be included in the config file with
+            the framework. The guest type is the key and their positions are
+            nested lists.
+        dummy : boolean
+            If dummy is set, the interaction parameters and charges for the
+            guest are set to zero
+
+        Returns
+        -------
+
+        config : list
+            The config file as a list of newline terminated strings
+        field : list
+            The field file as a list of newline terminated strings
+
+        """
         # CONFIG
         self.gen_supercell(options)
         supercell = self.gcmc_supercell
@@ -2158,9 +2184,21 @@ class Structure(object):
         config = ["%s\n" % self.name[:80],
                   "%10i%10i%10i\n" % (levcfg, imcon, natoms)]
         config.extend(self.cell.to_vector_strings(scale=supercell))
+        offset = 1
+        if include_guests is not None:
+            for guest in self.guests:
+                for positions in include_guests[guest.name]:
+                    for atom, position in zip(guest.atoms, positions):
+                        config.extend(
+                            ["%-6s%10i\n" % (atom.type, offset),
+                             "%20.12f%20.12f%20.12f\n" % tuple(position)])
+                        # increment offset as it is used for the framework
+                    offset += 1
+
+        # put them in
         for idx, atom in enumerate(self.supercell(supercell)):
-            # idx+1 for 1 based indexes in CONFIG
-            config.extend(["%-6s%10i\n" % (atom.type, idx + 1),
+            # idx+offset for 1 based indexes in CONFIG
+            config.extend(["%-6s%10i\n" % (atom.type, idx + offset),
                            "%20.12f%20.12f%20.12f\n" % tuple(atom.pos)])
 
         # FIELD
@@ -2174,10 +2212,23 @@ class Structure(object):
                           "NUMMOLS %i\n" % 0,
                           "ATOMS %i\n" % len(guest.atoms)])
             for atom in guest.atoms:
-                field.append(("%-6s %12.6f %12.6f" %
-                              tuple([atom.type, atom.mass, atom.charge])) +
-                             ("%12.6f %12.6f %12.6f\n" % tuple(atom.pos)))
-            field.append("finish\n")
+                # Can't just turn off electrostatics as we need to compare to
+                # the empty framework so zero guest charges
+                if dummy:
+                    charge = 0
+                else:
+                    charge = atom.charge
+                field.append("%-6s %12.6f %12.6f" %
+                             tuple([atom.type, atom.mass, charge]))
+                if fastmc:
+                    field.append("%12.6f %12.6f %12.6f\n" % tuple(atom.pos))
+                else:
+                    # atom positions confuse dl_poly which takes nrept or ifrz
+                    field.append(" 1 0\n")
+            field.append("rigid 1\n")
+            field.append("%i " % guest.natoms)
+            field.append(" ".join("%i" % (x + 1) for x in range(guest.natoms)))
+            field.append("\nfinish\n")
         # Framework
         field.extend(["Framework\n",
                       "NUMMOLS %i\n" % prod(supercell),
@@ -2202,6 +2253,10 @@ class Structure(object):
         force_field = copy(UFF)
         for guest in self.guests:
             force_field.update(guest.potentials)
+
+        # zero everything if we just want framework
+        if dummy:
+            force_field = dict((element, (0.0, 0.0)) for element in force_field)
 
         for idxl in range(len(atom_set)):
             for idxr in range(idxl, len(atom_set)):

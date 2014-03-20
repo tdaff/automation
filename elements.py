@@ -277,6 +277,8 @@ VASP_PSEUDO_PREF = {
     "At": "At_d"
 }
 
+#TODO(jlo): make a dict with the pseudopotential valence electrons
+
 QEQ_PARAMS = {
     # (chi, mu, rad)
     "H": (4.528, 6.9452, 0.371),

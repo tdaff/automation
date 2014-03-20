@@ -801,6 +801,12 @@ class PyNiss(object):
 
         esp_grid = self.esp_grid
 
+        #TODO(jlo): self.structure.types gives you each type
+        # e.g ['C', 'C', 'O'... ]
+        # self.options.get('...') to get charge or something set a default
+        # in default.ini
+        # calcualte nelect
+
         filetemp = open("INCAR", "w")
         if self.esp_reduced:
             # Let VASP do the grid if we don't need to
@@ -3539,6 +3545,8 @@ def mk_incar(options, esp_grid=None):
     if esp_grid is not None:
         info("Changing FFT grid to %ix%ix%i" % esp_grid)
         incar.append("NGXF = %i ; NGYF = %i ; NGZF = %i\n" % esp_grid)
+
+    #TODO(jlo): if nelect is not None:
 
     # VASP recommends, for best performance:
     # NPAR = 4 - approx SQRT( number of cores)

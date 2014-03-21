@@ -2187,19 +2187,35 @@ class Structure(object):
         levcfg = 0  # always
         imcon = self.cell.imcon
         natoms = len(self.atoms) * prod(supercell)
+
+        # do included guests first so natoms can be corrected
+        offset = 1
+
+        included_guests_part = []
+        # count if any guests are included
+        # use get( ... , 0) to get zero for not included
+        guest_nummols = {}
+
+        if include_guests is not None:
+            for guest in self.guests:
+                if guest.ident in include_guests:
+                    guest_nummols[guest.ident] = len(include_guests[guest.ident])
+                    for positions in include_guests[guest.ident]:
+                        for atom, position in zip(guest.atoms, positions):
+                            included_guests_part.extend(
+                                ["%-6s%10i\n" % (atom.type, offset),
+                                 "%20.12f%20.12f%20.12f\n" % tuple(position)])
+                            # increment offset as it is used for the framework
+                            offset += 1
+            # make natoms correct
+            natoms += offset - 1
+
         config = ["%s\n" % self.name[:80],
                   "%10i%10i%10i\n" % (levcfg, imcon, natoms)]
         config.extend(self.cell.to_vector_strings(scale=supercell))
-        offset = 1
-        if include_guests is not None:
-            for guest in self.guests:
-                for positions in include_guests[guest.name]:
-                    for atom, position in zip(guest.atoms, positions):
-                        config.extend(
-                            ["%-6s%10i\n" % (atom.type, offset),
-                             "%20.12f%20.12f%20.12f\n" % tuple(position)])
-                        # increment offset as it is used for the framework
-                    offset += 1
+
+        # included guests go first to match field
+        config.extend(included_guests_part)
 
         # put them in
         for idx, atom in enumerate(self.supercell(supercell)):
@@ -2215,7 +2231,7 @@ class Structure(object):
         # Guests
         for guest in self.guests:
             field.extend(["&guest %s: %s\n" % (guest.name, guest.source),
-                          "NUMMOLS %i\n" % 0,
+                          "NUMMOLS %i\n" % guest_nummols.get(guest.ident, 0),
                           "ATOMS %i\n" % len(guest.atoms)])
             for atom in guest.atoms:
                 # Can't just turn off electrostatics as we need to compare to

@@ -71,9 +71,9 @@ class Cube(object):
                              "not divisible by fold factor, %i" %
                              (self.grid[2], fold[2]))
 
-        self.rgrid[0] = self.grid[0]/fold[0]
-        self.rgrid[1] = self.grid[1]/fold[1]
-        self.rgrid[2] = self.grid[2]/fold[2]
+        self.rgrid[0] = self.grid[0]//fold[0]
+        self.rgrid[1] = self.grid[1]//fold[1]
+        self.rgrid[2] = self.grid[2]//fold[2]
 
         # read in the top bits -- don't change for now
         for _lineno in range(self.natoms+6):
@@ -137,9 +137,9 @@ class Cube(object):
                     for zidx in range(fold[2]):
                         grid_idx = zidx+yidx*fold[2]+xidx*fold[2]*fold[1]
                         localdata[grid_idx] = cube_data[
-                            (xidx*self.grid[0])/fold[0]:((xidx+1)*self.grid[0])/fold[0],
-                            (yidx*self.grid[1])/fold[1]:((yidx+1)*self.grid[1])/fold[1],
-                            (zidx*self.grid[2])/fold[2]:((zidx+1)*self.grid[2])/fold[2]]
+                            (xidx*self.grid[0])//fold[0]:((xidx+1)*self.grid[0])//fold[0],
+                            (yidx*self.grid[1])//fold[1]:((yidx+1)*self.grid[1])//fold[1],
+                            (zidx*self.grid[2])//fold[2]:((zidx+1)*self.grid[2])//fold[2]]
 
             del cube_data
             self.datapoints = np.mean(localdata, axis=0)
@@ -291,10 +291,10 @@ def extract_atoms(header_block, fold):
     """
     repeats = fold[0]*fold[1]*fold[2]
     oldatoms = header_block[6:]
-    newatoms = oldatoms[:len(oldatoms)/repeats]
+    newatoms = oldatoms[:len(oldatoms)//repeats]
     header_block[2] = "%6i" % (len(newatoms)) + header_block[2][6:]
     return header_block[:6] + newatoms
-    
+
 
 def compressed_open(filename):
     """Return file objects for either compressed and uncompressed files"""

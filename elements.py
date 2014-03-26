@@ -252,7 +252,6 @@ VASP_PSEUDO_PREF = {
     "Rb": "Rb_sv",
     "Cs": "Cs_sv",
     "Ba": "Ba_sv",
-    "Cu": "Cu_new",
     "Ti": "Ti_pv",
     "V": "V_pv",
     "Cr": "Cr_pv",
@@ -277,6 +276,8 @@ VASP_PSEUDO_PREF = {
     "Po": "Po_d",
     "At": "At_d"
 }
+
+#TODO(jlo): make a dict with the pseudopotential valence electrons
 
 QEQ_PARAMS = {
     # (chi, mu, rad)

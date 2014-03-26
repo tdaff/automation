@@ -28,9 +28,9 @@ doing select parts.
 # Revision = {rev}
 
 try:
-    __version_info__ = (1, 1, 0, int("$Revision$".strip("$Revision: ")))
+    __version_info__ = (1, 2, 0, int("$Revision$".strip("$Revision: ")))
 except ValueError:
-    __version_info__ = (1, 1, 0, 0)
+    __version_info__ = (1, 2, 0, 0)
 __version__ = "%i.%i.%i.%i" % __version_info__
 
 import code
@@ -288,10 +288,16 @@ class PyNiss(object):
             if hasattr(guest, 'probe_radius'):
                 if guest.probe_radius != 1.0 and guest.probe_radius in void_volume:
                     guest_excess = 'xs-molc/uc,xs-mmol/g,xs-v/v,xs-wt%,'
+            if hasattr(guest, 'c_v') and guest.c_v:
+                #TODO(tdaff): Make standard in 2.0
+                # makes sure that c_v is there and not empty
+                cv_header = "C_v,stdev,"
+            else:
+                cv_header = ""
             # Generate headers separately
             csv = ["#T/K,p/bar,molc/uc,mmol/g,stdev,",
                    "v/v,stdev,wt%,stdev,hoa/kcal/mol,stdev,",
-                   guest_excess, he_excess,
+                   guest_excess, he_excess, cv_header,
                    ",".join("p(g%i)" % gidx for gidx in range(nguests)), "\n"]
             info(guest.name)
             info("---------------------------------------")
@@ -353,6 +359,8 @@ class PyNiss(object):
                                 (self.structure.weight + xs_uptake*guest.weight))
                     csv.append("%f,%f,%f,%f," % (
                         xs_uptake, muptake, vuptake, wtpc,))
+                if cv_header:
+                    csv.append("%f,%f," % (guest.c_v[tp_point]))
                 # list all the other guest pressures and start a new line
                 csv.append(",".join("%f" % x for x in tp_point[1]) + "\n")
 
@@ -876,6 +884,12 @@ class PyNiss(object):
 
         esp_grid = self.esp_grid
 
+        #TODO(jlo): self.structure.types gives you each type
+        # e.g ['C', 'C', 'O'... ]
+        # self.options.get('...') to get charge or something set a default
+        # in default.ini
+        # calcualte nelect
+
         filetemp = open("INCAR", "w")
         if self.esp_reduced:
             # Let VASP do the grid if we don't need to
@@ -1142,7 +1156,7 @@ class PyNiss(object):
         mkdirs(gcmc_dir)
         os.chdir(gcmc_dir)
 
-        config, field = self.structure.to_fastmc(self.options)
+        config, field = self.structure.to_config_field(self.options, fastmc=True)
 
         filetemp = open("CONFIG", "w")
         filetemp.writelines(config)
@@ -1310,7 +1324,7 @@ class PyNiss(object):
         zeo_process.wait()
 
         zeo_stderr = " ".join(x.strip() for x in zeo_process.stderr.readlines())
-        print zeo_stderr
+        debug(zeo_stderr)
         if "Voronoi volume check failed" in zeo_stderr:
             warning("Structure is likely bad; zeo++ is unable to complete")
             warning(zeo_stderr)
@@ -1393,8 +1407,9 @@ class PyNiss(object):
         info("Calculating surface area: %.3f probe, %s points, %.3f res" %
              (rprobe, ("random","uniform")[uniform], resolution))
         total_area = 0.0
-        negative_charge = 0.0
-        positive_charge = 0.0
+        hydrophilic_area = 0.0
+        # gromacs default of 0.2 seems very constrained
+        hydrophilic_threshold = 0.3
         cell = self.structure.cell.cell
         inv_cell = np.linalg.inv(cell.T)
         # Pre-calculate and organise the in-cell atoms
@@ -1448,10 +1463,6 @@ class PyNiss(object):
                         # No more atoms within the radius, point valid
                         ncount += 1
                         xyz.append((atom.type, point, atom.charge))
-                        if atom.charge < 0:
-                            negative_charge += atom.charge
-                        else:
-                            positive_charge += atom.charge
                         break
                     elif vecdist3(point, a2_pos) < a2_sigma:
                         # Point collision
@@ -1463,12 +1474,10 @@ class PyNiss(object):
                     # Loop over all atoms finished; point valid
                     ncount += 1
                     xyz.append((atom.type, point, atom.charge))
-                    if atom.charge < 0:
-                        negative_charge += atom.charge
-                    else:
-                        positive_charge += atom.charge
 
             # Fraction of the accessible surface area for sphere to real area
+            if abs(atom.charge) > hydrophilic_threshold:
+                hydrophilic_area += (surface_area*ncount)/nsamples
             total_area += (surface_area*ncount)/nsamples
         if self.options.getbool('surface_area_save'):
             job_name = self.options.get('job_name')
@@ -1479,8 +1488,12 @@ class PyNiss(object):
                 xyz_out.write(('%-6s' % ppt[0]) +
                               ('%10.6f %10.6f %10.6f' % tuple(ppt[1])) +
                               ('%10.6f\n' % ppt[2]))
-        info("Total positive charge: %f" % positive_charge)
-        info("Total negative charge: %f" % negative_charge)
+        try:
+            hydrophilic_fraction = hydrophilic_area/total_area
+        except ZeroDivisionError:
+            hydrophilic_fraction = 0.0
+        info("Hydrophilic area (A^2) and fraction (probe: %f): %f, %f" %
+             (rprobe, hydrophilic_area, hydrophilic_fraction))
         return total_area
 
 class Structure(object):
@@ -1962,7 +1975,7 @@ class Structure(object):
                 error("Egulp gave infinite charges, check structure")
                 terminate(108)
             elif abs(atom.charge) > 10:
-                warning("Very high charge from egulp: %s %f"
+                warning("Very high charge from egulp: %s %f" %
                         (atom.site, atom.charge))
 
 
@@ -2251,7 +2264,7 @@ class Structure(object):
 
         if typed_atoms:
             # Include custom typing, new types must be found by hand.
-            # 800 N=O
+            # 800 N=O -- removed
             # 801 S=O
             # 802 S-O-H
             for atom_idx, atom in enumerate(self.atoms):
@@ -2268,13 +2281,14 @@ class Structure(object):
                                         another_idx = other_bond_index(another_bond, other_idx)
                                         if self.atoms[another_idx].uff_type == 'H_':
                                             atomic_numbers[another_idx] = 1001
-                elif atom.uff_type == 'N_R':
-                    this_bonds = []
-                    for bond in self.bonds:
-                        if atom_idx in bond:
-                            other_idx = other_bond_index(bond, atom_idx)
-                            if self.atoms[other_idx].uff_type == 'O_R':
-                                atomic_numbers[other_idx] = 800
+#                TODO(tdaff): delete code in future version; removed NO2 typing
+#                elif atom.uff_type == 'N_R':
+#                    this_bonds = []
+#                    for bond in self.bonds:
+#                        if atom_idx in bond:
+#                            other_idx = other_bond_index(bond, atom_idx)
+#                            if self.atoms[other_idx].uff_type == 'O_R':
+#                                atomic_numbers[other_idx] = 800
 
         # atomic numbers should have been modified with exotic types by now
         geometry_file.extend([
@@ -2287,20 +2301,74 @@ class Structure(object):
         return geometry_file
 
 
-    def to_fastmc(self, options):
-        """Return the FIELD and CONFIG needed for a fastmc run."""
+    def to_config_field(self, options, fastmc=False, include_guests=None,
+                        dummy=False):
+        """
+        Return CONFIG and FIELD files in DL_POLY style
+
+        Parameters
+        ----------
+
+        fastmc : boolean
+            When set to True, the FIELD file will contain the positions for MC
+            guests and will give incorrect results with DL_POLY.
+        include_guests : dict or None
+            A dictionary with guests to be included in the config file with
+            the framework. The guest type is the key and their positions are
+            nested lists.
+        dummy : boolean
+            If dummy is set, the interaction parameters and charges for the
+            guest are set to zero
+
+        Returns
+        -------
+
+        config : list
+            The config file as a list of newline terminated strings
+        field : list
+            The field file as a list of newline terminated strings
+
+        """
         # CONFIG
         self.gen_supercell(options)
         supercell = self.gcmc_supercell
         levcfg = 0  # always
         imcon = self.cell.imcon
         natoms = len(self.atoms) * prod(supercell)
+
+        # do included guests first so natoms can be corrected
+        offset = 1
+
+        included_guests_part = []
+        # count if any guests are included
+        # use get( ... , 0) to get zero for not included
+        guest_nummols = {}
+
+        if include_guests is not None:
+            for guest in self.guests:
+                if guest.ident in include_guests:
+                    guest_nummols[guest.ident] = len(include_guests[guest.ident])
+                    for positions in include_guests[guest.ident]:
+                        for atom, position in zip(guest.atoms, positions):
+                            included_guests_part.extend(
+                                ["%-6s%10i\n" % (atom.type, offset),
+                                 "%20.12f%20.12f%20.12f\n" % tuple(position)])
+                            # increment offset as it is used for the framework
+                            offset += 1
+            # make natoms correct
+            natoms += offset - 1
+
         config = ["%s\n" % self.name[:80],
                   "%10i%10i%10i\n" % (levcfg, imcon, natoms)]
         config.extend(self.cell.to_vector_strings(scale=supercell))
+
+        # included guests go first to match field
+        config.extend(included_guests_part)
+
+        # put them in
         for idx, atom in enumerate(self.supercell(supercell)):
-            # idx+1 for 1 based indexes in CONFIG
-            config.extend(["%-6s%10i\n" % (atom.type, idx + 1),
+            # idx+offset for 1 based indexes in CONFIG
+            config.extend(["%-6s%10i\n" % (atom.type, idx + offset),
                            "%20.12f%20.12f%20.12f\n" % tuple(atom.pos)])
 
         # FIELD
@@ -2311,13 +2379,26 @@ class Structure(object):
         # Guests
         for guest in self.guests:
             field.extend(["&guest %s: %s\n" % (guest.name, guest.source),
-                          "NUMMOLS %i\n" % 0,
+                          "NUMMOLS %i\n" % guest_nummols.get(guest.ident, 0),
                           "ATOMS %i\n" % len(guest.atoms)])
             for atom in guest.atoms:
-                field.append(("%-6s %12.6f %12.6f" %
-                              tuple([atom.type, atom.mass, atom.charge])) +
-                             ("%12.6f %12.6f %12.6f\n" % tuple(atom.pos)))
-            field.append("finish\n")
+                # Can't just turn off electrostatics as we need to compare to
+                # the empty framework so zero guest charges
+                if dummy:
+                    charge = 0
+                else:
+                    charge = atom.charge
+                field.append("%-6s %12.6f %12.6f" %
+                             tuple([atom.type, atom.mass, charge]))
+                if fastmc:
+                    field.append("%12.6f %12.6f %12.6f\n" % tuple(atom.pos))
+                else:
+                    # atom positions confuse dl_poly which takes nrept or ifrz
+                    field.append(" 1 0\n")
+            field.append("rigid 1\n")
+            field.append("%i " % guest.natoms)
+            field.append(" ".join("%i" % (x + 1) for x in range(guest.natoms)))
+            field.append("\nfinish\n")
         # Framework
         field.extend(["Framework\n",
                       "NUMMOLS %i\n" % prod(supercell),
@@ -2342,6 +2423,10 @@ class Structure(object):
         force_field = copy(UFF)
         for guest in self.guests:
             force_field.update(guest.potentials)
+
+        # zero everything if we just want framework
+        if dummy:
+            force_field = dict((element, (0.0, 0.0)) for element in force_field)
 
         for idxl in range(len(atom_set)):
             for idxr in range(idxl, len(atom_set)):
@@ -2527,12 +2612,12 @@ class Structure(object):
                     kappa = ka * (16.0*c2*c2 - c1*c1) / (4.0* c2)
                     itp_file.append("%-5i %-5i %-5i %3i %f %f ; %-5s %-5s %-5s" % (l_idx + 1, idx_a + 1, r_idx + 1, 1, thetamin, kappa, l_atom.uff_type, central_atom.uff_type, r_atom.uff_type))
 
-        with open("moffive.top", 'w') as tempfile:
-            tempfile.writelines(top_file)
-        with open("moffive.gro", 'w') as tempfile:
-            tempfile.writelines(gro_file)
-        with open("moffive.itp", 'w') as tempfile:
-            tempfile.writelines(itp_file)
+        #with open("moffive.top", 'w') as tempfile:
+        #    tempfile.writelines(top_file)
+        #with open("moffive.gro", 'w') as tempfile:
+        #    tempfile.writelines(gro_file)
+        #with open("moffive.itp", 'w') as tempfile:
+        #    tempfile.writelines(itp_file)
 
 
     def to_cssr(self, cartesian=False, no_atom_id=False):
@@ -2596,11 +2681,30 @@ class Structure(object):
         # Keep track of supercell so we can get unit cell values
         supercell_mult = prod(self.gcmc_supercell)
         # Still positional as we need multiple values simultaneously
-        # and very old versions cahnged wording of heat of adsorption
+        # and very old versions changed wording of heat of adsorption
         # and enthalpy of guest
+        # TODO(tdaff, r2.0): deprecate reading older fastmc files
+        # and put Cv in the guest definition
+        for line in output[::-1]:
+            if "+/-" in line:
+                # This is version 1.3 of fastmc
+                debug("NEW OUTPUT")
+                line_offset = 5
+                read_cv = True
+                # In future this should be assumed to exist
+                for guest in self.guests:
+                    if not hasattr(guest, 'c_v'):
+                        guest.c_v = {}
+                break
+        else:
+            # +/- not found, assume old style output
+            debug("OLD OUTPUT")
+            line_offset = 0
+            read_cv = False
         for idx, line in enumerate(output):
             # Assume that block will always start like this
             if 'final stats' in line:
+                idx += line_offset
                 guest_id = int(line.split()[4]) - 1
                 self.guests[guest_id].uptake[tp_point] = (
                     float(output[idx + 1].split()[-1]),
@@ -2610,6 +2714,10 @@ class Structure(object):
                 self.guests[guest_id].hoa[tp_point] = (
                     float(output[idx + 3].split()[-1]),
                     float(output[idx + 4].split()[-1]))
+                if read_cv:
+                    self.guests[guest_id].c_v[tp_point] = (
+                    float(output[idx + 5].split()[-1]),
+                    float(output[idx + 6].split()[-1]))
             elif 'total accepted steps' in line:
                 counted_steps = int(line.split()[-1])
                 if counted_steps < 10000:
@@ -3343,7 +3451,11 @@ class Atom(object):
 
     def del_fractional_coordinate(self):
         """Remove the fractional coordinate; run after updating cell."""
-        del self._fractional
+        try:
+            del self._fractional
+        except AttributeError:
+            # Attribute does not exist, so can't delete it
+            pass
 
     fractional = property(get_fractional_coordinate, set_fractional_coordinate, del_fractional_coordinate)
 
@@ -3388,6 +3500,7 @@ class Guest(object):
         self.source = "Unknown source"
         self.uptake = {}
         self.hoa = {}
+        self.c_v = {}
         # only load if asked, set the ident in the loader
         if ident:
             self.load_guest(ident, guest_path=None)
@@ -3478,6 +3591,22 @@ class Guest(object):
             return self._molar_volume
         else:
             return 22.414
+
+    @property
+    def natoms(self):
+        """Number of atoms in the guest."""
+        return len(self.atoms)
+
+    @property
+    def com(self):
+        """Centre of mass of the guest molecule."""
+        com = [0.0, 0.0, 0.0]
+        for atom in self.atoms:
+            com = [com[0] + atom.pos[0] * atom.mass,
+                   com[1] + atom.pos[1] * atom.mass,
+                   com[2] + atom.pos[2] * atom.mass]
+        com = [x/self.weight for x in com]
+        return com
 
 
 class Symmetry(object):
@@ -3605,6 +3734,8 @@ def mk_incar(options, esp_grid=None):
     if esp_grid is not None:
         info("Changing FFT grid to %ix%ix%i" % esp_grid)
         incar.append("NGXF = %i ; NGYF = %i ; NGZF = %i\n" % esp_grid)
+
+    #TODO(jlo): if nelect is not None:
 
     # VASP recommends, for best performance:
     # NPAR = 4 - approx SQRT( number of cores)

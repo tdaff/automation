@@ -1827,7 +1827,7 @@ class Structure(object):
                 error("Egulp gave infinite charges, check structure")
                 terminate(108)
             elif abs(atom.charge) > 10:
-                warning("Very high charge from egulp: %s %f"
+                warning("Very high charge from egulp: %s %f" %
                         (atom.site, atom.charge))
 
 

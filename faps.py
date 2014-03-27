@@ -2892,11 +2892,11 @@ class Structure(object):
         minimum_supercell = self.cell.minimum_supercell(config_cutoff)
         supercell = tuple(max(i, j)
                           for i, j in zip(config_supercell, minimum_supercell))
-        self.gcmc_supercell = supercell
-        info("%s supercell requested in config" % str(config_supercell))
-        info("%s minimum supercell for a %.1f cutoff" %
-             (str(minimum_supercell), config_cutoff))
-        info("Constructing %s supercell for gcmc." % str(supercell))
+        if self.gcmc_supercell != supercell:
+            info("%s supercell requested in config" % str(config_supercell))
+            info("%s minimum supercell for a %.1f cutoff" %
+                 (str(minimum_supercell), config_cutoff))
+            info("Constructing %s supercell for gcmc." % str(supercell))
 
     def supercell(self, scale):
         """

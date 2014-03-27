@@ -62,27 +62,23 @@ for pdist in guest_locations:
 ## guest geometry
 probability = guest.probability
 
+print(probability)
 
-# Work out which is the central 'probability' atom of the guest
+# Work out which atoms to use
+# Only use atom positions for site location
 guest_atom_distances = []
 
-for atom in guest.atoms:
-    guest_atom_distances.append(vecdist3(guest.com, atom.pos))
+for idx, atom in enumerate(guest.atoms):
+    distance = vecdist3(guest.com, atom.pos)
+    for p_idx, probability in enumerate(guest.probability):
+        # idx for atoms starts from 1; don't lose track!
+        if (idx + 1) in probability:
+            guest_atom_distances.append((distance, idx, p_idx))
 
-probability_distances = []
-prob_to_use = []
-
-# work out which site is closest to the COM
-for idx, probability in enumerate(guest.probability):
-    if 0 in probability:
-        # This is the COM, at the middle
-        probability_distances.append((0, 0.0))
-        prob_to_use[0] = idx
-    else:
-        # This is the
-        probability_distances.append(min(guest_atom_distances[i-1] for i in probability))
-
-print(probability_distances)
+# from COM outwards
+# (distance, atom_idx, prob_idx)
+guest_atom_distances.sort()
+print(guest_atom_distances)
 
 if len(guest_atom_distances) == 1:
     # There is only one site, use it
@@ -94,9 +90,6 @@ else:
     print("More than two atoms, take the closest three")
 
     #linear molecules
-
-for atom_set in guest.probability:
-    print(atom_set)
 
 # Atom descriptions (probability index,
 

@@ -1383,6 +1383,7 @@ class Structure(object):
         self.guests = []
         self.properties = {}
         self.space_group = None
+        self.net_charge = None
 
     def from_file(self, basename, filetype, defaults):
         """Select the correct file parser."""
@@ -1533,6 +1534,10 @@ class Structure(object):
                 params[5] = ufloat(line.split()[1])
             elif '_symmetry_space_group_name_h-m' in line:
                 self.space_group = line.split()[1]
+            elif '_chemical_properties_physical' in line:
+                physical = list(shlex.shlex(line, posix=False))[1].strip("'").lower()
+                if physical.startswith('net charge is'):
+                    self.net_charge = float(physical.split()[3])
             elif 'loop_' in line:
                 # loops for _atom_site, _symmetry and _geom
                 heads = []

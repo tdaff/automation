@@ -45,9 +45,13 @@ def mk_dl_poly_control(options):
     return control
 
 
+my_options = Options()
+
 ### TESTING
 
-niss_file = open("BaTPPEt.niss", 'rb')
+job_name = my_options.job_name
+
+niss_file = open("%s.niss" % job_name, 'rb')
 my_simulation = pickle.load(niss_file)
 niss_file.close()
 
@@ -63,8 +67,6 @@ for pdist in guest_locations:
 ## guest geometry
 probability = guest.probability
 
-print(probability)
-
 # Work out which atoms to use
 # Only use atom positions for site location
 guest_atom_distances = []
@@ -79,7 +81,10 @@ for idx, atom in enumerate(guest.atoms):
 # from COM outwards
 # (distance, atom_idx, prob_key)
 guest_atom_distances.sort()
-print(guest_atom_distances)
+
+print guest.aligned_to((0, [1, 1, 1]))
+
+raise SystemExit
 
 if len(guest_atom_distances) == 1:
     # There is only one site, use it
@@ -175,8 +180,6 @@ for origin_atom in sorted(guest_locations[origin_key],
             out_file.write("O {0[0]} {0[1]} {0[2]} {1}\n".format(attached[idx][0],attached[idx][1]))
         else:
             out_file.write("O 0.0 0.0 0.0\n")
-
-my_options = Options()
 
 for bs_idx, binding_site in enumerate(binding_sites):
 

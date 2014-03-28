@@ -3573,6 +3573,67 @@ class Guest(object):
                 # Might also enable breakage
                 setattr(self, key, val)
 
+    def aligned_to(self, target, align=None, orient=None):
+        """
+        Return the atomic positions of the guest with it located at position
+        and aligned using the align and orient vectors. Align and orient are
+        optional and the guest will be aligned using whatever is supplied.
+
+        Parameters
+        ----------
+
+        target : tuple of int, list of float
+            The tuple contains the index of the atom to position the
+            guest and the position.
+        align : tuple of int, list of float
+            The index of the atom used to align the guest followed by the
+            alignment vector
+        orient : tuple of int, list of float
+            The index of the atom used to orient the guest followed by the
+            orientation vector
+
+        Returns
+        -------
+
+        positions : list of list of float
+            The positions of the aligned atoms in a list
+
+        """
+
+        # Move to origin so that we can do rotation
+        target_idx, target = target
+        target_guest = self.atoms[target_idx].pos
+
+        guest_position = [[x - y for x, y in zip(atom.pos, target_guest)]
+                          for atom in self.atoms]
+
+        if align is not None:
+            align_idx, align = align
+            align_guest = guest_position[align_idx]
+            rotate = matrix_rotate(align_guest, align)
+            guest_position = [dot(rotate, pos) for pos in guest_position]
+
+            if orient is not None:
+                orient_idx, orient = orient
+                # guest position has changed
+                align_guest = guest_position[align_idx]
+                orient_guest = guest_position[orient_idx]
+                # align normals
+                normal_guest = cross(align_guest, orient_guest)
+                normal_orient = cross(align, orient)
+                # normals are [0.0, 0.0, 0.0] for parallel
+                if normal_guest.any() and normal_orient.any():
+                    rotate = matrix_rotate(normal_guest, normal_orient)
+                    guest_position = [dot(rotate, pos)
+                                      for pos in guest_position]
+
+        # move to location after orientation as it is easier
+        guest_position = [[x + y for x, y in zip(atom, target)]
+                          for atom in guest_position]
+
+        return guest_position
+
+
     # Simple attribute-like calculations
     @property
     def types(self):
@@ -4100,6 +4161,23 @@ def vecdist3(coord1, coord2):
            coord2[2] - coord1[2]]
 
     return (vec[0]*vec[0] + vec[1]*vec[1] + vec[2]*vec[2])**0.5
+
+
+def matrix_rotate(source, target):
+    """Create a rotation matrix that will rotate source on to target."""
+    # Normalise so there is no scaling in the array
+    source = np.asarray(source)/norm(source)
+    target = np.asarray(target)/norm(target)
+    v = cross(source, target)
+    vlen = dot(v, v)
+    if vlen == 0.0:
+        # already aligned, no rotation needed
+        return identity(3)
+    c = dot(source, target)
+    h = (1 - c)/vlen
+    return array([[c + h*v[0]*v[0], h*v[0]*v[1] - v[2], h*v[0]*v[2] + v[1]],
+                  [h*v[0]*v[1] + v[2], c + h*v[1]*v[1], h*v[1]*v[2] - v[0]],
+                  [h*v[0]*v[2] - v[1], h*v[1]*v[2] + v[0], c + h*v[2]*v[2]]])
 
 
 def remove_files(files, directory='.'):

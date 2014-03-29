@@ -17,6 +17,7 @@ import pickle
 import sys
 
 from numpy import dot
+from numpy.linalg import norm
 
 sys.path.append('..')
 import faps
@@ -43,6 +44,41 @@ def mk_dl_poly_control(options):
         "finish\n"]
 
     return control
+
+
+def min_vect(c_coa, f_coa, c_cob, f_cob_in, box):
+    """Calculate the closest distance assuming fractional, in-cell coords."""
+    f_cob = f_cob_in[:]
+    fdx = f_coa[0] - f_cob[0]
+    if fdx < -0.5:
+        f_cob[0] -= 1
+    elif fdx > 0.5:
+        f_cob[0] += 1
+    fdy = f_coa[1] - f_cob[1]
+    if fdy < -0.5:
+        f_cob[1] -= 1
+    elif fdy > 0.5:
+        f_cob[1] += 1
+    fdz = f_coa[2] - f_cob[2]
+    if fdz < -0.5:
+        f_cob[2] -= 1
+    elif fdz > 0.5:
+        f_cob[2] += 1
+    if f_cob == f_cob_in:
+        # if nothing has changed, use initial values
+        return direction3d(c_coa, c_cob)
+    else:
+        new_b = [f_cob[0]*box[0][0] + f_cob[1]*box[1][0] + f_cob[2]*box[2][0],
+                 f_cob[0]*box[0][1] + f_cob[1]*box[1][1] + f_cob[2]*box[2][1],
+                 f_cob[0]*box[0][2] + f_cob[1]*box[1][2] + f_cob[2]*box[2][2]]
+        return direction3d(c_coa, new_b)
+
+
+def direction3d(source, target):
+    """Return the vector connecting two 3d points."""
+    return [target[0] - source[0],
+            target[1] - source[1],
+            target[2] - source[2]]
 
 
 my_options = Options()
@@ -82,10 +118,6 @@ for idx, atom in enumerate(guest.atoms):
 # (distance, atom_idx, prob_key)
 guest_atom_distances.sort()
 
-print guest.aligned_to((0, [1, 1, 1]))
-
-raise SystemExit
-
 if len(guest_atom_distances) == 1:
     # There is only one site, use it
     print("One atom")
@@ -123,7 +155,8 @@ origin_key = guest_atom_distances[0][2]
 for origin_atom in sorted(guest_locations[origin_key],
                           key=operator.itemgetter(1), reverse=True):
     if distance_0_1 is None:
-        binding_sites.append(origin_atom)  # add the un-oriented guest
+        # add the un-oriented guest
+        binding_sites.append([(guest_atom_distances[0][1], origin_atom[0])])
         continue
 
     # We have more than one atom to align
@@ -133,15 +166,18 @@ for origin_atom in sorted(guest_locations[origin_key],
     for align_atom in sorted(guest_locations[align_key],
                              key=operator.itemgetter(1), reverse=True):
         # don't forget periodic boundaries!
-        separation_0_1 = min_dist(origin_atom[0], origin_atom[2],
-                                  align_atom[0], align_atom[2], cell.cell)
+        vector_0_1 = min_vect(origin_atom[0], origin_atom[2],
+                              align_atom[0], align_atom[2], cell.cell)
+        separation_0_1 = norm(vector_0_1)
         align_overlap = abs(separation_0_1 - distance_0_1)
         if align_overlap < align_closest[0]:
             align_closest = (align_overlap, align_atom)
         if align_overlap < overlap_tol:
             # We fit the alignment so it's good
             if distance_0_2 is None:
-                binding_sites.append((origin_atom, align_atom))
+                binding_sites.append([
+                    (guest_atom_distances[0][1], origin_atom[0]),
+                    (guest_atom_distances[1][1], vector_0_1)])
                 continue
 
             # we can try and fit all three
@@ -150,19 +186,28 @@ for origin_atom in sorted(guest_locations[origin_key],
             found_site = False
             for orient_atom in sorted(guest_locations[orient_key],
                                       key=operator.itemgetter(1), reverse=True):
-                separation_0_2 = min_dist(origin_atom[0], origin_atom[2],
-                                          orient_atom[0], orient_atom[2],
-                                          cell.cell)
-                separation_1_2 = min_dist(align_atom[0], align_atom[2],
-                                          orient_atom[0], orient_atom[2],
-                                          cell.cell)
+
+                # need all the separations
+                vector_0_2 = min_vect(origin_atom[0], origin_atom[2],
+                                      orient_atom[0], orient_atom[2],
+                                      cell.cell)
+                separation_0_2 = norm(vector_0_2)
+                vector_1_2 = min_vect(align_atom[0], align_atom[2],
+                                      orient_atom[0], orient_atom[2],
+                                      cell.cell)
+                separation_1_2 = norm(vector_1_2)
+
                 overlap_0_2 = abs(separation_0_2 - distance_0_2)
                 overlap_1_2 = abs(separation_1_2 - distance_1_2)
 
                 if overlap_0_2 + 0.5*overlap_1_2 < orient_closest[0]:
                     orient_closest = (overlap_0_2 + 0.5*overlap_1_2, orient_atom)
                 if overlap_0_2 < overlap_tol and overlap_1_2 < 2*overlap_tol:
-                    binding_sites.append((origin_atom, align_atom, orient_atom))
+                    binding_sites.append([
+                        (guest_atom_distances[0][1], origin_atom[0]),
+                        (guest_atom_distances[1][1], vector_0_1),
+                        (guest_atom_distances[1][1], vector_0_2)])
+                    #binding_sites.append((origin_atom, align_atom, orient_atom))
                     found_site = True
 
             if not found_site:
@@ -189,11 +234,14 @@ for bs_idx, binding_site in enumerate(binding_sites):
     mkdirs(bs_directory)
     os.chdir(bs_directory)
 
-    include_guests = {guest.ident: [(binding_site[0][0], binding_site[1][0], binding_site[2][0])]}
+    #raise SystemExit
+
+    include_guests = {guest.ident: [guest.aligned_to(*binding_site)]}
+    print include_guests
 
     with open("CONFIG", "w") as config:
         with open("FIELD", "w") as field:
-            dlp_files = my_simulation.structure.to_config_field(my_options, include_guests=include_guests, dummy=True)
+            dlp_files = my_simulation.structure.to_config_field(my_options, include_guests=include_guests)
             config.writelines(dlp_files[0])
             field.writelines(dlp_files[1])
 

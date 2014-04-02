@@ -48,7 +48,14 @@ class Cube(object):
         elif self.fold is None:
             self.fold = (1, 1, 1)
         fold = self.fold
-        cube_temp = compressed_open(self.filename)
+        try:
+            cube_temp = compressed_open(self.filename)
+        except IOError:
+            # compressed open will throw an error if the file is not found
+            # it may already be folded, so we can try this
+            cube_temp = compressed_open(self.folded_name)
+            fold = (1, 1, 1)
+            self.fold = fold
         top_bit = cube_temp.readlines(1024)
         cube_temp.seek(0)
 

@@ -17,6 +17,7 @@ from logging import info, debug, error
 
 import numpy as np
 from numpy import array, zeros, matrix
+from numpy.linalg import norm
 
 
 class Cube(object):
@@ -194,8 +195,8 @@ class Cube(object):
 
     def maxima(self):
         """
-        Use a median filter to reduce noise, smooth with gaussian blur
-        then use the 124 nearest neighbours to estimate positions of maxima.
+        Smooth with gaussian blur then use the spacing to determine nearest
+        neighbours to estimate positions of maxima.
         Return the cartesian positions of maxima in a tuple with their
         magnitudes from the smoothed data.
         """
@@ -211,20 +212,26 @@ class Cube(object):
 
         temp_data = self.datapoints
         normalising_sum = sum(temp_data)
+        spacing = norm(self.cell[0])
+        debug("Spacing: %f" % spacing)
 
-        # First run a median filter to remove any exceptionally low or high
-        # Size seems to work best at about 0.2 A
-        temp_data = median_filter(temp_data, 4, mode='wrap')
+        # Median filter removed as testing showed it didn't do much
+        #temp_data = median_filter(temp_data, 4, mode='wrap')
         # Gaussian filter smoothes out the data
-        temp_data = gaussian_filter(temp_data, 4, mode="wrap")
+        # Visual inspection suggests sqrt(2/spacing)
+        sigma = (2.0/spacing)**0.5
+        debug("Sigma: %f" % sigma)
+        temp_data = gaussian_filter(temp_data, sigma, mode="wrap")
 
         # Renormalise to pre-filtered values
         temp_data *= normalising_sum/sum(temp_data)
 
         # define a connectivity neighborhood
-        neighborhood = generate_binary_structure(np.ndim(temp_data), 3)
-        # expand it to a 5x5x5 grid
-        neighborhood = iterate_structure(neighborhood, 2)
+        neighborhood = generate_binary_structure(np.ndim(temp_data), 2)
+        # expand it to a neighbourhood of ~0.3 A
+        footprint = int(round(0.31/spacing, 0))
+        debug("Footprint: %r" % footprint)
+        neighborhood = iterate_structure(neighborhood, footprint)
 
         #apply the local maximum filter; all pixel of maximal value
         #in their neighborhood are set to 1
@@ -258,7 +265,18 @@ class Cube(object):
                 cartesian_peaks.append((np.dot(point, cell).tolist(),
                                         temp_data[point]))
 
-        return cartesian_peaks
+        pruned_peaks = []
+        previous_value = 0.0
+        # We can cut out the tail end of points where there is a sharp drop
+        for point in sorted(cartesian_peaks, key=lambda k: -k[1]):
+            # All of the points with 0 should be removed already
+            if previous_value/point[1] < 4:
+                previous_value = point[1]
+                pruned_peaks.append(point)
+            else:
+                break
+
+        return pruned_peaks
 
     @property
     def folded_name(self):

@@ -1231,8 +1231,8 @@ class PyNiss(object):
 
             # make the dummy;
             dummy_guest = self.structure.guests[0]
-            dummy_include = {dummy_guest.ident: [[x, 0.0, 0.0] for x in
-                                                 range(dummy_guest.natoms)]}
+            dummy_include = {dummy_guest.ident: [[[x, 0.0, 0.0] for x in
+                                                  range(dummy_guest.natoms)]]}
             with open("CONFIG", "w") as config:
                 with open("FIELD", "w") as field:
                     dlp_files = self.structure.to_config_field(
@@ -1260,7 +1260,7 @@ class PyNiss(object):
                 if hasattr(guest, 'binding_sites'):
                     guest.binding_sites[tp_point] = binding_sites
                 else:
-                    guest.binding_sites = {tp_point, binding_sites}
+                    guest.binding_sites = {tp_point: binding_sites}
 
                 for bs_idx, binding_site in enumerate(binding_sites):
                     bs_directory = "%s_bs_%04d" % (guest.ident, bs_idx)
@@ -2792,7 +2792,7 @@ class Structure(object):
         os.chdir(filepath)
 
         statis = open('STATIS').readlines()
-        empty_esp = statis[3].split()[4]
+        empty_esp = float(statis[3].split()[4])
 
         for guest in self.guests:
 
@@ -2812,7 +2812,7 @@ class Structure(object):
 
                 magnitude = binding_site[0][2]
                 info("Binding site %i: %f kcal/mol, %f occupancy" %
-                     bs_idx, (e_vdw+e_esp))
+                     (bs_idx, (e_vdw+e_esp), magnitude))
 
                 binding_energies.append([magnitude, e_vdw, e_esp, position])
 
@@ -2820,16 +2820,16 @@ class Structure(object):
                 for idx, bind in enumerate(binding_energies):
                     this_point = [
                         "%i\n" % len(bind[3]),  # number of atoms
-                        "BS: %i, %f, %f, %f, \n" % (idx, bind[0], bind[1], bind[2])]
-                    for atom in bind[2]:
-                        this_point.append("%s" % atom[0])
-                        this_point.append("%f %f %f\n" % atom[1])
+                        "BS: %i, %f, %f, %f\n" % (idx, bind[0], bind[1], bind[2])]
+                    for atom in bind[3]:
+                        this_point.append("%-5s " % atom[0])
+                        this_point.append("%.6f %.6f %.6f\n" % tuple(atom[1]))
                     absl_out.writelines(this_point)
 
             if hasattr(guest, 'binding_energies'):
-                guest.binding_energies[tp_point] = {}
+                guest.binding_energies[tp_point] = binding_energies
             else:
-                guest.binding_energies[tp_point] = {}
+                guest.binding_energies = {tp_point: binding_energies}
 
 
         unneeded_files = options.gettuple('absl_delete_files')

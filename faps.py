@@ -1224,6 +1224,7 @@ class PyNiss(object):
             os.chdir(tp_path)
 
             # calculate binding sites here
+            #for guest in guests
             binding_sites = calculate_binding_sites()
             try_symlink(path.join('..', 'CONFIG'),'CONFIG')
             try_symlink(path.join('..', 'FIELD'), 'FIELD')

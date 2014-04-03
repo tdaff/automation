@@ -1229,7 +1229,31 @@ class PyNiss(object):
             mkdirs(tp_path)
             os.chdir(tp_path)
 
-            # calculate binding sites here
+            # make the dummy;
+            dummy_guest = self.structure.guests[0]
+            dummy_include = {dummy_guest.ident: [[x, 0.0, 0.0] for x in
+                                                 range(dummy_guest.natoms)]}
+            with open("CONFIG", "w") as config:
+                with open("FIELD", "w") as field:
+                    dlp_files = self.structure.to_config_field(
+                        self.options, include_guests=dummy_include, dummy=True)
+                    config.writelines(dlp_files[0])
+                    field.writelines(dlp_files[1])
+
+            with open("CONTROL", "w") as control:
+                control.writelines(mk_dl_poly_control(self.options, dummy=True))
+
+            # Submit this and figure out if we submit all of them
+            if self.options.getbool('no_submit'):
+                info("ABSL input files generated; skipping job submission")
+                jobids[(temp, press)].append(False)
+                no_submit = True
+            else:
+                jobid = self.job_handler.submit('dl_poly', self.options)
+                jobids[(temp, press)].append(jobid)
+                no_submit = False
+
+            # calculate binding sites here and submit
             for guest in self.structure.guests:
                 binding_sites = calculate_binding_sites(guest, tp_point,
                                                         self.structure.cell)
@@ -1252,9 +1276,7 @@ class PyNiss(object):
                     with open("CONTROL", "w") as control:
                         control.writelines(mk_dl_poly_control(self.options))
 
-                    if self.options.getbool('no_submit'):
-                        info("ABSL input files generated; "
-                             "skipping job submission")
+                    if no_submit:
                         jobids[(temp, press)].append(False)
                     else:
                         jobid = self.job_handler.submit('dl_poly', self.options)
@@ -1628,9 +1650,9 @@ class Structure(object):
 
     def update_absl(self, tp_point, options):
         """Select the source for ABSL results and import."""
-        gcmc_path = path.join('faps_%s_%s' % (self.name, gcmc_code))
+        absl_path = path.join('faps_%s_%s' % (self.name, 'absl'))
         # Runs in subdirectories
-        tp_path = path.join(gcmc_path, 'T%s' % tp_point[0] +
+        tp_path = path.join(absl_path, 'T%s' % tp_point[0] +
                                ''.join(['P%.2f' % x for x in tp_point[1]]))
         info("Importing results from ABSL")
         self.absl_postproc(tp_path, tp_point, options)
@@ -2766,6 +2788,39 @@ class Structure(object):
         """Update structure properties from gcmc OUTPUT."""
         startdir = os.getcwd()
         os.chdir(filepath)
+
+        for guest in self.guests:
+
+            for bs_idx, binding_site in enumerate(guest.binding_sites):
+                bs_directory = "%s_bs_%04d" % (guest.ident, bs_idx)
+
+                statis = open(path.join(bs_directory, 'STATIS')).readlines()
+                revcon = open(path.join(bs_directory, 'REVCON')).readlines()
+
+
+
+                include_guests = {guest.ident: [guest.aligned_to(*binding_site)]}
+
+                with open("CONFIG", "w") as config:
+                    with open("FIELD", "w") as field:
+                        dlp_files = self.structure.to_config_field(
+                            self.options, include_guests=include_guests)
+                        config.writelines(dlp_files[0])
+                        field.writelines(dlp_files[1])
+
+                with open("CONTROL", "w") as control:
+                    control.writelines(mk_dl_poly_control(self.options))
+
+                if self.options.getbool('no_submit'):
+                    info("ABSL input files generated; "
+                         "skipping job submission")
+                    jobids[(temp, press)].append(False)
+                else:
+                    jobid = self.job_handler.submit('dl_poly', self.options)
+                    jobids[(temp, press)].append(jobid)
+
+                os.chdir('..')
+
 
         #TODO(ekadants): run the ABSL posprocessing stuff here
         # maybe do some checks to see if probability is plotted,

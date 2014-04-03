@@ -252,7 +252,8 @@ def _wooki_submit(job_type, options, *args, **kwargs):
         'siesta': 'siesta-submit',
         'fastmc': 'fastmc-submit',
         'gulp': 'gulp-submit-faps',
-        'egulp': 'egulp-submit'
+        'egulp': 'egulp-submit',
+        'dl_poly': 'dl_poly-submit'
     }
     job_name = options.get('job_name')
     try:

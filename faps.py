@@ -1216,6 +1216,7 @@ class PyNiss(object):
         for tp_point in state_points(temps, presses, indivs, len(guests)):
             temp = tp_point[0]
             press = tp_point[1]
+            jobids[(temp, press)] = []
             info("Running ABSL: T=%.1f " % temp +
                  " ".join(["P=%.2f" % x for x in press]))
             tp_path = ('T%s' % temp +
@@ -1228,15 +1229,33 @@ class PyNiss(object):
                 binding_sites = calculate_binding_sites(guest, tp_point,
                                                         self.structure.cell)
 
+                for bs_idx, binding_site in enumerate(binding_sites):
+                    bs_directory = "%s_bs_%04d" % (guest.ident, bs_idx)
+                    mkdirs(bs_directory)
+                    os.chdir(bs_directory)
 
+                    include_guests = {guest.ident: [guest.aligned_to(*binding_site)]}
 
-            if self.options.getbool('no_submit'):
-                info("ABSL input files generated; "
-                     "skipping job submission")
-                jobids[(temp, press)] = False
-            else:
-                jobid = self.job_handler.submit('absl', self.options)
-                jobids[(temp, press)] = jobid
+                    with open("CONFIG", "w") as config:
+                        with open("FIELD", "w") as field:
+                            dlp_files = self.structure.to_config_field(
+                                self.options, include_guests=include_guests)
+                            config.writelines(dlp_files[0])
+                            field.writelines(dlp_files[1])
+
+                    with open("CONTROL", "w") as control:
+                        control.writelines(mk_dl_poly_control(self.options))
+
+                    if self.options.getbool('no_submit'):
+                        info("ABSL input files generated; "
+                             "skipping job submission")
+                        jobids[(temp, press)].append(False)
+                    else:
+                        jobid = self.job_handler.submit('dl_poly', self.options)
+                        jobids[(temp, press)].append(jobid)
+
+                    os.chdir('..')
+
             os.chdir('..')
 
         os.chdir(self.options.get('job_dir'))
@@ -3901,6 +3920,30 @@ def mk_gcmc_control(temperature, pressures, options, guests, supercell=None):
 
 
     control.append("\nfinish\n")
+    return control
+
+
+def mk_dl_poly_control(options, dummy=False):
+    """CONTROL file for binding site energy calculation."""
+    if dummy:
+        stats = 1
+    else:
+        stats = 200
+    control = [
+        "# minimisation\n",
+        "zero\n",
+        "steps 1000\n",
+        "timestep 0.001 ps\n",
+        "ensemble nvt hoover 0.1\n",
+        "cutoff %f angstrom\n" % options.getfloat('mc_cutoff'),
+        "delr 1.0 angstrom\n",
+        "ewald precision 1d-6\n",
+        "job time 199990 seconds\n",
+        "close time 2000 seconds\n",
+        "stats  %i\n" % stats,
+        "#traj 1,100,2\n"
+        "finish\n"]
+
     return control
 
 

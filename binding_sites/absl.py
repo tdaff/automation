@@ -12,41 +12,16 @@ General procedure is to:
 """
 
 import operator
-import os
+#import os
 import sys
 
 from numpy import dot
 from numpy.linalg import norm
 
 sys.path.append('..')
-import faps
-from config import Options
-from faps import PyNiss, Structure, Cell, Atom, Guest, Symmetry
-from faps import vecdist3, mkdirs
-
-
-def mk_dl_poly_control(options, dummy=False):
-    """CONTROL file for binding site energy calculation."""
-    if dummy:
-        stats = 1
-    else:
-        stats = 200
-    control = [
-        "# minimisation\n",
-        "zero\n",
-        "steps 1000\n",
-        "timestep 0.001 ps\n",
-        "ensemble nvt hoover 0.1\n",
-        "cutoff %f angstrom\n" % options.getfloat('mc_cutoff'),
-        "delr 1.0 angstrom\n",
-        "ewald precision 1d-6\n",
-        "job time 199990 seconds\n",
-        "close time 2000 seconds\n",
-        "stats  %i\n" % stats,
-        "#traj 1,100,2\n"
-        "finish\n"]
-
-    return control
+#import faps
+#from faps import PyNiss, Structure, Cell, Atom, Guest, Symmetry
+from faps import vecdist3
 
 
 def min_vect(c_coa, f_coa, c_cob, f_cob_in, box):
@@ -242,26 +217,3 @@ def calculate_binding_sites(guest, tp_point, cell):
     return binding_sites
 
 
-for bs_idx, binding_site in enumerate(binding_sites):
-
-    bs_directory = "%s_bs_%04d" % (guest.ident, bs_idx)
-
-    startdir = os.getcwd()
-    mkdirs(bs_directory)
-    os.chdir(bs_directory)
-
-    #raise SystemExit
-
-    include_guests = {guest.ident: [guest.aligned_to(*binding_site)]}
-    print include_guests
-
-    with open("CONFIG", "w") as config:
-        with open("FIELD", "w") as field:
-            dlp_files = my_simulation.structure.to_config_field(my_options, include_guests=include_guests)
-            config.writelines(dlp_files[0])
-            field.writelines(dlp_files[1])
-
-    with open("CONTROL", "w") as control:
-        control.writelines(mk_dl_poly_control(my_options))
-
-    os.chdir(startdir)

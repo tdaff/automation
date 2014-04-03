@@ -1224,14 +1224,11 @@ class PyNiss(object):
             os.chdir(tp_path)
 
             # calculate binding sites here
-            #for guest in guests
-            binding_sites = calculate_binding_sites()
-            try_symlink(path.join('..', 'CONFIG'),'CONFIG')
-            try_symlink(path.join('..', 'FIELD'), 'FIELD')
-            filetemp = open("CONTROL", "w")
-            filetemp.writelines(mk_gcmc_control(temp, press, self.options,
-                                                guests, self.structure.gcmc_supercell))
-            filetemp.close()
+            for guest in self.structure.guests:
+                binding_sites = calculate_binding_sites(guest, tp_point,
+                                                        self.structure.cell)
+
+
 
             if self.options.getbool('no_submit'):
                 info("ABSL input files generated; "
@@ -3595,7 +3592,7 @@ class Guest(object):
         """
 
         # Move to origin so that we can do rotation
-        target_idx, target = target
+        target_idx, target = target[0], target[1]
         target_guest = self.atoms[target_idx].pos
 
         guest_position = [[x - y for x, y in zip(atom.pos, target_guest)]

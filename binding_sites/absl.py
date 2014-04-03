@@ -85,11 +85,32 @@ def direction3d(source, target):
 
 
 def calculate_binding_sites(guest, tp_point, cell):
-    ### TESTING
+    """
+    Return the sets of points in the maxima that identify binding sites.
+    Each set minimally contains a tuple (index of first atom, position of
+    second atom), plus tuples of the index and vectors to a second and third
+    atom.
 
-    #guest = structure.guests[0]
+    Parameters
+    ----------
 
-    #cell = structure.cell
+    guest : Guest
+        The guest instance containing the TABASCO maxima.
+    tp_point : tuple
+        The identifier for the state point to calculate the binding sites for.
+    cell : Cell
+        The unit cell of the system.
+
+    Returns
+    -------
+
+    binding_sites : list
+        A list of lists, each containing:
+        (index_0, position_0, magnitude_0),
+        (index_1, vector_0_1), # [optional]
+        (index_2, vector_0_2)  # [optional]
+
+    """
 
     guest_locations = guest.guest_locations[tp_point]
 
@@ -152,7 +173,8 @@ def calculate_binding_sites(guest, tp_point, cell):
                               key=operator.itemgetter(1), reverse=True):
         if distance_0_1 is None:
             # add the un-oriented guest
-            binding_sites.append([(guest_atom_distances[0][1], origin_atom[0])])
+            binding_sites.append([(guest_atom_distances[0][1], origin_atom[0],
+                                   origin_atom[1])])
             continue
 
         # We have more than one atom to align
@@ -173,7 +195,8 @@ def calculate_binding_sites(guest, tp_point, cell):
                 align_found = True
                 if linear_guest or distance_0_2 is None:
                     binding_sites.append([
-                        (guest_atom_distances[0][1], origin_atom[0]),
+                        (guest_atom_distances[0][1], origin_atom[0],
+                         origin_atom[1]),
                         (guest_atom_distances[1][1], vector_0_1)])
                     continue
 
@@ -203,7 +226,8 @@ def calculate_binding_sites(guest, tp_point, cell):
                                           orient_atom)
                     if overlap_0_2 < overlap_tol and overlap_1_2 < 2*overlap_tol:
                         binding_sites.append([
-                            (guest_atom_distances[0][1], origin_atom[0]),
+                            (guest_atom_distances[0][1], origin_atom[0],
+                             origin_atom[1]),
                             (guest_atom_distances[1][1], vector_0_1),
                             (guest_atom_distances[1][1], vector_0_2)])
                         found_site = True
@@ -214,6 +238,8 @@ def calculate_binding_sites(guest, tp_point, cell):
         else:
             #TODO(tdaff): nothing within overlap, use closest
             pass
+
+    return binding_sites
 
 
 for bs_idx, binding_site in enumerate(binding_sites):

@@ -1257,7 +1257,10 @@ class PyNiss(object):
             for guest in self.structure.guests:
                 binding_sites = calculate_binding_sites(guest, tp_point,
                                                         self.structure.cell)
-                guest.binding_sites = binding_sites
+                if hasattr(guest, 'binding_sites'):
+                    guest.binding_sites[tp_point] = binding_sites
+                else:
+                    guest.binding_sites = {tp_point, binding_sites}
 
                 for bs_idx, binding_site in enumerate(binding_sites):
                     bs_directory = "%s_bs_%04d" % (guest.ident, bs_idx)
@@ -2783,56 +2786,51 @@ class Structure(object):
 
         os.chdir(startdir)
 
-
     def absl_postproc(self, filepath, tp_point, options):
         """Update structure properties from gcmc OUTPUT."""
         startdir = os.getcwd()
         os.chdir(filepath)
 
+        statis = open('STATIS').readlines()
+        empty_esp = statis[3].split()[4]
+
         for guest in self.guests:
 
-            for bs_idx, binding_site in enumerate(guest.binding_sites):
+            binding_energies = []
+
+            for bs_idx, binding_site in enumerate(guest.binding_sites[tp_point]):
                 bs_directory = "%s_bs_%04d" % (guest.ident, bs_idx)
 
                 statis = open(path.join(bs_directory, 'STATIS')).readlines()
                 revcon = open(path.join(bs_directory, 'REVCON')).readlines()
 
+                e_vdw = float(statis[3].split()[3])
+                e_esp = float(statis[3].split()[4]) - empty_esp
 
+                position = [(atom.type, [float(x) for x in pos.split()])
+                            for atom, pos in zip(guest.atoms, revcon[6::4])]
 
-                include_guests = {guest.ident: [guest.aligned_to(*binding_site)]}
+                magnitude = binding_site[0][2]
+                info("Binding site %i: %f kcal/mol, %f occupancy" %
+                     bs_idx, (e_vdw+e_esp))
 
-                with open("CONFIG", "w") as config:
-                    with open("FIELD", "w") as field:
-                        dlp_files = self.structure.to_config_field(
-                            self.options, include_guests=include_guests)
-                        config.writelines(dlp_files[0])
-                        field.writelines(dlp_files[1])
+                binding_energies.append([magnitude, e_vdw, e_esp, position])
 
-                with open("CONTROL", "w") as control:
-                    control.writelines(mk_dl_poly_control(self.options))
+            with open('%s_absl.xyz' % guest.ident, 'w') as absl_out:
+                for idx, bind in enumerate(binding_energies):
+                    this_point = [
+                        "%i\n" % len(bind[3]),  # number of atoms
+                        "BS: %i, %f, %f, %f, \n" % (idx, bind[0], bind[1], bind[2])]
+                    for atom in bind[2]:
+                        this_point.append("%s" % atom[0])
+                        this_point.append("%f %f %f\n" % atom[1])
+                    absl_out.writelines(this_point)
 
-                if self.options.getbool('no_submit'):
-                    info("ABSL input files generated; "
-                         "skipping job submission")
-                    jobids[(temp, press)].append(False)
-                else:
-                    jobid = self.job_handler.submit('dl_poly', self.options)
-                    jobids[(temp, press)].append(jobid)
+            if hasattr(guest, 'binding_energies'):
+                guest.binding_energies[tp_point] = {}
+            else:
+                guest.binding_energies[tp_point] = {}
 
-                os.chdir('..')
-
-
-        #TODO(ekadants): run the ABSL posprocessing stuff here
-        # maybe do some checks to see if probability is plotted,
-        # if you need to look for the folded cube,
-        # whether enough steps have been done?
-
-        fold = options.getbool('fold')
-        prob_plot = options.getbool('mc_probability_plot')
-        steps_done = options.getint('mc_prod_steps')
-
-        # TODO(ekadants): take a look at self.fold_and_maxima
-        # for how you could deal with the guests
 
         unneeded_files = options.gettuple('absl_delete_files')
         remove_files(unneeded_files)
@@ -3550,7 +3548,7 @@ class Atom(object):
     def covalent_radius(self):
         """Get the covalent radius from the library parameters."""
         if self.type == 'C' and self.uff_type:
-            COVALENT_RADII[self.uff_type]
+            return COVALENT_RADII[self.uff_type]
         return COVALENT_RADII[self.type]
 
     @property
@@ -3572,6 +3570,9 @@ class Guest(object):
         self.uptake = {}
         self.hoa = {}
         self.c_v = {}
+        self.guest_locations = {}
+        self.binding_sites = {}
+        self.binding_energies = {}
         # only load if asked, set the ident in the loader
         if ident:
             self.load_guest(ident, guest_path=None)

@@ -124,6 +124,7 @@ if len(guest_atom_distances) == 1:
     distance_0_1 = None
     distance_0_2 = None
     distance_1_2 = None
+    linear_guest = True
 elif len(guest_atom_distances) == 2:
     # Two points to align to, use both
     print("Two atoms")
@@ -131,6 +132,7 @@ elif len(guest_atom_distances) == 2:
                             guest.atoms[guest_atom_distances[1][1]])
     distance_0_2 = None
     distance_1_2 = None
+    linear_guest = True
 else:
     print("More than two atoms, take the closest three")
     distance_0_1 = vecdist3(guest.atoms[guest_atom_distances[0][1]].pos,
@@ -139,8 +141,9 @@ else:
                             guest.atoms[guest_atom_distances[2][1]].pos)
     distance_1_2 = vecdist3(guest.atoms[guest_atom_distances[1][1]].pos,
                             guest.atoms[guest_atom_distances[2][1]].pos)
-
-    #linear molecules
+    linear_guest = guest.is_linear(guest_atom_distances[0][1],
+                                   guest_atom_distances[1][1],
+                                   guest_atom_distances[2][1])
 
 # Eugene's tolerence was 0.2
 overlap_tol = 0.2
@@ -174,7 +177,7 @@ for origin_atom in sorted(guest_locations[origin_key],
             align_closest = (align_overlap, align_atom)
         if align_overlap < overlap_tol:
             # We fit the alignment so it's good
-            if distance_0_2 is None:
+            if linear_guest or distance_0_2 is None:
                 binding_sites.append([
                     (guest_atom_distances[0][1], origin_atom[0]),
                     (guest_atom_distances[1][1], vector_0_1)])

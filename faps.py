@@ -3638,6 +3638,43 @@ class Guest(object):
 
         return guest_position
 
+    def is_linear(self, idx_1, idx_2=None, idx_3=None):
+        """
+        Return whether the atoms at the three indexes are linear. If fewer than
+        three indices are given, always return True.
+
+        Parameters
+        ----------
+
+        idx_1 : int
+            Index of an atom in the guest.
+        idx_2 : int
+            Index of an atom in the guest. Optional.
+        idx_3 : int
+            Index of an atom in the guest. Optional.
+
+        Returns
+        -------
+
+        linear : bool
+            False if three atoms are given and they are not linear, True
+            otherwise.
+
+        """
+        if idx_2 is not None and idx_3 is not None:
+            v_12 = [x - y for x, y in zip(self.atoms[idx_1].pos,
+                                          self.atoms[idx_1].pos)]
+            v_23 = [x - y for x, y in zip(self.atoms[idx_2].pos,
+                                          self.atoms[idx_3].pos)]
+            cross_123 = cross(v_12, v_23)
+            if cross_123.any():
+                return False
+            else:
+                return True
+        else:
+            return True
+
+
 
     # Simple attribute-like calculations
     @property

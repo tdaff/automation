@@ -150,9 +150,6 @@ overlap_tol = 0.2
 
 binding_sites = []
 
-out_file = open("bs_loc.xyz", 'w')
-#out_file = sys.stdout
-
 # Atom closest to the COM
 origin_key = guest_atom_distances[0][2]
 for origin_atom in sorted(guest_locations[origin_key],
@@ -166,6 +163,7 @@ for origin_atom in sorted(guest_locations[origin_key],
     attached = []
     align_key = guest_atom_distances[1][2]
     align_closest = (999.9, None)
+    align_found = False
     for align_atom in sorted(guest_locations[align_key],
                              key=operator.itemgetter(1), reverse=True):
         # don't forget periodic boundaries!
@@ -177,6 +175,7 @@ for origin_atom in sorted(guest_locations[origin_key],
             align_closest = (align_overlap, align_atom)
         if align_overlap < overlap_tol:
             # We fit the alignment so it's good
+            align_found = True
             if linear_guest or distance_0_2 is None:
                 binding_sites.append([
                     (guest_atom_distances[0][1], origin_atom[0]),
@@ -220,14 +219,6 @@ for origin_atom in sorted(guest_locations[origin_key],
         #TODO(tdaff): nothing within overlap, use closest
         pass
 
-    out_file.write("9\n")
-    out_file.write("CO2 guest\n")
-    out_file.write("C {0[0]} {0[1]} {0[2]}\n".format(origin_atom[0]))
-    for idx in range(8):
-        if idx < len(attached):
-            out_file.write("O {0[0]} {0[1]} {0[2]} {1}\n".format(attached[idx][0],attached[idx][1]))
-        else:
-            out_file.write("O 0.0 0.0 0.0\n")
 
 for bs_idx, binding_site in enumerate(binding_sites):
 

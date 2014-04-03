@@ -26,8 +26,12 @@ from faps import PyNiss, Structure, Cell, Atom, Guest, Symmetry
 from faps import vecdist3, min_dist, mkdirs
 
 
-def mk_dl_poly_control(options):
+def mk_dl_poly_control(options, dummy=False):
     """CONTROL file for binding site energy calculation."""
+    if dummy:
+        stats = 1
+    else:
+        stats = 200
     control = [
         "# minimisation\n",
         "zero\n",
@@ -39,7 +43,7 @@ def mk_dl_poly_control(options):
         "ewald precision 1d-6\n",
         "job time 199990 seconds\n",
         "close time 2000 seconds\n",
-        "stats  200\n",
+        "stats  %i\n" % stats,
         "#traj 1,100,2\n"
         "finish\n"]
 

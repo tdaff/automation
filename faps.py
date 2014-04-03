@@ -60,6 +60,7 @@ from numpy import pi, cos, sin, sqrt, arccos
 from numpy import array, identity, dot, cross
 from numpy.linalg import norm
 
+from binding_sites.absl import calculate_binding_sites
 from config import Options
 from elements import WEIGHT, ATOMIC_NUMBER, UFF, VASP_PSEUDO_PREF
 from elements import CCDC_BOND_ORDERS, GULP_BOND_ORDERS, METALS
@@ -210,10 +211,9 @@ class PyNiss(object):
 
         self.step_gcmc()
 
-        self.step_properties()
-
-        #TODO(ekadants): before or after properties?
         self.step_absl()
+
+        self.step_properties()
 
         self.send_to_database()
 
@@ -613,9 +613,7 @@ class PyNiss(object):
             self.dump_state()
 
     def step_absl(self):
-        """Check the GCMC step of the calculation."""
-        # TODO(ekadants): this was the same as step_gcmc, it runs absl for
-        # simultaneously every gcmc point
+        """Check the binding site step of the calculation."""
         end_after = False
         jobids = {}
         postrun_ids = []
@@ -1199,27 +1197,16 @@ class PyNiss(object):
         return jobids
 
     def run_absl(self):
-        """Submit an absl job to the queue."""
-        #TODO(ekadants): this is the code to run the absl jobs
-        # put it here
-
+        """Submit absl jobs to the queue."""
         job_name = self.options.get('job_name')
 
         guests = self.structure.guests
 
-        gcmc_dir = path.join(self.options.get('job_dir'),
-                                'faps_%s_%s' % (job_name, mc_code))
-        os.chdir(gcmc_dir)
-
-        config, field = self.structure.to_fastmc(self.options)
-
-        filetemp = open("CONFIG", "w")
-        filetemp.writelines(config)
-        filetemp.close()
-
-        filetemp = open("FIELD", "w")
-        filetemp.writelines(field)
-        filetemp.close()
+        # fun in the gcmc directories
+        absl_dir = path.join(self.options.get('job_dir'),
+                             'faps_%s_%s' % (job_name, 'absl'))
+        mkdirs(absl_dir)
+        os.chdir(absl_dir)
 
         # TODO(ekadants): this descends into each gcmc in turn
         temps = self.options.gettuple('mc_temperature', float)
@@ -1229,12 +1216,15 @@ class PyNiss(object):
         for tp_point in state_points(temps, presses, indivs, len(guests)):
             temp = tp_point[0]
             press = tp_point[1]
-            info("Running GCMC: T=%.1f " % temp +
+            info("Running ABSL: T=%.1f " % temp +
                  " ".join(["P=%.2f" % x for x in press]))
             tp_path = ('T%s' % temp +
                        ''.join(['P%.2f' % x for x in press]))
             mkdirs(tp_path)
             os.chdir(tp_path)
+
+            # calculate binding sites here
+            binding_sites = calculate_binding_sites()
             try_symlink(path.join('..', 'CONFIG'),'CONFIG')
             try_symlink(path.join('..', 'FIELD'), 'FIELD')
             filetemp = open("CONTROL", "w")
@@ -2740,8 +2730,6 @@ class Structure(object):
             debug("Removing unfolded cube files")
             cubes = glob.glob("prob_guest??_prob_??.cube")
             remove_files(cubes)
-
-        #TODO(tdaff): absl
 
         unneeded_files = options.gettuple('fastmc_delete_files')
         remove_files(unneeded_files)

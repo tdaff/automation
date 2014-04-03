@@ -12,16 +12,10 @@ General procedure is to:
 """
 
 import operator
-#import os
-import sys
+from logging import debug
 
 from numpy import dot
 from numpy.linalg import norm
-
-sys.path.append('..')
-#import faps
-#from faps import PyNiss, Structure, Cell, Atom, Guest, Symmetry
-from faps import vecdist3
 
 
 def min_vect(c_coa, f_coa, c_cob, f_cob_in, box):
@@ -57,6 +51,15 @@ def direction3d(source, target):
     return [target[0] - source[0],
             target[1] - source[1],
             target[2] - source[2]]
+
+
+def vecdist3(coord1, coord2):
+    """Calculate vector between two 3d points."""
+    vec = [coord2[0] - coord1[0],
+           coord2[1] - coord1[1],
+           coord2[2] - coord1[2]]
+
+    return (vec[0]*vec[0] + vec[1]*vec[1] + vec[2]*vec[2])**0.5
 
 
 def calculate_binding_sites(guest, tp_point, cell):
@@ -112,21 +115,21 @@ def calculate_binding_sites(guest, tp_point, cell):
 
     if len(guest_atom_distances) == 1:
         # There is only one site, use it
-        print("One atom")
+        debug("One atom")
         distance_0_1 = None
         distance_0_2 = None
         distance_1_2 = None
         linear_guest = True
     elif len(guest_atom_distances) == 2:
         # Two points to align to, use both
-        print("Two atoms")
+        debug("Two atoms")
         distance_0_1 = vecdist3(guest.atoms[guest_atom_distances[0][1]],
                                 guest.atoms[guest_atom_distances[1][1]])
         distance_0_2 = None
         distance_1_2 = None
         linear_guest = True
     else:
-        print("More than two atoms, take the closest three")
+        debug("More than two atoms, take the closest three")
         distance_0_1 = vecdist3(guest.atoms[guest_atom_distances[0][1]].pos,
                                 guest.atoms[guest_atom_distances[1][1]].pos)
         distance_0_2 = vecdist3(guest.atoms[guest_atom_distances[0][1]].pos,
@@ -215,5 +218,4 @@ def calculate_binding_sites(guest, tp_point, cell):
             pass
 
     return binding_sites
-
 

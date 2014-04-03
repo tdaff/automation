@@ -246,6 +246,11 @@ class PyNiss(object):
                         else:
                             info(" * GCMC %s: %s" %
                                  (point, valid_states[job[0]]))
+            elif step == 'absl':
+                if not state:
+                    info(" * State of ABSL: Not run")
+                else:
+                    info("%s" % state)
             elif state[0] is RUNNING:
                 info(" * State of %s: Running, jobid: %s" % (step, state[1]))
             else:
@@ -1208,7 +1213,6 @@ class PyNiss(object):
         mkdirs(absl_dir)
         os.chdir(absl_dir)
 
-        # TODO(ekadants): this descends into each gcmc in turn
         temps = self.options.gettuple('mc_temperature', float)
         presses = self.options.gettuple('mc_pressure', float)
         indivs = self.options.gettuple('mc_state_points', float)

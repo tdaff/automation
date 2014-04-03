@@ -639,14 +639,14 @@ class PyNiss(object):
             self.dump_state()
 
         for tp_point, jobid in jobids.items():
-            if jobid is True:
+            if set(jobid) == set([True]):
                 self.state['absl'][tp_point] = (FINISHED, False)
-            elif jobid is False:
+            elif set(jobid) == set([False]):
                 self.state['absl'][tp_point] = (SKIPPED, False)
             else:
                 info("ABSL job in queue. Jobid: %s" % jobid)
                 self.state['absl'][tp_point] = (RUNNING, jobid)
-                postrun_ids.append(jobid)
+                postrun_ids.extend(jobid)
                 # unfinished ABSL calculations
                 end_after = True
         else:
@@ -656,7 +656,8 @@ class PyNiss(object):
         for tp_point in self.state['absl']:
             tp_state = self.state['absl'][tp_point]
             if tp_state[0] == RUNNING:
-                new_state = self.job_handler.jobcheck(tp_state[1])
+                new_state = [self.job_handler.jobcheck(job)
+                             for job in tp_state[1]]
                 if not new_state:
                     info("Queue reports ABSL %s finished" % (tp_point,))
                     # need to know we have finished to update below
@@ -1232,6 +1233,7 @@ class PyNiss(object):
             for guest in self.structure.guests:
                 binding_sites = calculate_binding_sites(guest, tp_point,
                                                         self.structure.cell)
+                guest.binding_sites = binding_sites
 
                 for bs_idx, binding_site in enumerate(binding_sites):
                     bs_directory = "%s_bs_%04d" % (guest.ident, bs_idx)
@@ -3936,7 +3938,7 @@ def mk_dl_poly_control(options, dummy=False):
     control = [
         "# minimisation\n",
         "zero\n",
-        "steps 1000\n",
+        "steps 200\n",
         "timestep 0.001 ps\n",
         "ensemble nvt hoover 0.1\n",
         "cutoff %f angstrom\n" % options.getfloat('mc_cutoff'),

@@ -141,7 +141,8 @@ def calculate_binding_sites(guest, tp_point, cell):
                                        guest_atom_distances[2][1])
 
     # Eugene's tolerance was 0.2
-    overlap_tol = 0.20
+    # Using 0.3 fits the width of the neighbourhood
+    overlap_tol = 0.30
 
     binding_sites = []
 

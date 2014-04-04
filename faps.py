@@ -39,6 +39,7 @@ try:
 except ImportError:
     import ConfigParser as configparser
 import glob
+import gzip
 import os
 import pickle
 import re
@@ -89,7 +90,7 @@ NOT_SUBMITTED = -2
 # Possible folder names; need these so that similar_ones_with_underscores are
 # not globbed
 FOLDER_SUFFIXES = ['gulp', 'gulp_opt', 'gulp_fit', 'siesta', 'vasp', 'egulp',
-                   'repeat', 'fastmc', 'properties']
+                   'repeat', 'fastmc', 'properties', 'absl']
 
 
 class PyNiss(object):
@@ -2802,7 +2803,11 @@ class Structure(object):
                 bs_directory = "%s_bs_%04d" % (guest.ident, bs_idx)
 
                 statis = open(path.join(bs_directory, 'STATIS')).readlines()
-                revcon = open(path.join(bs_directory, 'REVCON')).readlines()
+                try:
+                    revcon = open(path.join(bs_directory, 'REVCON')).readlines()
+                except IOError:
+                    revcon = gzip.open(path.join(bs_directory,
+                                                 'REVCON.gz')).readlines()
 
                 e_vdw = float(statis[3].split()[3])
                 e_esp = float(statis[3].split()[4]) - empty_esp
@@ -2818,12 +2823,16 @@ class Structure(object):
 
             with open('%s_absl.xyz' % guest.ident, 'w') as absl_out:
                 for idx, bind in enumerate(binding_energies):
+                    energy = bind[1] + bind[2]
+                    pc_elec = 100*bind[2]/energy
                     this_point = [
                         "%i\n" % len(bind[3]),  # number of atoms
-                        "BS: %i, %f, %f, %f\n" % (idx, bind[0], bind[1], bind[2])]
+                        # idx, energy, %esp, e_vdw, e_esp, magnitude
+                        " BS: %i, %f, %.2f, %f, %.2f, %f\n" %
+                        (idx, energy, pc_elec, bind[1], bind[2], bind[0])]
                     for atom in bind[3]:
                         this_point.append("%-5s " % atom[0])
-                        this_point.append("%.6f %.6f %.6f\n" % tuple(atom[1]))
+                        this_point.append("%12.6f %12.6f %12.6f\n" % tuple(atom[1]))
                     absl_out.writelines(this_point)
 
             if hasattr(guest, 'binding_energies'):

@@ -2975,6 +2975,7 @@ class Structure(object):
             info("%s minimum supercell for a %.1f cutoff" %
                  (str(minimum_supercell), config_cutoff))
             info("Constructing %s supercell for gcmc." % str(supercell))
+            self.gcmc_supercell = supercell
 
     def supercell(self, scale):
         """

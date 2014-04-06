@@ -183,10 +183,11 @@ def _mk_sharcnet_postrun(dedicated_queue=None):
                 # Wait longer each time, in case the system is very slow
                 time.sleep(loop_num)
         # Sumbit here, even if jobs never found in queue
+        jobid_str = ('-'.join(sorted(waitid)))[:15]  # this should be plenty
         sqsub_args = [
             'sqsub',
             '-r', '20m',
-            '-o', 'faps-post-%s.out' % '-'.join(sorted(waitid)),
+            '-o', 'faps-post-%s.out' % jobid_str,
             '--mpp=3g',
             '--waitfor=%s' % ','.join(waitid),
             ]
@@ -293,12 +294,13 @@ def _wooki_postrun(waitid):
     else:
         waitid = frozenset([("%s" % waitid).strip()])
     # No jobcheck here as we assume wooki works
+    jobid_str = ('-'.join(sorted(waitid)))[:15]  # this should be plenty
     sge_script = ['#!/bin/bash\n',
                   '#$ -cwd\n',
                   '#$ -V\n',
                   '#$ -j y\n',
-                  '#$ -N faps-post-%s\n' % '-'.join(sorted(waitid)),
-                  '#$ -o faps-post-%s.out\n' % '-'.join(sorted(waitid)),
+                  '#$ -N faps-post-%s\n' % jobid_str,
+                  '#$ -o faps-post-%s.out\n' % jobid_str,
                   '#$ -hold_jid %s\n' % ','.join(waitid),
                   'python ',
                   ' '.join(_argstrip(sys.argv))]

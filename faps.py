@@ -657,9 +657,9 @@ class PyNiss(object):
         for tp_point in self.state['absl']:
             tp_state = self.state['absl'][tp_point]
             if tp_state[0] == RUNNING:
-                new_state = [self.job_handler.jobcheck(job)
-                             for job in tp_state[1]]
-                if not new_state:
+                new_state = set([self.job_handler.jobcheck(job)
+                                 for job in tp_state[1]])
+                if new_state == set([False]):
                     info("Queue reports ABSL %s finished" % (tp_point,))
                     # need to know we have finished to update below
                     tp_state = (FINISHED, False)

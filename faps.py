@@ -632,6 +632,12 @@ class PyNiss(object):
         if self.options.getbool('no_absl'):
             info("Skipping ABSL calculation")
             return
+        elif not self.options.getbool('mc_probability_plot'):
+            info("No probability plot; Skipping ABSL calculation")
+            return
+        elif not self.options.getbool('find_maxima'):
+            info("No TABASCO maxima; Skipping ABSL calculation")
+            return
         elif not self.state['absl'] or 'absl' in self.options.args:
             # The dictionary is empty before any runs
             info("Starting absl step")

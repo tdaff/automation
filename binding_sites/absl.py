@@ -123,8 +123,8 @@ def calculate_binding_sites(guest, tp_point, cell):
     elif len(guest_atom_distances) == 2:
         # Two points to align to, use both
         debug("Two atoms")
-        distance_0_1 = vecdist3(guest.atoms[guest_atom_distances[0][1]],
-                                guest.atoms[guest_atom_distances[1][1]])
+        distance_0_1 = vecdist3(guest.atoms[guest_atom_distances[0][1]].pos,
+                                guest.atoms[guest_atom_distances[1][1]].pos)
         distance_0_2 = None
         distance_1_2 = None
         linear_guest = True

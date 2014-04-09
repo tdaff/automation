@@ -2798,30 +2798,46 @@ class Structure(object):
         startdir = os.getcwd()
         os.chdir(filepath)
 
+        # For pretty output
+        temp = tp_point[0]
+        press = tp_point[1]
+        tp_string = " T=%.1f " % temp + " ".join(["P=%.2f" % x for x in press])
+
         statis = open('STATIS').readlines()
         empty_esp = float(statis[3].split()[4])
 
         for guest in self.guests:
 
+            info("Postprocessing: %s at %s" % (guest.ident, tp_string))
             binding_energies = []
 
             for bs_idx, binding_site in enumerate(guest.binding_sites[tp_point]):
                 bs_directory = "%s_bs_%04d" % (guest.ident, bs_idx)
 
-                statis = open(path.join(bs_directory, 'STATIS')).readlines()
-                try:
+                output = open(path.join(bs_directory, 'OUTPUT')).readlines()
+                if 'error - quaternion integrator failed' in output[-1]:
+                    # bad guest placement
+                    e_vdw = float('nan')
+                    e_esp = float('nan')
+                    # position of original
+                    revcon = open(path.join(bs_directory, 'CONFIG')).readlines()
+                    revcon = revcon[6::2]
+                    # This is not a 'binding site'
+                    magnitude = 0.0
+                else:
+                    # energies
+                    statis = open(path.join(bs_directory, 'STATIS')).readlines()
+                    e_vdw = float(statis[3].split()[3])
+                    e_esp = float(statis[3].split()[4]) - empty_esp
+                    # position
                     revcon = open(path.join(bs_directory, 'REVCON')).readlines()
-                except IOError:
-                    revcon = gzip.open(path.join(bs_directory,
-                                                 'REVCON.gz')).readlines()
-
-                e_vdw = float(statis[3].split()[3])
-                e_esp = float(statis[3].split()[4]) - empty_esp
+                    revcon = revcon[6::4]
+                    # can just use the peak value
+                    magnitude = binding_site[0][2]
 
                 position = [(atom.type, [float(x) for x in pos.split()])
-                            for atom, pos in zip(guest.atoms, revcon[6::4])]
+                            for atom, pos in zip(guest.atoms, revcon)]
 
-                magnitude = binding_site[0][2]
                 info("Binding site %i: %f kcal/mol, %f occupancy" %
                      (bs_idx, (e_vdw+e_esp), magnitude))
 

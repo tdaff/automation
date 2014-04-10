@@ -2394,6 +2394,16 @@ class Structure(object):
         # use get( ... , 0) to get zero for not included
         guest_nummols = {}
 
+        # having only one atom in DL_POLY errors with
+        # complaints about too few degrees of freedom
+        # if there is only one atom included, add a ghost
+        guest_items = include_guests.items()
+        dof_fix = (len(guest_items) == 1  # one guest type
+                   and len(guest_items[0][1]) == 1  # one guest of type
+                   and len(guest_items[0][1][0]) == 1  # one atom
+                   and not fastmc)
+        debug("dot_fix %s" % dof_fix)
+
         if include_guests is not None:
             for guest in self.guests:
                 if guest.ident in include_guests:
@@ -2403,6 +2413,13 @@ class Structure(object):
                             included_guests_part.extend(
                                 ["%-6s%10i\n" % (atom.type, offset),
                                  "%20.12f%20.12f%20.12f\n" % tuple(position)])
+                            if dof_fix:
+                                # Add a phantom atom; hopefully Non type
+                                # is not used elsewhere
+                                offset += 1
+                                included_guests_part.extend(
+                                    ["%-6s%10i\n" % ("Non", offset),
+                                     "%20.12f%20.12f%20.12f\n" % tuple(position)])
                             # increment offset as it is used for the framework
                             offset += 1
             # make natoms correct
@@ -2428,9 +2445,12 @@ class Structure(object):
                  "molecular types %i\n" % ntypes]
         # Guests
         for guest in self.guests:
+            natoms = guest.natoms
+            if dof_fix:
+                 natoms += 1
             field.extend(["&guest %s: %s\n" % (guest.name, guest.source),
                           "NUMMOLS %i\n" % guest_nummols.get(guest.ident, 0),
-                          "ATOMS %i\n" % len(guest.atoms)])
+                          "ATOMS %i\n" % natoms])
             for atom in guest.atoms:
                 # Can't just turn off electrostatics as we need to compare to
                 # the empty framework so zero guest charges
@@ -2445,6 +2465,9 @@ class Structure(object):
                 else:
                     # atom positions confuse dl_poly which takes nrept or ifrz
                     field.append(" 1 0\n")
+                    if dof_fix:
+                        field.append("%-6s %12.6f %12.6f 1 0\n" %
+                                     tuple(["Non", 0.0, 0.0]))
             field.append("rigid 1\n")
             field.append("%i " % guest.natoms)
             field.append(" ".join("%i" % (x + 1) for x in range(guest.natoms)))
@@ -2827,8 +2850,8 @@ class Structure(object):
                 else:
                     # energies
                     statis = open(path.join(bs_directory, 'STATIS')).readlines()
-                    e_vdw = float(statis[3].split()[3])
-                    e_esp = float(statis[3].split()[4]) - empty_esp
+                    e_vdw = float(statis[-9].split()[3])
+                    e_esp = float(statis[-9].split()[4]) - empty_esp
                     # position
                     revcon = open(path.join(bs_directory, 'REVCON')).readlines()
                     revcon = revcon[6::4]
@@ -4022,7 +4045,7 @@ def mk_dl_poly_control(options, dummy=False):
     if dummy:
         stats = 1
     else:
-        stats = 200
+        stats = 20
     control = [
         "# minimisation\n",
         "zero\n",

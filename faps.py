@@ -2394,17 +2394,16 @@ class Structure(object):
         # use get( ... , 0) to get zero for not included
         guest_nummols = {}
 
-        # having only one atom in DL_POLY errors with
-        # complaints about too few degrees of freedom
-        # if there is only one atom included, add a ghost
-        guest_items = include_guests.items()
-        dof_fix = (len(guest_items) == 1  # one guest type
-                   and len(guest_items[0][1]) == 1  # one guest of type
-                   and len(guest_items[0][1][0]) == 1  # one atom
-                   and not fastmc)
-        debug("dot_fix %s" % dof_fix)
-
         if include_guests is not None:
+            # having only one atom in DL_POLY errors with
+            # complaints about too few degrees of freedom
+            # if there is only one atom included, add a ghost
+            guest_items = include_guests.items()
+            dof_fix = (len(guest_items) == 1  # one guest type
+                       and len(guest_items[0][1]) == 1  # one guest of type
+                       and len(guest_items[0][1][0]) == 1  # one atom
+                       and not fastmc)
+            debug("dot_fix %s" % dof_fix)
             for guest in self.guests:
                 if guest.ident in include_guests:
                     guest_nummols[guest.ident] = len(include_guests[guest.ident])
@@ -2424,6 +2423,9 @@ class Structure(object):
                             offset += 1
             # make natoms correct
             natoms += offset - 1
+        else:
+            # don't need to apply degrees of freedon fix
+            dof_fix = False
 
         config = ["%s\n" % self.name[:80],
                   "%10i%10i%10i\n" % (levcfg, imcon, natoms)]

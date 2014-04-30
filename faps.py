@@ -28,9 +28,9 @@ doing select parts.
 # Revision = {rev}
 
 try:
-    __version_info__ = (1, 3, 0, int("$Revision$".strip("$Revision: ")))
+    __version_info__ = (1, 3, 1, int("$Revision$".strip("$Revision: ")))
 except ValueError:
-    __version_info__ = (1, 3, 0, 0)
+    __version_info__ = (1, 3, 1, 0)
 __version__ = "%i.%i.%i.%i" % __version_info__
 
 import code
@@ -2840,6 +2840,14 @@ class Structure(object):
                 bs_directory = "%s_bs_%04d" % (guest.ident, bs_idx)
 
                 output = open(path.join(bs_directory, 'OUTPUT')).readlines()
+
+                # sometimes it stops after fewer than 200 steps
+                terminated_after = 200
+                for line in output:
+                    if "run terminated after" in line:
+                        terminated_after = int(line.split()[3])
+
+
                 if 'error - quaternion integrator failed' in output[-1]:
                     # bad guest placement
                     e_vdw = float('nan')
@@ -2849,6 +2857,16 @@ class Structure(object):
                     revcon = revcon[6::2]
                     # This is not a 'binding site'
                     magnitude = 0.0
+                elif terminated_after < 200:
+                    for line_idx, line in enumerate(output):
+                        if "run terminated after" in line:
+                            output_energies = output[line_idx+10].split()
+                            e_vdw = float(output_energies[3])
+                            e_esp = float(output_energies[4]) - empty_esp
+                    revcon = open(path.join(bs_directory, 'REVCON')).readlines()
+                    revcon = revcon[6::4]
+                    # can just use the peak value
+                    magnitude = binding_site[0][2]
                 else:
                     # energies
                     statis = open(path.join(bs_directory, 'STATIS')).readlines()
@@ -4047,7 +4065,7 @@ def mk_dl_poly_control(options, dummy=False):
     if dummy:
         stats = 1
     else:
-        stats = 20
+        stats = 200
     control = [
         "# minimisation\n",
         "zero\n",

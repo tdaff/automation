@@ -198,6 +198,9 @@ class PyNiss(object):
             self.state['init'] = (UPDATED, False)
             self.dump_state()
 
+        #FIXME(REMOVE!!)
+        self.structure.to_gromacs()
+
         self.step_force_field()
 
         self.step_dft()
@@ -2535,7 +2538,7 @@ class Structure(object):
         ##
         # .gro file
         ##
-        # TITLE linw
+        # TITLE line
         # number of atoms
         gro_file = ["%s\n" % self.name, " %i\n" % self.natoms]
         # TODO(tdaff): check residue in toplogy?
@@ -2564,7 +2567,7 @@ class Structure(object):
         ##
         # .top file
         ##
-        comb_rule = 1 # 1 = LORENTZ_BERTHELOT; 2 = GEOMETRIC
+        comb_rule = 1  # 1 = LORENTZ_BERTHELOT; 2 = GEOMETRIC
         top_file = [
             "; Topology file for %s\n" % self.name,
             "[ defaults ]\n",
@@ -2609,7 +2612,7 @@ class Structure(object):
             itp_file.append("%-6i  %-6s  %i  %-6s  %-6s   %d  %9.4f  %9.4f\n" % (idx+1, uff_type, residue[0], residue[1], uff_type, idx+1, atom.charge, atom.mass))
 
         # bonds
-        itp_file.append(" [ bonds ]\n")
+        itp_file.append("[ bonds ]\n")
         itp_file.append("; ai aj funct b0 kb\n")
 
         unique_bonds = {}
@@ -2636,27 +2639,30 @@ class Structure(object):
                 rbo = -0.1332*(ri+rj)*log(bondorder)
 
                 ren = ri*rj*(((sqrt(chiI) - sqrt(chiJ))**2)) / (chiI*ri + chiJ*rj)
-                r0 = 0.1*(ri + rj + rbo - ren)
+                r0 = (ri + rj + rbo - ren)
 
                 # force constant
                 # parameters Z1
-                kb = (KCAL_TO_KJ * 664.12 * UFF_FULL[uff_a][5] * UFF_FULL[uff_b][5])/(r0**3)
+                kb = (0.5 * KCAL_TO_KJ * 664.12 * UFF_FULL[uff_a][5] * UFF_FULL[uff_b][5])/(r0**3)
 
-                unique_bonds[typed_bond] = (r0, kb)
+                unique_bonds[typed_bond] = (r0, kb)  # in nm
 
             params = unique_bonds[typed_bond]
             bond_func = 1  # gromacs harmonic
             # add 1 to bond as 1 indexed
-            itp_file.append('%-5i %-5i %1i %11.4f %11.4f ; %-5s %-5s %.2f\n' % (bond[0]+1, bond[1]+1, bond_func, params[0], params[1], typed_bond[0], typed_bond[1], bondorder))
+            itp_file.append('%-5i %-5i %1i %11.4f %11.4f ; %-5s %-5s %.2f\n' % (bond[0]+1, bond[1]+1, bond_func, 0.1*params[0], 200*params[1], typed_bond[0], typed_bond[1], bondorder))
 
         # angles
-        itp_file.append("\n [ angles ]\n")
+        itp_file.append("\n[ angles ]\n")
+
+        itp_types = {}
 
         for idx_a in sorted(bonding_table):
             bonded_atoms = bonding_table[idx_a]
             for l_idx in bonded_atoms:
                 for r_idx in bonded_atoms:
-                    if l_idx == r_idx:
+                    if r_idx >= l_idx:
+                        # don't include angles twice
                         continue
                     # FIXME(tdaff) special cases for 5 or more coord
                     central_atom = self.atoms[idx_a]
@@ -2665,6 +2671,7 @@ class Structure(object):
                     coordination = len(bonded_atoms)
                     # FIXME(tdaff) over/under coordinated atoms?
                     theta0 = UFF_FULL[central_atom.uff_type][1]
+                    # FIXME(tdaff) switch if coordination is not correct
                     cosT0 = cos(theta0*DEG2RAD)
                     sinT0 = sin(theta0*DEG2RAD)
                     c2 = 1.0 / (4.0 * sinT0 * sinT0)
@@ -2683,16 +2690,52 @@ class Structure(object):
                     ka = (644.12 * KCAL_TO_KJ) * (zi * zk / (rac**5.0))
                     ka *= (3.0*rab*rbc*(1.0 - cosT0*cosT0) - rac*rac*cosT0)
 
-                    thetamin = (pi-arccos(c1/(4.0*c2))/DEG2RAD)
-                    kappa = ka * (16.0*c2*c2 - c1*c1) / (4.0* c2)
-                    itp_file.append("%-5i %-5i %-5i %3i %f %f ; %-5s %-5s %-5s" % (l_idx + 1, idx_a + 1, r_idx + 1, 1, thetamin, kappa, l_atom.uff_type, central_atom.uff_type, r_atom.uff_type))
+                    if abs(c2) > 0.001:
+                        thetamin = pi - arccos(c1/(4.0*c2))
+                        thetamin /= DEG2RAD
+                        kappa = ka * (16.0*c2*c2 - c1*c1) / (4.0*c2)
+                    elif central_atom.uff_coordination == 1:
+                        print('one')
+                        thetamin = 180.0
+                        kappa = ka
+                    elif central_atom.uff_coordination == 2:
+                        print('two')
+                        thetamin = 120.0
+                        kappa = 4.0*ka/3.0
+                    elif central_atom.uff_coordination in (4, 6):
+                        print('four six')
+                        thetamin = 90.0
+                        kappa = 2.0*ka
+                    elif central_atom.uff_coordination == 7:
+                        print('seven')
+                        alpha = 2.0*pi/5.0
+                        c7 = sin(alpha)*(cos(alpha) - cos(2*alpha))
+                        thetamin = 72.0
+                        kappa = 2.0 * c7*c7 * ka * c1
+                    else:
+                        print('else')
+                        thetamin = pi - arccos(c1/(4.0*c2))
+                        thetamin /= DEG2RAD
+                        kappa = ka * (16.0*c2*c2 - c1*c1) / (4.0*c2)
 
-        #with open("moffive.top", 'w') as tempfile:
-        #    tempfile.writelines(top_file)
-        #with open("moffive.gro", 'w') as tempfile:
-        #    tempfile.writelines(gro_file)
-        #with open("moffive.itp", 'w') as tempfile:
-        #    tempfile.writelines(itp_file)
+                    potenrial = "G96"
+
+                    if potenrial == "G96":
+                        kappa /= sin(thetamin*DEG2RAD)**2
+                        potential_function = 2
+                    else:  # harmonic
+                        potential_function = 1
+
+                    itp_file.append("%-6i %-6i %-6i  %i  %9.4f  %9.4f ; %-6s %-6s %-6s\n" % (l_idx + 1, idx_a + 1, r_idx + 1, potential_function, thetamin, kappa, l_atom.uff_type, central_atom.uff_type, r_atom.uff_type))
+
+        with open("moffive.top", 'w') as tempfile:
+            tempfile.writelines(top_file)
+        with open("moffive.gro", 'w') as tempfile:
+            tempfile.writelines(gro_file)
+        with open("moffive.itp", 'w') as tempfile:
+            tempfile.writelines(itp_file)
+        #return top_file, gro_file, itp_file
+
 
 
     def to_cssr(self, cartesian=False, no_atom_id=False):
@@ -3612,6 +3655,30 @@ class Atom(object):
     def is_metal(self):
         """Return True if element is in a predetermined set of metals."""
         return self.atomic_number in METALS
+
+    @property
+    def uff_coordination(self):
+        """
+        The expected coordination based on the third character of the UFF
+        name for the element. Based on _ipar from OB forcefielduff.cpp
+        """
+        coordinations = {
+            '1': 1,
+            '2': 2,
+            'R': 2,
+            '3': 3,
+            '4': 4,
+            '5': 5,
+            '6': 6,
+            '7': 7,
+        }
+        try:
+            # Just pull for the dict, or default to 1 for unknowns
+            return coordinations.get(self.uff_type[2], 1)
+        except (IndexError, TypeError):
+            # This catches things like 'H_' and when there is no uff_type
+            return 1
+
 
 
 class Guest(object):

@@ -1816,7 +1816,7 @@ class Structure(object):
             # Some of pete's symmetrised mofs need a higher tolerence
             duplicate_tolerance = 0.2  # Angstroms
             self.remove_duplicates(duplicate_tolerance)
-        self.order_by_types()
+        #self.order_by_types()
 
         bonds = {}
         # TODO(tdaff): this works for the one tested MOF; 0.1 was not enough
@@ -2612,7 +2612,7 @@ class Structure(object):
             itp_file.append("%-6i  %-6s  %i  %-6s  %-6s   %d  %9.4f  %9.4f\n" % (idx+1, uff_type, residue[0], residue[1], uff_type, idx+1, atom.charge, atom.mass))
 
         # bonds
-        itp_file.append("[ bonds ]\n")
+        itp_file.append("\n[ bonds ]\n")
         itp_file.append("; ai aj funct b0 kb\n")
 
         unique_bonds = {}
@@ -2655,8 +2655,6 @@ class Structure(object):
         # angles
         itp_file.append("\n[ angles ]\n")
 
-        itp_types = {}
-
         for idx_a in sorted(bonding_table):
             bonded_atoms = bonding_table[idx_a]
             for l_idx in bonded_atoms:
@@ -2665,9 +2663,11 @@ class Structure(object):
                         # don't include angles twice
                         continue
                     # FIXME(tdaff) special cases for 5 or more coord
+                    # tag central uff and two largest neighbours
                     central_atom = self.atoms[idx_a]
                     l_atom = self.atoms[l_idx]
                     r_atom = self.atoms[r_idx]
+                    # FIXME(tdaff) GetCoordination()
                     coordination = len(bonded_atoms)
                     # FIXME(tdaff) over/under coordinated atoms?
                     theta0 = UFF_FULL[central_atom.uff_type][1]
@@ -2690,6 +2690,7 @@ class Structure(object):
                     ka = (644.12 * KCAL_TO_KJ) * (zi * zk / (rac**5.0))
                     ka *= (3.0*rab*rbc*(1.0 - cosT0*cosT0) - rac*rac*cosT0)
 
+                    # FIXME(tdaff) change uff_coordinateion to coordination
                     if abs(c2) > 0.001:
                         thetamin = pi - arccos(c1/(4.0*c2))
                         thetamin /= DEG2RAD
@@ -2727,6 +2728,117 @@ class Structure(object):
                         potential_function = 1
 
                     itp_file.append("%-6i %-6i %-6i  %i  %9.4f  %9.4f ; %-6s %-6s %-6s\n" % (l_idx + 1, idx_a + 1, r_idx + 1, potential_function, thetamin, kappa, l_atom.uff_type, central_atom.uff_type, r_atom.uff_type))
+
+        # dihedrals
+
+        itp_file.append("\n[ dihedrals ]\n; proper torsion terms\n; found 5 unique dihedral terms\n")
+
+        # Like OB FindTorsions
+        # Generate all torsions first so we can find equivalents
+        torsions = []
+        for idx_b in sorted(bonding_table):
+            for idx_c in bonding_table[idx_b]:
+                if idx_b >= idx_c:
+                    continue
+                for idx_a in bonding_table[idx_b]:
+                    if idx_a == idx_c:
+                        continue
+                    for idx_d in bonding_table[idx_c]:
+                        if idx_d == idx_b or idx_d == idx_a:
+                            continue
+                        else:
+                            torsions.append((idx_a, idx_b, idx_c, idx_d))
+
+        # now loop to generate force field
+        for torsion in torsions:
+            idx_a, idx_b, idx_c, idx_d = torsion
+            atom_a = self.atoms[idx_a]
+            atom_b = self.atoms[idx_b]
+            atom_c = self.atoms[idx_c]
+            atom_d = self.atoms[idx_d]
+
+            bond_bc = bonding_table[idx_b][idx_c]
+            torsiontype = bond_bc[2]  # bond order
+            coord_bc = (atom_b.uff_coordination, atom_c.uff_coordination)
+
+            if coord_bc == (3, 3):
+                # two sp3 centers
+                phi0 = 60.0
+                n = 3
+                vi = UFF_FULL[atom_b.uff_type][6]
+                vj = UFF_FULL[atom_c.uff_type][6]
+
+                # exception for a pair of group 6 sp3 atoms
+                if atom_b.atomic_number == 8:
+                    vi = 2.0
+                    n = 2
+                    phi0 = 90.0
+                elif atom_b.atomic_number in (16, 34, 52, 84):
+                    vi = 6.8
+                    n = 2
+                    phi0 = 90.0
+
+                if atom_c.atomic_number == 8:
+                    vj = 2.0
+                    n = 2
+                    phi0 = 90.0
+                elif atom_c.atomic_number in (16, 34, 52, 84):
+                    vj = 6.8
+                    n = 2
+                    phi0 = 90.0
+
+                V = 0.5 * KCAL_TO_KJ * (vi * vj)**0.5
+
+            elif coord_bc == (2, 2):
+                # two sp2 centers
+                ui = UFF_FULL[atom_b.uff_type][7]
+                uj = UFF_FULL[atom_c.uff_type][7]
+                phi0 = 180.0
+                n = 2
+                V = 0.5 * KCAL_TO_KJ * 5.0 * (ui*uj)**0.5 * (1.0 + 4.18 * log(torsiontype))
+
+            elif coord_bc in [(2, 3), (3, 2)]:
+                # one sp3, one sp2
+                phi0 = 0.0
+                n = 6
+                V = 0.5 * KCAL_TO_KJ * 1.0
+
+                # exception for group 6 sp3
+                if atom_c.uff_coordination == 3:
+                    if atom_c.atomic_number in (8, 16, 34, 52):
+                        n = 2
+                        phi0 = 90.0
+                if atom_b.uff_coordination == 3:
+                    if atom_b.atomic_number in (8, 16, 34, 52):
+                        n = 2
+                        phi0 = 90.0
+
+            if abs(V) < 2e-6:  # don't bother calcuating this torsion
+                continue
+
+            # Dividing by equivalent torsions is a GG addition
+            equivalent_torsions = 0
+            for equivalent in torsions:
+                if equivalent[1:3] == (idx_b, idx_c):
+                    equivalent_torsions += 1
+
+            V /= equivalent_torsions
+
+            nphi0 = n*phi0
+
+            if abs(sin(nphi0*DEG2RAD)) > 1.0e-3:
+                print("WARNING!!! nphi0 = %r" % nphi0)
+
+            phi_s = nphi0 - 180.0
+
+            itp_file.append("%-6i %-6i %-6i %-6i  %i  %9.4f  %9.4f  %i ; %-6s %-6s %-6s %-6s\n" %
+                            (idx_a + 1, idx_b + 1, idx_c + 1, idx_d + 1,
+                             1,  # proper dihedrals in GROMACS
+                             phi_s,  # // phi_s in degrees
+                             V,  # // kphi in kJ/mol
+                             n,  # // multiplicity
+                             atom_a.uff_type, atom_b.uff_type, atom_c.uff_type, atom_d.uff_type))
+
 
         with open("moffive.top", 'w') as tempfile:
             tempfile.writelines(top_file)

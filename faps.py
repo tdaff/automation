@@ -2527,9 +2527,9 @@ class Structure(object):
 
     def to_gromacs(self):
         """Procedure:
-        generate .gro atom positions
-        generate .top lj topology
-        generate .itp uff topology
+        generate .gro atom positions - check
+        generate .top lj topology - check
+        generate .itp uff topology - check
         gererate .mdp parameters
         grompp -f mdp_file -c gro_file -p top_file -o output.tpr
         mdrun -s moffive -o traj-c moffive -nt 1
@@ -2541,7 +2541,7 @@ class Structure(object):
         # TITLE line
         # number of atoms
         gro_file = ["%s\n" % self.name, " %i\n" % self.natoms]
-        # TODO(tdaff): check residue in toplogy?
+
         residue = (1, self.name[:4].upper())
         for idx, atom in enumerate(self.atoms):
             # In the specification the atom position is given as
@@ -2555,7 +2555,7 @@ class Structure(object):
         # cell is also in nm
         # v1(x) v2(y) v3(z) v1(y) v1(z) v2(x) v2(z) v3(x) v3(y)
         box = self.cell.cell/10.0
-        # gromacs needs these condtiions. Might need to rotate cell sometimes?
+        # gromacs needs these conditions. Might need to rotate cell sometimes?
         if not (box[0][1] == box[0][2] == box[1][2] == 0):
             error("Gromacs can't handle this cell orientation")
         gro_file.append("%f %f %f %f %f %f %f %f %f\n" % (
@@ -2572,12 +2572,14 @@ class Structure(object):
             "; Topology file for %s\n" % self.name,
             "[ defaults ]\n",
             "; nbfunc      comb-rule      gen-pairs       fudgeLJ    fudgeQQ\n",
-            "1             %i              yes             1.0        1.0\n\n" % (comb_rule)]
+            "1             %i              yes             1.0        1.0\n\n"
+            % comb_rule]
 
         # define the forcefield for UFF
         unique_types = set()
         top_file.append("[ atomtypes ]\n")
-        top_file.append("; name1 name2   mass     charge  ptype   sigma   epsilon\n")
+        top_file.append("; name1 name2   mass     charge "
+                        " ptype   sigma   epsilon\n")
         for atom in self.atoms:
             if atom.uff_type not in unique_types:
                 uff_type = atom.uff_type
@@ -2586,7 +2588,9 @@ class Structure(object):
                 sigma = 0.1*UFF_FULL[uff_type][2]*(2**(-1.0/6.0))
                 # epsilon = D1 in kcal
                 epsilon = UFF_FULL[uff_type][3] * KCAL_TO_KJ
-                top_file.append("%-6s   %-6s   %9.4f   %9.4f   A %12.7f %12.7f\n" % (uff_type, uff_type, atom.mass, 0.0, sigma, epsilon))
+                top_file.append("%-6s   %-6s   %9.4f   %9.4f   A %12.7f "
+                                "%12.7f\n" % (uff_type, uff_type, atom.mass,
+                                              0.0, sigma, epsilon))
                 unique_types.add(uff_type)
 
         top_file.extend(["\n#include <%s.itp>\n\n" % self.name,
@@ -2603,15 +2607,23 @@ class Structure(object):
                     "; molname nrexcl\n"
                     "%s 3\n" % residue[1],
                     "[ atoms ]\n",
-                    "; nr type  resnr    residue    atom     cgnr    charge       mass \n"]
+                    "; nr type  resnr    residue    atom     "
+                    "cgnr    charge       mass \n"]
 
-        # atoms
+        ##
+        #  atoms
+        ##
         for idx, atom in enumerate(self.atoms):
             uff_type = atom.uff_type
-            # charge group is different for each atom as gromacs has max of 32 in a group
-            itp_file.append("%-6i  %-6s  %i  %-6s  %-6s   %d  %9.4f  %9.4f\n" % (idx+1, uff_type, residue[0], residue[1], uff_type, idx+1, atom.charge, atom.mass))
+            # charge group is different for each atom
+            # as gromacs has max of 32 in a group
+            itp_file.append("%-6i  %-6s  %i  %-6s  %-6s   %d  %9.4f  %9.4f\n" %
+                            (idx+1, uff_type, residue[0], residue[1], uff_type,
+                             idx+1, atom.charge, atom.mass))
 
+        ##
         # bonds
+        ##
         itp_file.append("\n[ bonds ]\n")
         itp_file.append("; ai aj funct b0 kb\n")
 
@@ -2638,21 +2650,28 @@ class Structure(object):
                 chiJ = UFF_FULL[atom_b.uff_type][8]
                 rbo = -0.1332*(ri+rj)*log(bondorder)
 
-                ren = ri*rj*(((sqrt(chiI) - sqrt(chiJ))**2)) / (chiI*ri + chiJ*rj)
+                ren = ri*rj*(((sqrt(chiI) - sqrt(chiJ))**2))/(chiI*ri + chiJ*rj)
                 r0 = (ri + rj + rbo - ren)
 
                 # force constant
                 # parameters Z1
-                kb = (0.5 * KCAL_TO_KJ * 664.12 * UFF_FULL[uff_a][5] * UFF_FULL[uff_b][5])/(r0**3)
+                kb = (UFF_FULL[uff_a][5]*UFF_FULL[uff_b][5])/(r0**3)
+                kb *= 0.5*KCAL_TO_KJ*664.12
 
                 unique_bonds[typed_bond] = (r0, kb)  # in nm
 
             params = unique_bonds[typed_bond]
             bond_func = 1  # gromacs harmonic
             # add 1 to bond as 1 indexed
-            itp_file.append('%-5i %-5i %1i %11.4f %11.4f ; %-5s %-5s %.2f\n' % (bond[0]+1, bond[1]+1, bond_func, 0.1*params[0], 200*params[1], typed_bond[0], typed_bond[1], bondorder))
+            # All these are converted to gromcas units, ugh...
+            itp_file.append('%-5i %-5i %1i %11.4f %11.4f ; %-5s %-5s %.2f\n' %
+                            (bond[0]+1, bond[1]+1, bond_func, 0.1*params[0],
+                             200*params[1], typed_bond[0], typed_bond[1],
+                             bondorder))
 
+        ##
         # angles
+        ##
         itp_file.append("\n[ angles ]\n")
 
         for idx_a in sorted(bonding_table):
@@ -2696,25 +2715,20 @@ class Structure(object):
                         thetamin /= DEG2RAD
                         kappa = ka * (16.0*c2*c2 - c1*c1) / (4.0*c2)
                     elif central_atom.uff_coordination == 1:
-                        print('one')
                         thetamin = 180.0
                         kappa = ka
                     elif central_atom.uff_coordination == 2:
-                        print('two')
                         thetamin = 120.0
                         kappa = 4.0*ka/3.0
                     elif central_atom.uff_coordination in (4, 6):
-                        print('four six')
                         thetamin = 90.0
                         kappa = 2.0*ka
                     elif central_atom.uff_coordination == 7:
-                        print('seven')
                         alpha = 2.0*pi/5.0
                         c7 = sin(alpha)*(cos(alpha) - cos(2*alpha))
                         thetamin = 72.0
                         kappa = 2.0 * c7*c7 * ka * c1
                     else:
-                        print('else')
                         thetamin = pi - arccos(c1/(4.0*c2))
                         thetamin /= DEG2RAD
                         kappa = ka * (16.0*c2*c2 - c1*c1) / (4.0*c2)
@@ -2727,11 +2741,19 @@ class Structure(object):
                     else:  # harmonic
                         potential_function = 1
 
-                    itp_file.append("%-6i %-6i %-6i  %i  %9.4f  %9.4f ; %-6s %-6s %-6s\n" % (l_idx + 1, idx_a + 1, r_idx + 1, potential_function, thetamin, kappa, l_atom.uff_type, central_atom.uff_type, r_atom.uff_type))
+                    angle_fmt = ("%-6i %-6i %-6i  %i  %9.4f  %9.4f ;"
+                                 " %-6s %-6s %-6s\n")
 
+                    itp_file.append(angle_fmt % (
+                        l_idx + 1, idx_a + 1, r_idx + 1, potential_function,
+                        thetamin, kappa, l_atom.uff_type,
+                        central_atom.uff_type, r_atom.uff_type))
+
+        ##
         # dihedrals
+        ##
 
-        itp_file.append("\n[ dihedrals ]\n; proper torsion terms\n; found 5 unique dihedral terms\n")
+        itp_file.append("\n[ dihedrals ]\n; proper torsion terms\n")
 
         # Like OB FindTorsions
         # Generate all torsions first so we can find equivalents
@@ -2798,7 +2820,8 @@ class Structure(object):
                 uj = UFF_FULL[atom_c.uff_type][7]
                 phi0 = 180.0
                 n = 2
-                V = 0.5 * KCAL_TO_KJ * 5.0 * (ui*uj)**0.5 * (1.0 + 4.18 * log(torsiontype))
+                V = (ui*uj)**0.5 * (1.0 + 4.18*log(torsiontype))
+                V *= 0.5 * KCAL_TO_KJ * 5.0
 
             elif coord_bc in [(2, 3), (3, 2)]:
                 # one sp3, one sp2
@@ -2816,7 +2839,7 @@ class Structure(object):
                         n = 2
                         phi0 = 90.0
 
-            if abs(V) < 2e-6:  # don't bother calcuating this torsion
+            if abs(V) < 2e-6:  # don't bother calculating this torsion
                 continue
 
             # Dividing by equivalent torsions is a GG addition
@@ -2844,9 +2867,10 @@ class Structure(object):
                 atom_a.uff_type, atom_b.uff_type,
                 atom_c.uff_type, atom_d.uff_type))
 
-
+        ##
         # inversions / improper dihedrals
-        itp_file.append("\n[ dihedrals ]\n; inversion terms (improper dihedrals)\n")
+        ##
+        itp_file.append("\n[ dihedrals ]\n; inversions (improper dihedrals)\n")
 
         for idx_b in sorted(bonding_table):
             atom_b = self.atoms[idx_b]
@@ -2901,7 +2925,7 @@ class Structure(object):
                 #TODO(tdaff): check if this is multiply or divide
                 csi0 = arccos(-c1/(4.0*c2))/DEG2RAD  # csi_0 in degrees
                 kcsi = (16.0*c2*c2-c1*c1)/(4.0*c2*c2)
-                kcsi = koop*kcsi  # kcsi in kJ/mol/rad^2
+                kcsi *= koop  # kcsi in kJ/mol/rad^2
 
             # put it thrice, middle atom first
             # b, a, c, d
@@ -2911,7 +2935,6 @@ class Structure(object):
             inv_fmt = ("%-6i %-6i %-6i %-6i  %i  %9.4f  %9.4f ;"
                        " %-6s %-6s %-6s %-6s\n")
             inv_type = 2  # improper dihedrals in GROMACS
-
 
             itp_file.append(inv_fmt % (
                 idx_b + 1, idx_a + 1, idx_c + 1, idx_d + 1,

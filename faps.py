@@ -2761,6 +2761,9 @@ class Structure(object):
             torsiontype = bond_bc[2]  # bond order
             coord_bc = (atom_b.uff_coordination, atom_c.uff_coordination)
 
+            V = 0
+            n = 0
+
             if coord_bc == (3, 3):
                 # two sp3 centers
                 phi0 = 60.0
@@ -2829,16 +2832,106 @@ class Structure(object):
             if abs(sin(nphi0*DEG2RAD)) > 1.0e-3:
                 print("WARNING!!! nphi0 = %r" % nphi0)
 
-            phi_s = nphi0 - 180.0
+            phi_s = nphi0 - 180.0  # phi_s in degrees
 
-            itp_file.append("%-6i %-6i %-6i %-6i  %i  %9.4f  %9.4f  %i ; %-6s %-6s %-6s %-6s\n" %
-                            (idx_a + 1, idx_b + 1, idx_c + 1, idx_d + 1,
-                             1,  # proper dihedrals in GROMACS
-                             phi_s,  # // phi_s in degrees
-                             V,  # // kphi in kJ/mol
-                             n,  # // multiplicity
-                             atom_a.uff_type, atom_b.uff_type, atom_c.uff_type, atom_d.uff_type))
+            tor_fmt = ("%-6i %-6i %-6i %-6i  %i  %9.4f  %9.4f  %i ;"
+                       " %-6s %-6s %-6s %-6s\n")
+            tor_type = 1  # proper dihedrals in GROMACS
 
+            itp_file.append(tor_fmt % (
+                idx_a + 1, idx_b + 1, idx_c + 1, idx_d + 1,
+                tor_type, phi_s, V, n,
+                atom_a.uff_type, atom_b.uff_type,
+                atom_c.uff_type, atom_d.uff_type))
+
+
+        # inversions / improper dihedrals
+        itp_file.append("\n[ dihedrals ]\n; inversion terms (improper dihedrals)\n")
+
+        for idx_b in sorted(bonding_table):
+            atom_b = self.atoms[idx_b]
+            # Only have parameters for limited elements
+            # and only want those with 3 neighbours
+            if not atom_b.atomic_number in (6, 7, 8, 15, 33, 51, 83):
+                continue
+            elif len(bonding_table[idx_b]) != 3:
+                continue
+
+            idx_a, idx_c, idx_d = bonding_table[idx_b]
+            atom_a = self.atoms[idx_a]
+            atom_c = self.atoms[idx_c]
+            atom_d = self.atoms[idx_d]
+
+            if atom_b.uff_type in ('N_3', 'N_2', 'N_R', 'O_2', 'O_R'):
+                c0 = 1.0
+                c1 = -1.0
+                c2 = 0.0
+                koop = 6.0*KCAL_TO_KJ
+            elif atom_b.uff_type in ('P_3+3', 'As3+3', 'Sb3+3', 'Bi3+3'):
+                if atom_b.uff_type == 'P_3+3':
+                    phi = 84.4339 * DEG2RAD
+                elif atom_b.uff_type == 'As3+3':
+                    phi = 86.9735 * DEG2RAD
+                elif atom_b.uff_type == 'Sb3+3':
+                    phi = 87.7047 * DEG2RAD
+                else:
+                    phi = 90.0 * DEG2RAD
+                c1 = -4.0 * cos(phi)
+                c2 = 1.0
+                c0 = -1.0*c1*cos(phi) + c2*cos(2.0*phi)
+                koop = 22.0 * KCAL_TO_KJ
+            elif atom_b.uff_type in ('C_2', 'C_R'):
+                c0 = 1.0
+                c1 = -1.0
+                c2 = 0.0
+                koop = 6.0*KCAL_TO_KJ
+                if 'O_2' in (atom_a.uff_type, atom_c.uff_type, atom_d.uff_type):
+                    koop = 50.0 * KCAL_TO_KJ
+            else:
+                continue
+
+            # three permutations:
+            koop /= 3
+
+            # that was easy...
+            if abs(c2) < 1.0e-5:
+                csi0 = 0.0
+                kcsi = koop
+            else:
+                #TODO(tdaff): check if this is multiply or divide
+                csi0 = arccos(-c1/(4.0*c2))/DEG2RAD  # csi_0 in degrees
+                kcsi = (16.0*c2*c2-c1*c1)/(4.0*c2*c2)
+                kcsi = koop*kcsi  # kcsi in kJ/mol/rad^2
+
+            # put it thrice, middle atom first
+            # b, a, c, d
+            # b, d, c, a
+            # b, a, d, c
+
+            inv_fmt = ("%-6i %-6i %-6i %-6i  %i  %9.4f  %9.4f ;"
+                       " %-6s %-6s %-6s %-6s\n")
+            inv_type = 2  # improper dihedrals in GROMACS
+
+
+            itp_file.append(inv_fmt % (
+                idx_b + 1, idx_a + 1, idx_c + 1, idx_d + 1,
+                inv_type, csi0, kcsi,
+                atom_b.uff_type, atom_a.uff_type,
+                atom_c.uff_type, atom_d.uff_type))
+
+            itp_file.append(inv_fmt % (
+                idx_b + 1, idx_d + 1, idx_c + 1, idx_a + 1,
+                inv_type, csi0, kcsi,
+                atom_b.uff_type, atom_d.uff_type,
+                atom_c.uff_type, atom_a.uff_type))
+
+            itp_file.append(inv_fmt % (
+                idx_b + 1, idx_a + 1, idx_d + 1, idx_c + 1,
+                inv_type, csi0, kcsi,
+                atom_b.uff_type, atom_a.uff_type,
+                atom_d.uff_type, atom_c.uff_type))
+
+        # done!
 
         with open("moffive.top", 'w') as tempfile:
             tempfile.writelines(top_file)

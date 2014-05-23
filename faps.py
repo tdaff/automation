@@ -2567,7 +2567,9 @@ class Structure(object):
         ##
         # .top file
         ##
-        comb_rule = 1  # 1 = LORENTZ_BERTHELOT; 2 = GEOMETRIC
+        comb_rule = 2  # 1 = LORENTZ_BERTHELOT; 2 = GEOMETRIC
+        # geometric is recommended in UFF
+        # if you use Lorentz Berthelot then sigma and epsilon become C6 and C12
         top_file = [
             "; Topology file for %s\n" % self.name,
             "[ defaults ]\n",

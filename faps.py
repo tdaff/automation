@@ -1672,6 +1672,8 @@ class Structure(object):
             self.from_vasp(path.join(opt_path, 'CONTCAR'), update=True)
         elif opt_code == 'siesta':
             self.from_siesta(path.join(opt_path, '%s.STRUCT_OUT' % self.name))
+        elif opt_code == 'gromacs':
+            self.from_gromacs(path.join(opt_path, 'confout.g96'))
         elif opt_code == 'gulp':
             opt_path = "%s_opt" % opt_path
             self.optimisation_output = validate_gulp_output(
@@ -1954,6 +1956,35 @@ class Structure(object):
         self.cell.from_lines(struct_out[:3])
         for atom, line in zip(self.atoms, struct_out[4:]):
             atom.from_siesta(line, self.cell.cell)
+
+    def from_gromacs(self, filename):
+        """Update the structure from a gromacs optimisation G96 format file."""
+
+        info("Updating positions from file: %s" % filename)
+        g96 = open(filename).readlines()
+
+        # Atom positions, just regular
+        for line, atom in zip(g96[4:], self.atoms):
+            atom.pos = [10.0*float(x) for x in line[25:].split()]  # nm to A
+            del atom.fractional
+
+        # New cell too, possibly, check ordering.
+        box = [10*float(x) for x in g96[-2].split()]
+        new_cell = [box[0], box[3], box[4],
+                    box[5], box[1], box[6],
+                    box[7], box[8], box[2]]
+        self.cell.cell = new_cell
+
+        # Make sure everything is good from here
+        if self.check_close_contacts(covalent=1.0):
+            warning("Structure might have atom overlap, check gromacs output!")
+            self.bad_structure = True
+
+        if self.bond_length_check():
+            warning("Structure might have strained bonds, check gromacs output!")
+            self.bad_structure = True
+
+
 
     def from_gulp_output(self, filename):
         """Update the structure from the gulp optimisation output."""

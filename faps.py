@@ -198,9 +198,6 @@ class PyNiss(object):
             self.state['init'] = (UPDATED, False)
             self.dump_state()
 
-        #FIXME(REMOVE!!)
-        self.structure.to_gromacs()
-
         self.step_force_field()
 
         self.step_dft()
@@ -778,7 +775,9 @@ class PyNiss(object):
         """Select correct method for running the dft/optim."""
         ff_opt_code = self.options.get('ff_opt_code')
         info("Running a %s calculation" % ff_opt_code)
-        if ff_opt_code == 'gulp':
+        if ff_opt_code == 'gromacs':
+            jobid = self.run_optimise_gromacs()
+        elif ff_opt_code == 'gulp':
             jobid = self.run_optimise_gulp()
         else:
             critical("Unknown force field method: %s" % ff_opt_code)
@@ -847,6 +846,62 @@ class PyNiss(object):
         return jobid
 
     ## Methods for specific codes start here
+
+    def run_optimise_gromacs(self):
+        """Run GROMACS to do a UFF optimisation."""
+        job_name = self.options.get('job_name')
+        optim_code = self.options.get('ff_opt_code')
+
+        # Run in a subdirectory
+        optim_dir = path.join(self.options.get('job_dir'),
+                              'faps_%s_%s' % (job_name, optim_code))
+        mkdirs(optim_dir)
+        os.chdir(optim_dir)
+        debug("Running in %s" % optim_dir)
+
+        gro_file, top_file, itp_file = self.structure.to_gromacs()
+
+        # We use default names so we don't have to specify
+        # anything extra on the command line
+        filetemp = open('conf.gro', 'w')
+        filetemp.writelines(gro_file)
+        filetemp.close()
+
+        filetemp = open('topol.top', 'w')
+        filetemp.writelines(top_file)
+        filetemp.close()
+
+        filetemp = open('topol.itp', 'w')
+        filetemp.writelines(itp_file)
+        filetemp.close()
+
+        filetemp = open('grompp.mdp', 'w')
+        filetemp.writelines(mk_gromacs_mdp(self.structure.cell))
+        filetemp.close()
+
+        # prepare for simulation!
+        grompp = [self.options.get('grompp_exe')]
+        # Must do preprocess, but quick enough to do in a subprocess
+        info("Running GROMACS preprocessor")
+        debug("Running command: %s" % grompp)
+        gro_process = subprocess.Popen(grompp) #, stdout=subprocess.PIPE,
+                                       #stderr=subprocess.PIPE)
+        gro_process.wait()
+        # debug the output here if necessary...?
+        #print(''.join(gro_process.stdout.readlines()))
+
+        mdrun_args = ['-c', 'confout.g96']  # need higher precision output
+
+        if self.options.getbool('no_submit'):
+            info("GROMACS input files generated; skipping job submission")
+            jobid = False
+        else:
+            jobid = self.job_handler.submit(optim_code, self.options,
+                                            input_args=mdrun_args)
+
+        # Tidy up at the end
+        os.chdir(self.options.get('job_dir'))
+        return jobid
 
     def run_optimise_gulp(self):
         """Run GULP to do a UFF optimisation."""
@@ -2526,13 +2581,9 @@ class Structure(object):
         return config, field
 
     def to_gromacs(self):
-        """Procedure:
-        generate .gro atom positions - check
-        generate .top lj topology - check
-        generate .itp uff topology - check
-        gererate .mdp parameters
-        grompp -f mdp_file -c gro_file -p top_file -o output.tpr
-        mdrun -s moffive -o traj-c moffive -nt 1
+        """Generate GROMACS structure and topology.
+
+        Return gro, top and itp files as lists of lines.
         """
 
         ##
@@ -2595,7 +2646,8 @@ class Structure(object):
                                               0.0, sigma, epsilon))
                 unique_types.add(uff_type)
 
-        top_file.extend(["\n#include <%s.itp>\n\n" % self.name,
+        # for included file, use default name scheme "topol..."
+        top_file.extend(["\n#include <topol.itp>\n\n",
                          "[ system ]\n",
                          "UFF optimisation of %s\n\n" % self.name,
                          "[ molecules ]\n",
@@ -2957,15 +3009,7 @@ class Structure(object):
                 atom_d.uff_type, atom_c.uff_type))
 
         # done!
-
-        with open("moffive.top", 'w') as tempfile:
-            tempfile.writelines(top_file)
-        with open("moffive.gro", 'w') as tempfile:
-            tempfile.writelines(gro_file)
-        with open("moffive.itp", 'w') as tempfile:
-            tempfile.writelines(itp_file)
-        #return top_file, gro_file, itp_file
-
+        return gro_file, top_file, itp_file
 
 
     def to_cssr(self, cartesian=False, no_atom_id=False):
@@ -3553,6 +3597,18 @@ class Cell(object):
                   volume / norm(a_cross_b)]
 
         return tuple(int(ceil(2*cutoff/x)) for x in widths)
+
+    @property
+    def minimum_width(self):
+        """The shortest perpendicular distance within the cell."""
+        a_cross_b = cross(self.cell[0], self.cell[1])
+        b_cross_c = cross(self.cell[1], self.cell[2])
+        c_cross_a = cross(self.cell[2], self.cell[0])
+
+        volume = dot(self.cell[0], b_cross_c)
+
+        return volume / min(norm(b_cross_c), norm(c_cross_a), norm(a_cross_b))
+
 
     @property
     def imcon(self):
@@ -4361,6 +4417,30 @@ def mk_dl_poly_control(options, dummy=False):
         "finish\n"]
 
     return control
+
+
+def mk_gromacs_mdp(cell):
+    """Energy minimsation file for GROMACS, with cell based cutoff"""
+    cutoff = min(1.0, 0.5*cell.minimum_width/10.0)  # 1/2 cell in nm
+
+    mdp = [
+        "integrator          =  cg\n",
+        "nsteps              =  5000\n",
+        "nstxout             =  1\n",  # trajectory frequency
+        "rlist               =  %f\n" % cutoff,
+        "rcoulomb            =  %f\n" % cutoff,
+        "rvdw                =  %f\n" % cutoff,
+        "periodic_molecules  =  yes\n",
+        "pbc                 =  xyz\n",
+        ";\n",
+        ";       Energy minimizing stuff\n",
+        ";\n",
+        "emtol               =  10.0\n",  # convergence (10.0) [kJ mol-1 nm-1]
+        "emstep              =  0.01\n",  # (0.01) step size
+        "nstcgsteep          =  100\n",  # frequency of sd steps in cg
+    ]
+
+    return mdp
 
 
 def parse_qeq_params(param_tuple):

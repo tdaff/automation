@@ -890,7 +890,9 @@ class PyNiss(object):
         # debug the output here if necessary...?
         #print(''.join(gro_process.stdout.readlines()))
 
-        mdrun_args = ['-c', 'confout.g96']  # need higher precision output
+        # output to g96 as it is higher precision
+        # restrict to a single thread as domain decomposition caused breaks
+        mdrun_args = ['-c', 'confout.g96', '-nt', '1']
 
         if self.options.getbool('no_submit'):
             info("GROMACS input files generated; skipping job submission")

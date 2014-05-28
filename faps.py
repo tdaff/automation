@@ -632,6 +632,9 @@ class PyNiss(object):
         if self.options.getbool('no_absl'):
             info("Skipping ABSL calculation")
             return
+        elif self.options.getbool('no_gcmc'):
+            info("no_gcmc requested, can't do ABSL, skipping")
+            return
         elif not self.options.getbool('mc_probability_plot'):
             info("No probability plot; Skipping ABSL calculation")
             return

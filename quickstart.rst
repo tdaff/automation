@@ -124,7 +124,7 @@ customisability. One way to customise your calculations is with a configuration
 file in the directory where your structure is stored, the `.fap` file. The faps
 file follows standard ini format with ``option = choice`` syntax. We could
 create a :file:`MIL-47.fap` file to calculate a complete isotherm. Simply
-specify a number of pressures and temperatures and the uptake will be calcaulted
+specify a number of pressures and temperatures and the uptake will be calculated
 for every combination.
 
 .. code-block:: ini
@@ -138,13 +138,13 @@ for every combination.
 Uncharged guest
 ---------------
 
-Somtimes it is more convenient to have the same settings for several jobs, in
+Sometimes it is more convenient to have the same settings for several jobs, in
 this case we can create a centralised jobfile. These need to be stored in your
 home directory in a directory called `.faps`. This directory is also used for
 other settings and should be used to store descriptive fap files for all your
 job types. In this example, the single site methane model does not have any
 charged sites, so the charge calculation can be skipped altogether (any dft
-optimisation is also skipped). Charges are automatically initialsed to 0.
+optimisation is also skipped). Charges are automatically initialised to 0.
 
 
 .. code-block:: ini

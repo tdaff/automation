@@ -21,9 +21,9 @@ Contents
    quickstart
    installation
    running
+   modules
    options
    guests
-   fapswitch
 
 ==================
 Indices and tables

@@ -64,11 +64,22 @@ value for each option is given here. For the most up-to-date list, see the
 :file:`defaults.ini` file.
 
 
+.. envvar:: absl_delete_files
+
+  Default: REVIVE \*/REVIVE \*/\*.out \*.out
+
+  files to delete after a successful absl job [str, list]
+
+.. envvar:: absl_compress_files
+
+  Default: CONFIG \*/CONFIG REVCON \*/REVCON
+
+  files to keep and compress after a successful fastmc job [str, list]
+
 .. envvar:: charge_method
 
   Default: repeat
 
-  yes, on, 1 and False, no, off, 0
   Method for calculating charge. [str] {repeat, gulp, egulp}
 
 .. envvar:: dedicated_queue
@@ -102,11 +113,41 @@ value for each option is given here. For the most up-to-date list, see the
   Turn on empirical dispersion corrections in dft codes that
   support it. [bool]
 
+.. envvar:: dl_poly_exe
+
+  Default: DLPOLY.X
+
+  Location of DL_POLY executable. [str]
+
 .. envvar:: egulp_exe
 
-  Default: egulp
+  Default: egulppot
 
   Location of Eugene's QEq code. [str]
+
+.. envvar:: egulp_grid
+
+  Default: False
+
+  Use egulp to generate a gridded potential. [bool]
+
+.. envvar:: egulp_grid_parameters
+
+  Default: 1 none 0.25 0.25 0.25 1.0 2.0 0 3.0
+
+  Exact line to use verbatim for the egulp gridding input. [str]
+
+.. envvar:: egulp_potential
+
+  Default: False
+
+  Calculate the egulp potential and save the cube file. [bool]
+
+.. envvar:: egulp_potential_difference
+
+  Default: False
+
+  Calculate the egulp potential difference. [str]
 
 .. envvar:: egulp_typed_atoms
 
@@ -313,6 +354,12 @@ value for each option is given here. For the most up-to-date list, see the
   Default: False
 
   Do not use charges in the GCMC even if they have been calculated. [bool]
+
+.. envvar:: no_absl
+
+  Default: False
+
+  Do not postprocess with absl. [bool]
 
 .. envvar:: no_charges
 

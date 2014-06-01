@@ -876,30 +876,46 @@ class PyNiss(object):
         filetemp.close()
 
         filetemp = open('grompp.mdp', 'w')
-        filetemp.writelines(mk_gromacs_mdp(self.structure.cell))
+        filetemp.writelines(mk_gromacs_mdp(self.structure.cell, mode='bfgs'))
+        filetemp.close()
+
+        filetemp = open('pcoupl.mdp', 'w')
+        filetemp.writelines(mk_gromacs_mdp(self.structure.cell, mode='pcoupl'))
         filetemp.close()
 
         # prepare for simulation!
-        grompp = [self.options.get('grompp_exe')]
-        # Must do preprocess, but quick enough to do in a subprocess
-        info("Running GROMACS preprocessor")
-        debug("Running command: %s" % grompp)
-        gro_process = subprocess.Popen(grompp) #, stdout=subprocess.PIPE,
-                                       #stderr=subprocess.PIPE)
-        gro_process.wait()
-        # debug the output here if necessary...?
-        #print(''.join(gro_process.stdout.readlines()))
+        grompp = self.options.get('grompp_exe')
+        mdrun = self.options.get('mdrun_exe')
 
-        # output to g96 as it is higher precision
-        # restrict to a single thread as domain decomposition caused breaks
-        mdrun_args = ['-c', 'confout.g96', '-nt', '1']
+        # everything runs in a script -- to many steps otherwise
+        # only make the g96 file at the end so we can tell if it breaks
+        gromacs_faps = open('gromacs_faps', 'w')
+        gromacs_faps.writelines([
+            "#!/bin/bash\n\n",
+            "# preprocess first bfgs\n",
+            "%s &>> g.log\n\n" % grompp,
+            "# bfgs step\n",
+            "%s -nt 1 &>> g.log\n\n" % mdrun,
+            "# overwrite with pcoupl step\n",
+            "%s -t traj.trr -f pcoupl.mdp &>> g.log\n\n" % grompp,
+            "# pcoupl step\n",
+            "%s -nt 1 &>> g.log\n\n" % mdrun,
+            "# overwrite with final bfgs\n",
+            "%s -t traj.trr &>> g.log\n\n" % grompp,
+            "# generate final structure\n",
+            "%s -nt 1 -c confout.g96 &>> g.log\n" % mdrun])
+
+        gromacs_faps.close()
+        os.chmod('gromacs_faps', 0o755)
+
+        # Leave the run to the shell
+        info("Generated gromcas inputs and run script")
 
         if self.options.getbool('no_submit'):
             info("GROMACS input files generated; skipping job submission")
             jobid = False
         else:
-            jobid = self.job_handler.submit(optim_code, self.options,
-                                            input_args=mdrun_args)
+            jobid = self.job_handler.submit(optim_code, self.options)
 
         # Tidy up at the end
         os.chdir(self.options.get('job_dir'))
@@ -1972,9 +1988,15 @@ class Structure(object):
 
         # New cell too, possibly, check ordering.
         box = [10*float(x) for x in g96[-2].split()]
-        new_cell = [box[0], box[3], box[4],
-                    box[5], box[1], box[6],
-                    box[7], box[8], box[2]]
+        # Only reports three values for cubic cell
+        if len(box) == 3:
+            new_cell = [box[0], 0.0, 0.0,
+                        0.0, box[1], 0.0,
+                        0.0, 0.0, box[2]]
+        else:
+            new_cell = [box[0], box[3], box[4],
+                        box[5], box[1], box[6],
+                        box[7], box[8], box[2]]
         self.cell.cell = new_cell
 
         # Make sure everything is good from here
@@ -2626,7 +2648,9 @@ class Structure(object):
         # number of atoms
         gro_file = ["%s\n" % self.name, " %i\n" % self.natoms]
 
-        residue = (1, self.name[:4].upper())
+        # Don't use the MOF name so that we can refer to this easily later
+        residue = (1, "RESI")
+
         for idx, atom in enumerate(self.atoms):
             # In the specification the atom position is given as
             # %8.3f in nm, but we probably would like more accuracy
@@ -2820,9 +2844,9 @@ class Structure(object):
                         thetamin /= DEG2RAD
                         kappa = ka * (16.0*c2*c2 - c1*c1) / (4.0*c2)
 
-                    potenrial = "G96"
+                    potential = "G96"
 
-                    if potenrial == "G96":
+                    if potential == "G96":
                         kappa /= sin(thetamin*DEG2RAD)**2
                         potential_function = 2
                     else:  # harmonic
@@ -4452,17 +4476,58 @@ def mk_dl_poly_control(options, dummy=False):
     return control
 
 
-def mk_gromacs_mdp(cell):
-    """Energy minimsation file for GROMACS, with cell based cutoff"""
-    cutoff = min(1.0, 0.5*cell.minimum_width/10.0)  # 1/2 cell in nm
+def mk_gromacs_mdp(cell, mode='bfgs', terse=True):
+    """
+    Generate an energy minimsation file for GROMACS, with cell based cutoff.
 
-    mdp = [
-        "integrator          =  cg\n",
-        "nsteps              =  5000\n",
-        "nstxout             =  1\n",  # trajectory frequency
-        "rlist               =  %f\n" % cutoff,
-        "rcoulomb            =  %f\n" % cutoff,
-        "rvdw                =  %f\n" % cutoff,
+    Use mode argument to select from:
+        'bfgs' standard l-bfgs position optimisation
+        'pcoupl' zero kelivn cell semi anisotropic relaxation
+        'sd' steppest descent minimisation
+    """
+    # Use 0.45 as it allows for around 10% shrinkage of the cell
+    cutoff = 0.45*min(cell.a, cell.b, cell.c)/10.0  # 1/2 cell in nm
+    if mode == 'bfgs':
+        # bfgs needs the shift potentials, which need a transition radius
+        rlist = min(1.2, cutoff)
+        rcoulomb = rlist - 0.1
+        rvdw = rlist - 0.1
+        mdp = ["integrator          =  l-bfgs\n",
+               "vdwtype             =  shift\n",
+               "coulombtype         =  shift\n"]
+    elif mode == 'pcoupl':
+        # This changes volume but not angles as I don't know how well it shears
+        rlist = min(1.2, cutoff)
+        rcoulomb = rlist - 0.1
+        rvdw = rlist - 0.1
+        mdp = ["integrator          =  md\n",
+               "vdwtype             =  shift\n",
+               "coulombtype         =  shift\n",
+               "pcoupl              =  berendsen\n",  # others too bouncy
+               "pcoupltype          =  anisotropic\n",
+               "ref_p               =  1.01325 1.01325 1.01325 0.0 0.0 0.0\n",
+               "compressibility     =  5.0e-5 5.0e-5 5.0e-5 0.0 0.0 0.0\n",
+               "tcoupl              =  v-rescale\n",
+               "ref_t               =  0.0\n",  # zero kelvin
+               "tau_t               =  0.1\n",
+               "tc-grps             =  RESI\n"]  # residue as in the gro file
+    elif mode == 'sd':
+        rlist = min(1.2, cutoff)
+        rcoulomb = rlist
+        rvdw = rlist
+        mdp = ["integrator          =  cg\n",
+               "nstcgsteep          =  50\n"]  # frequency of sd steps in cg
+    else:
+        error('Bad optimisation mode, %s, selected for gromacs mdp')
+        return
+
+    # common items work all round (bfgs only needs a few steps and
+    # 2000 steps reduces the box size enough)
+    mdp.extend([
+        "nsteps              =  2000\n",
+        "rlist               =  %f\n" % rlist,
+        "rcoulomb            =  %f\n" % rcoulomb,
+        "rvdw                =  %f\n" % rvdw,
         "periodic_molecules  =  yes\n",
         "pbc                 =  xyz\n",
         ";\n",
@@ -4470,8 +4535,14 @@ def mk_gromacs_mdp(cell):
         ";\n",
         "emtol               =  10.0\n",  # convergence (10.0) [kJ mol-1 nm-1]
         "emstep              =  0.01\n",  # (0.01) step size
-        "nstcgsteep          =  100\n",  # frequency of sd steps in cg
-    ]
+    ])
+
+    if terse:
+        mdp.extend(["nstxout             =  2000\n",  # trajectory frequency
+                    "nstenergy           =  0\n"])  # energy frequency
+    else:
+        mdp.extend(["nstxout             =  1\n",  # trajectory frequency
+                    "nstenergy           =  1\n"])  # energy frequency
 
     return mdp
 
@@ -4657,9 +4728,10 @@ def try_symlink(src, dest):
     """Delete an existing dest file, symlink a new one if possible."""
     if path.lexists(dest):
         os.remove(dest)
+    # Catch cases like Windows which can't symlink or unsupported SAMBA
     try:
         os.symlink(src, dest)
-    except AttributeError:
+    except (AttributeError, OSError):
         shutil.copy(src, dest)
 
 
@@ -4915,9 +4987,9 @@ def main():
         for suffix in FOLDER_SUFFIXES:
             directory = "faps_%s_%s/" % (job_name, suffix)
             if path.isdir(directory):
-               debug("Adding directory %s" % directory)
-               faps_tar.add(directory)
-               shutil.rmtree(directory)
+                debug("Adding directory %s" % directory)
+                faps_tar.add(directory)
+                shutil.rmtree(directory)
         faps_tar.close()
 
     my_simulation.dump_state()

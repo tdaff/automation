@@ -4486,7 +4486,9 @@ def mk_gromacs_mdp(cell, mode='bfgs', terse=True):
         'sd' steppest descent minimisation
     """
     # Use 0.45 as it allows for around 10% shrinkage of the cell
-    cutoff = 0.45*min(cell.a, cell.b, cell.c)/10.0  # 1/2 cell in nm
+    # 1/2 smallest of cell lengths or diagonal elements, in nm
+    cutoff = 0.45*min(cell.a, cell.b, cell.c,
+                      cell.cell[0][0], cell.cell[1][1], cell.cell[2][2])/10.0
     if mode == 'bfgs':
         # bfgs needs the shift potentials, which need a transition radius
         rlist = min(1.2, cutoff)

@@ -90,7 +90,7 @@ NOT_SUBMITTED = -2
 # Possible folder names; need these so that similar_ones_with_underscores are
 # not globbed
 FOLDER_SUFFIXES = ['gulp', 'gulp_opt', 'gulp_fit', 'siesta', 'vasp', 'egulp',
-                   'repeat', 'fastmc', 'properties', 'absl']
+                   'repeat', 'fastmc', 'properties', 'absl', 'gromacs']
 
 
 class PyNiss(object):
@@ -429,6 +429,25 @@ class PyNiss(object):
                 info("%9.3f %9.2f %9.5f %9.4f" %
                      (probe, void, void_fraction, specific_area))
             info("========= ========= ========= =========")
+
+        pxrd = self.structure.sub_property('pxrd')
+        if pxrd:
+            info("Summary of PXRD; see properties for cpi file")
+            for probe, pattern in pxrd.items():
+                info("%s Powder XRD:" % probe)
+                plot = [['|']*21]
+                # 1000 points makes this 75 columns wide
+                averaged = [sum(pattern[x:x+20])/20.0
+                            for x in range(0, 1000, 20)]
+                # make peaks horizontal first
+                peak = max(averaged)
+                for point in averaged:
+                    height = int(round(15*point/peak))
+                    plot.append([' ']*(15-height) + ['|']*height + ['-'])
+                # transpose for printing
+                plot = zip(*plot)
+                for line in plot:
+                    info(''.join(line))
 
 
     def step_force_field(self):
@@ -1406,6 +1425,13 @@ class PyNiss(object):
             except (OSError, IOError):
                 error("Error running zeo++; skipping")
 
+        # PLATON can calculate the PXRD pattern
+        if self.options.getbool('platon_pxrd'):
+            try:
+                self.calculate_pxrd()
+            except (OSError, IOError):
+                error("Error running platon; skipping")
+
         os.chdir(job_dir)
 
 
@@ -1427,7 +1453,7 @@ class PyNiss(object):
         filetemp.writelines(zeofiles[2])
         filetemp.close()
 
-        probes = set([1.0]) # Always have a helium probe
+        probes = set([1.0])  # Always have a helium probe
         for guest in self.structure.guests:
             if hasattr(guest, 'probe_radius'):
                 probes.add(guest.probe_radius)
@@ -1479,6 +1505,30 @@ class PyNiss(object):
                 if 'A^3' in line:
                     self.structure.sub_property('void_volume', probe,
                                                 value=float(line.split()[-1]))
+
+    def calculate_pxrd(self):
+        """Run platon PXRD and update properties with no error trapping."""
+
+        job_name = self.options.get('job_name')
+        out_cif = self.structure.to_cif()
+
+        filetemp = open("%s.faps.cif" % job_name, 'w')
+        filetemp.writelines(out_cif)
+        filetemp.close()
+
+        platon_exe = self.options.get('platon_exe')
+        platon_cmd = [platon_exe, '-Q', '-o', '%s.faps.cif' % job_name]
+
+        info("Running PLATON PXRD")
+        debug("Running command: '" + " ".join(platon_cmd) + "'")
+        platon_process = subprocess.Popen(platon_cmd, stdout=subprocess.PIPE)
+        platon_process.wait()
+
+        cpi_file = open('%s.faps.cpi' % job_name).readlines()
+        probe = cpi_file[4].strip()  # source metal, e.g. Cu, Mo
+        xrd = [int(x) for x in cpi_file[10:]]
+
+        self.structure.sub_property('pxrd', probe=probe, value=xrd)
 
 
     @property
@@ -3127,7 +3177,86 @@ class Structure(object):
         masses = ["%-7s %-f\n" % (atom, WEIGHT[atom])
                   for atom in unique(self.types)]
 
-        return (self.to_cssr(no_atom_id=True), radii, masses)
+        return self.to_cssr(no_atom_id=True), radii, masses
+
+    def to_cif(self):
+        """Return a CIF file with bonding and atom types."""
+
+        name = self.name
+        atoms = self.atoms
+        cell = self.cell
+        if hasattr(self, 'bonds'):
+            bonds = self.bonds
+        else:
+            bonds = {}
+
+        inv_cell = cell.inverse
+
+        type_count = {}
+
+        atom_part = []
+        for idx, atom in enumerate(atoms):
+            if atom is None:
+                # blanks are left in here
+                continue
+            if hasattr(atom, 'uff_type') and atom.uff_type is not None:
+                uff_type = atom.uff_type
+            else:
+                uff_type = '?'
+            if atom.element in type_count:
+                type_count[atom.element] += 1
+            else:
+                type_count[atom.element] = 1
+            atom.site = "%s%i" % (atom.element, type_count[atom.element])
+            atom_part.append("%-5s %-5s %-5s " % (atom.site, atom.element, uff_type))
+            atom_part.append("%f %f %f " % tuple(atom.ifpos(inv_cell)))
+            atom_part.append("%f\n" % atom.charge)
+
+        bond_part = []
+        for bond, order in bonds.items():
+            try:
+                bond_part.append("%-5s %-5s %-5s\n" %
+                                 (atoms[bond[0]].site, atoms[bond[1]].site,
+                                  CCDC_BOND_ORDERS[order]))
+            except AttributeError:
+                # one of the atoms is None so skip
+                debug("cif NoneType atom")
+
+        cif_file = [
+            "data_%s\n" % name.replace(' ', '_'),
+            "%-33s %s\n" % ("_audit_creation_date", time.strftime('%Y-%m-%dT%H:%M:%S%z')),
+            "%-33s %s\n" % ("_audit_creation_method", "'faps %s'" % __version__),
+            "%-33s %s\n" % ("_symmetry_space_group_name_H-M", "P1"),
+            "%-33s %s\n" % ("_symmetry_Int_Tables_number", "1"),
+            "%-33s %s\n" % ("_space_group_crystal_system", cell.crystal_system),
+            "%-33s %-.10s\n" % ("_cell_length_a", cell.a),
+            "%-33s %-.10s\n" % ("_cell_length_b", cell.b),
+            "%-33s %-.10s\n" % ("_cell_length_c", cell.c),
+            "%-33s %-.10s\n" % ("_cell_angle_alpha", cell.alpha),
+            "%-33s %-.10s\n" % ("_cell_angle_beta", cell.beta),
+            "%-33s %-.10s\n" % ("_cell_angle_gamma", cell.gamma),
+            "%-33s %s\n" % ("_cell_volume", cell.volume),
+            # start of atom loops
+            "\nloop_\n",
+            "_atom_site_label\n",
+            "_atom_site_type_symbol\n",
+            "_atom_site_description\n",
+            "_atom_site_fract_x\n",
+            "_atom_site_fract_y\n",
+            "_atom_site_fract_z\n",
+            "_atom_type_partial_charge\n"] + atom_part
+
+        # Don't put this if there are no bonds!
+        if bond_part:
+            cif_file.extend([
+                # bonding loop
+                "\nloop_\n",
+                "_geom_bond_atom_site_label_1\n",
+                "_geom_bond_atom_site_label_2\n",
+                #"_geom_bond_distance\n",
+                "_ccdc_geom_bond_type\n"] + bond_part)
+
+        return cif_file
 
     def fastmc_postproc(self, filepath, tp_point, options):
         """Update structure properties from gcmc OUTPUT."""

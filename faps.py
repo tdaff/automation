@@ -57,7 +57,7 @@ from math import ceil, log
 from os import path
 
 import numpy as np
-from numpy import pi, cos, sin, sqrt, arccos
+from numpy import pi, cos, sin, sqrt, arccos, arctan2
 from numpy import array, identity, dot, cross
 from numpy.linalg import norm
 
@@ -2635,7 +2635,7 @@ class Structure(object):
 
         return config, field
 
-    def to_gromacs(self):
+    def to_gromacs(self, keep_metal_geometry=True):
         """Generate GROMACS structure and topology.
 
         Return gro, top and itp files as lists of lines.
@@ -2820,7 +2820,7 @@ class Structure(object):
                     ka = (644.12 * KCAL_TO_KJ) * (zi * zk / (rac**5.0))
                     ka *= (3.0*rab*rbc*(1.0 - cosT0*cosT0) - rac*rac*cosT0)
 
-                    # FIXME(tdaff) change uff_coordinateion to coordination
+                    # FIXME(tdaff) change uff_coordination to coordination
                     if abs(c2) > 0.001:
                         thetamin = pi - arccos(c1/(4.0*c2))
                         thetamin /= DEG2RAD
@@ -2844,7 +2844,15 @@ class Structure(object):
                         thetamin /= DEG2RAD
                         kappa = ka * (16.0*c2*c2 - c1*c1) / (4.0*c2)
 
-                    potential = "G96"
+                    if central_atom.is_metal and keep_metal_geometry:
+                        # harmonic potential means it will not
+                        # flip around
+                        potential = "harmonic"
+                        kappa = 10000
+                        thetamin = angle_between(l_atom, central_atom, r_atom,
+                                                 cell=self.cell)
+                    else:
+                        potential = "G96"
 
                     if potential == "G96":
                         kappa /= sin(thetamin*DEG2RAD)**2
@@ -2966,7 +2974,11 @@ class Structure(object):
             if abs(sin(nphi0*DEG2RAD)) > 1.0e-3:
                 print("WARNING!!! nphi0 = %r" % nphi0)
 
-            phi_s = nphi0 - 180.0  # phi_s in degrees
+            if atom_b.is_metal or atom_c.is_metal and keep_metal_geometry:
+                V = 100.0
+                phi_s = dihedral(atom_a, atom_b, atom_c, atom_d, cell=self.cell)
+            else:
+                phi_s = nphi0 - 180.0  # phi_s in degrees
 
             tor_fmt = ("%-6i %-6i %-6i %-6i  %i  %9.4f  %9.4f  %i ;"
                        " %-6s %-6s %-6s %-6s\n")
@@ -4835,6 +4847,127 @@ def vecdist3(coord1, coord2):
            coord2[2] - coord1[2]]
 
     return (vec[0]*vec[0] + vec[1]*vec[1] + vec[2]*vec[2])**0.5
+
+
+def angle_between(left, middle, right, cell=None):
+    """
+    Calculate the angle between the atoms middle->left and middle->right.
+
+    If a Cell is specified, this will use the minimum image criterion to find
+    the angle with the closest point.
+
+    Parameters
+    ----------
+
+    left : Atom
+        one of the atoms
+    middle : Atom
+        vertex atom
+    left : Atom
+        second atom
+    cell : Cell or None
+        if a Cell object is passes the minimum image criterion will be used
+        to calculate the angle
+
+    Returns
+    -------
+
+    angle: float
+        Angle between the atoms in degrees.
+    """
+    if cell is None:
+        vleft = [i - j for i, j in zip(left.pos, middle.pos)]
+        vright = [i - j for i, j in zip(right.pos, middle.pos)]
+    else:
+        # Minimum image criterion
+        box = cell.cell
+        vleft = [i - j for i, j in
+                 zip(minimum_image(middle, left, box), middle.pos)]
+        vright = [i - j for i, j in
+                  zip(minimum_image(middle, right, box), middle.pos)]
+
+    angle = arccos(dot(vleft, vright)/(norm(vleft)*norm(vright)))/DEG2RAD
+
+    return angle
+
+
+def dihedral(atom_a, atom_b, atom_c, atom_d, cell=None):
+    """
+    Calculate the dihedral angle along the path a, b, c, d.
+
+    If a Cell is specified, this will use the minimum image criterion to find
+    the atoms that are closest for the vectors.
+
+    Parameters
+    ----------
+
+    atom_a : Atom
+        the first atom
+    atom_b : Atom
+        one of the atoms
+    atom_c : Atom
+        one of the atoms
+    atom_d : Atom
+        one of the atoms
+    cell : Cell or None
+        if a Cell object is passes the minimum image criterion will be used
+        to calculate the dihedral angle
+
+    Returns
+    -------
+
+    angle: float
+        Angle between the atoms in degrees.
+    """
+
+    if cell is None:
+        vec_a_b = [i - j for i, j in zip(atom_a.pos, atom_b.pos)]
+        vec_b_c = [i - j for i, j in zip(atom_b.pos, atom_c.pos)]
+        vec_c_d = [i - j for i, j in zip(atom_c.pos, atom_d.pos)]
+    else:
+        # Minimum image criterion
+        box = cell.cell
+        vec_a_b = [i - j for i, j in
+                   zip(minimum_image(atom_b, atom_a, box), atom_b.pos)]
+        vec_b_c = [i - j for i, j in
+                   zip(minimum_image(atom_c, atom_b, box), atom_c.pos)]
+        vec_c_d = [i - j for i, j in
+                   zip(minimum_image(atom_d, atom_c, box), atom_d.pos)]
+
+    norm_1 = cross(vec_a_b, vec_b_c)
+    norm_2 = cross(vec_b_c, vec_c_d)
+
+    return -arctan2(dot(vec_b_c, cross(norm_2, norm_1)),
+                    norm(vec_b_c)*dot(norm_1, norm_2))/DEG2RAD
+
+    return angle
+
+
+def minimum_image(atom1, atom2, box):
+    """Return the minimum image coordinates of atom2 with respect to atom1."""
+    f_coa = atom1.fractional[:]
+    f_cob = atom2.fractional[:]
+
+    fdx = f_coa[0] - f_cob[0]
+    if fdx < -0.5:
+        f_cob[0] -= 1
+    elif fdx > 0.5:
+        f_cob[0] += 1
+    fdy = f_coa[1] - f_cob[1]
+    if fdy < -0.5:
+        f_cob[1] -= 1
+    elif fdy > 0.5:
+        f_cob[1] += 1
+    fdz = f_coa[2] - f_cob[2]
+    if fdz < -0.5:
+        f_cob[2] -= 1
+    elif fdz > 0.5:
+        f_cob[2] += 1
+
+    new_b = [f_cob[0]*box[0][0] + f_cob[1]*box[1][0] + f_cob[2]*box[2][0],
+             f_cob[0]*box[0][1] + f_cob[1]*box[1][1] + f_cob[2]*box[2][1],
+             f_cob[0]*box[0][2] + f_cob[1]*box[1][2] + f_cob[2]*box[2][2]]
+    return new_b
 
 
 def matrix_rotate(source, target):

@@ -28,9 +28,9 @@ doing select parts.
 # Revision = {rev}
 
 try:
-    __version_info__ = (1, 3, 2, int("$Revision$".strip("$Revision: ")))
+    __version_info__ = (1, 4, 0, int("$Revision$".strip("$Revision: ")))
 except ValueError:
-    __version_info__ = (1, 3, 2, 0)
+    __version_info__ = (1, 4, 0, 0)
 __version__ = "%i.%i.%i.%i" % __version_info__
 
 import code
@@ -1529,9 +1529,11 @@ class PyNiss(object):
 
         cpi_file = open('%s.faps.cpi' % job_name).readlines()
         probe = cpi_file[4].strip()  # source metal, e.g. Cu, Mo
-        xrd = [int(x) for x in cpi_file[10:]]
-
-        self.structure.sub_property('pxrd', probe=probe, value=xrd)
+        try:
+            xrd = [int(x) for x in cpi_file[10:]]
+            self.structure.sub_property('pxrd', probe=probe, value=xrd)
+        except ValueError:
+            warning("PXRD gave weird result, check structure")
 
 
     @property
@@ -1693,6 +1695,7 @@ class Structure(object):
         self.atoms = []
         self.esp = None
         self.dft_energy = 0.0
+        self.uff_energy = 0.0
         self.guests = []
         self.properties = {}
         self.space_group = None
@@ -2052,13 +2055,22 @@ class Structure(object):
                         box[7], box[8], box[2]]
         self.cell.cell = new_cell
 
+        # looking for energy too
+        md_log = open(path.join(path.dirname(filename), 'md.log'))
+        for line in md_log:
+            if line.startswith('Potential Energy'):
+                self.uff_energy = float(line.split()[-1])
+                info("UFF energy: %f kJ/mol" % self.uff_energy)
+            elif line.startswith('Maximum force'):
+                info("Maximum Force: %f kJ/mol/nm" % float(line.split()[3]))
+
         # Make sure everything is good from here
         if self.check_close_contacts(covalent=1.0):
-            warning("Structure might have atom overlap, check gromacs output!")
+            warning("Structure may have atom overlap, check gromacs output!")
             self.bad_structure = True
 
         if self.bond_length_check():
-            warning("Structure might have strained bonds, check gromacs output!")
+            warning("Structure may have strained bonds, check gromacs output!")
             self.bad_structure = True
 
 

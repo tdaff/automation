@@ -102,6 +102,13 @@ def calculate_binding_sites(guest, tp_point, cell):
     # Only use atom positions for site location
     guest_atom_distances = []
 
+    # Some guests previously only specified the COM probability
+    # This is not supported, but fix by saying that COM is the
+    # only atom
+    if len(guest.atoms) == 1 and guest.probability == [(0, )]:
+        guest.probability = [(1, )]
+        guest_locations[(1, )] = guest_locations[(0,)]
+
     for idx, atom in enumerate(guest.atoms):
         distance = vecdist3(guest.com, atom.pos)
         for probability in guest.probability:

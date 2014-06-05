@@ -71,7 +71,6 @@ potentials =
 probability =
     1
     2
-    0
 probe radius = 1.71
 
 [CO-UFF]
@@ -86,7 +85,6 @@ potentials =
 probability =
     1
     2
-    0
 probe radius = 1.71
 
 [CO-Graphite]
@@ -104,7 +102,6 @@ potentials =
 probability =
     1
     2
-    0
 probe radius = 1.71
 
 [CO-Ligand]
@@ -121,7 +118,6 @@ potentials =
 probability =
     1
     2
-    0
 probe radius = 1.71
 
 [TIP5P]
@@ -138,7 +134,6 @@ potentials =
     Hw  0.000  0.00000
     L   0.000  0.00000
 probability =
-    0
     1
     2 3
 probe radius = 1.4
@@ -157,7 +152,6 @@ potentials =
     Hw  0.000  0.00000
     L   0.000  0.00000
 probability =
-    0
     1
     2 3
 probe radius = 1.4
@@ -175,7 +169,6 @@ potentials =
     Hw  0.00000  0.00000
     Hx  0.00000  0.00000
 probability =
-    0
     1
     2 3
 probe radius = 1.4
@@ -188,7 +181,7 @@ atoms =
 potentials =
     CM  3.7300  0.294106
 probability =
-    0
+    1
 probe radius = 1.8
 
 [CH4-5s]
@@ -204,7 +197,7 @@ potentials =
     C_M  3.43085  0.10500
     H_M  2.84600  0.01522
 probability =
-    0
+    1
 probe radius = 1.8
 
 [N2]

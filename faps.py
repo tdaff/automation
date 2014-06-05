@@ -28,9 +28,9 @@ doing select parts.
 # Revision = {rev}
 
 try:
-    __version_info__ = (1, 3, 1, int("$Revision$".strip("$Revision: ")))
+    __version_info__ = (1, 3, 2, int("$Revision$".strip("$Revision: ")))
 except ValueError:
-    __version_info__ = (1, 3, 1, 0)
+    __version_info__ = (1, 3, 2, 0)
 __version__ = "%i.%i.%i.%i" % __version_info__
 
 import code
@@ -2451,7 +2451,7 @@ class Structure(object):
         # Guests
         for guest in self.guests:
             natoms = guest.natoms
-            if dof_fix:
+            if dof_fix and guest.ident in include_guests:
                  natoms += 1
             field.extend(["&guest %s: %s\n" % (guest.name, guest.source),
                           "NUMMOLS %i\n" % guest_nummols.get(guest.ident, 0),
@@ -2470,7 +2470,7 @@ class Structure(object):
                 else:
                     # atom positions confuse dl_poly which takes nrept or ifrz
                     field.append(" 1 0\n")
-                    if dof_fix:
+                    if dof_fix and guest.ident in include_guests:
                         field.append("%-6s %12.6f %12.6f 1 0\n" %
                                      tuple(["Non", 0.0, 0.0]))
             field.append("rigid 1\n")
@@ -2822,7 +2822,7 @@ class Structure(object):
         os.chdir(startdir)
 
     def absl_postproc(self, filepath, tp_point, options):
-        """Update structure properties from gcmc OUTPUT."""
+        """Update structure properties from DL_POLY outputs."""
         startdir = os.getcwd()
         os.chdir(filepath)
 
@@ -2864,8 +2864,8 @@ class Structure(object):
                     for line_idx, line in enumerate(output):
                         if "run terminated after" in line:
                             output_energies = output[line_idx+10].split()
-                            e_vdw = float(output_energies[3])
-                            e_esp = float(output_energies[4]) - empty_esp
+                            e_vdw = float(output_energies[4])
+                            e_esp = float(output_energies[5]) - empty_esp
                     revcon = open(path.join(bs_directory, 'REVCON')).readlines()
                     revcon = revcon[6::4]
                     # can just use the peak value
@@ -2873,8 +2873,18 @@ class Structure(object):
                 else:
                     # energies
                     statis = open(path.join(bs_directory, 'STATIS')).readlines()
-                    e_vdw = float(statis[-9].split()[3])
-                    e_esp = float(statis[-9].split()[4]) - empty_esp
+                    # Need to do a backwards search for the start of the last
+                    # block since block size varies with number of atoms
+                    lidx = 0  # start block of final STATIS data
+                    for ridx, line in enumerate(statis[::-1]):
+                        if 'ENERGY UNITS' in line:
+                            lidx = 1-ridx
+                            break
+                    else:
+                        warning('No energies in STATIS')
+
+                    e_vdw = float(statis[lidx].split()[3])
+                    e_esp = float(statis[lidx].split()[4]) - empty_esp
                     # position
                     revcon = open(path.join(bs_directory, 'REVCON')).readlines()
                     revcon = revcon[6::4]

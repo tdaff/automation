@@ -1536,7 +1536,7 @@ class PyNiss(object):
         except ValueError:
             warning("PXRD gave weird result, check structure")
         # These are big and useless?
-        remove_files(['%s.faps.lis' % job_name, '%s.faps.cpi' % job_name,
+        remove_files(['%s.faps.lis' % job_name, '%s.faps.eld' % job_name,
                       '%s.faps.ps' % job_name])
 
 

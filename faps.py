@@ -478,7 +478,8 @@ class PyNiss(object):
             self.dump_state()
 
         if self.state['ff_opt'][0] == FINISHED:
-            self.structure.update_pos(self.options.get('ff_opt_code'))
+            self.structure.update_pos(self.options.get('ff_opt_code'),
+                                      options=self.options)
             self.state['ff_opt'] = (UPDATED, False)
             self.dump_state()
 
@@ -1534,6 +1535,9 @@ class PyNiss(object):
             self.structure.sub_property('pxrd', probe=probe, value=xrd)
         except ValueError:
             warning("PXRD gave weird result, check structure")
+        # These are big and useless?
+        remove_files(['%s.faps.lis' % job_name, '%s.faps.cpi' % job_name,
+                      '%s.faps.ps' % job_name])
 
 
     @property
@@ -1738,7 +1742,7 @@ class Structure(object):
         else:
             error("Unknown filetype %s" % filetype)
 
-    def update_pos(self, opt_code):
+    def update_pos(self, opt_code, options=None):
         """Select the method for updating atomic positions."""
         opt_path = path.join('faps_%s_%s' % (self.name, opt_code))
         info("Updating positions from %s" % opt_code)
@@ -1748,6 +1752,10 @@ class Structure(object):
             self.from_siesta(path.join(opt_path, '%s.STRUCT_OUT' % self.name))
         elif opt_code == 'gromacs':
             self.from_gromacs(path.join(opt_path, 'confout.g96'))
+            unneeded_files = options.gettuple('gromacs_delete_files')
+            remove_files(unneeded_files, opt_path)
+            keep_files = options.gettuple('gromacs_compress_files')
+            compress_files(keep_files, opt_path)
         elif opt_code == 'gulp':
             opt_path = "%s_opt" % opt_path
             self.optimisation_output = validate_gulp_output(
@@ -2072,7 +2080,6 @@ class Structure(object):
         if self.bond_length_check():
             warning("Structure may have strained bonds, check gromacs output!")
             self.bad_structure = True
-
 
 
     def from_gulp_output(self, filename):
@@ -3444,7 +3451,6 @@ class Structure(object):
                 guest.binding_energies[tp_point] = binding_energies
             else:
                 guest.binding_energies = {tp_point: binding_energies}
-
 
         unneeded_files = options.gettuple('absl_delete_files')
         remove_files(unneeded_files)

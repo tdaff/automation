@@ -874,6 +874,7 @@ class PyNiss(object):
         """Run GROMACS to do a UFF optimisation."""
         job_name = self.options.get('job_name')
         optim_code = self.options.get('ff_opt_code')
+        g_verbose = self.options.getbool('gromacs_verbose')
 
         # Run in a subdirectory
         optim_dir = path.join(self.options.get('job_dir'),
@@ -899,16 +900,23 @@ class PyNiss(object):
         filetemp.close()
 
         filetemp = open('grompp.mdp', 'w')
-        filetemp.writelines(mk_gromacs_mdp(self.structure.cell, mode='bfgs'))
+        filetemp.writelines(mk_gromacs_mdp(self.structure.cell, mode='bfgs',
+                                           verbose=g_verbose))
         filetemp.close()
 
         filetemp = open('pcoupl.mdp', 'w')
-        filetemp.writelines(mk_gromacs_mdp(self.structure.cell, mode='pcoupl'))
+        filetemp.writelines(mk_gromacs_mdp(self.structure.cell, mode='pcoupl',
+                                           verbose=g_verbose))
         filetemp.close()
 
         # prepare for simulation!
+        # Codes we need; comment out the trjconv if being quiet
         grompp = self.options.get('grompp_exe')
         mdrun = self.options.get('mdrun_exe')
+        if g_verbose:
+            trjconv = "echo 0 | %s" % self.options.get('trjconv_exe')
+        else:
+            trjconv = "#echo 0 | %s" % self.options.get('trjconv_exe')
 
         # everything runs in a script -- to many steps otherwise
         # only make the g96 file at the end so we can tell if it breaks
@@ -916,17 +924,20 @@ class PyNiss(object):
         gromacs_faps.writelines([
             "#!/bin/bash\n\n",
             "# preprocess first bfgs\n",
-            "%s &>> g.log\n\n" % grompp,
+            "%s -maxwarn 2 &>> g.log\n\n" % grompp,
             "# bfgs step\n",
             "%s -nt 1 &>> g.log\n\n" % mdrun,
+            "%s -o traject1.gro -f traj.trr &>> g.log\n" % trjconv,
             "# overwrite with pcoupl step\n",
-            "%s -t traj.trr -f pcoupl.mdp &>> g.log\n\n" % grompp,
+            "%s -maxwarn 2 -t traj.trr -f pcoupl.mdp &>> g.log\n\n" % grompp,
             "# pcoupl step\n",
             "%s -nt 1 &>> g.log\n\n" % mdrun,
+            "%s -o traject2.gro -f traj.trr &>> g.log\n" % trjconv,
             "# overwrite with final bfgs\n",
-            "%s -t traj.trr &>> g.log\n\n" % grompp,
+            "%s -maxwarn 2 -t traj.trr &>> g.log\n\n" % grompp,
             "# generate final structure\n",
-            "%s -nt 1 -c confout.g96 &>> g.log\n" % mdrun])
+            "%s -nt 1 -c confout.g96 &>> g.log\n" % mdrun,
+            "%s -o traject3.gro -f traj.trr &>> g.log\n" % trjconv])
 
         gromacs_faps.close()
         os.chmod('gromacs_faps', 0o755)
@@ -2843,7 +2854,12 @@ class Structure(object):
 
                 unique_bonds[typed_bond] = (r0, kb)  # in nm
 
-            params = unique_bonds[typed_bond]
+            if atom_a.is_metal or atom_b.is_metal and keep_metal_geometry:
+                params = (min_distance(atom_a, atom_b, self.cell.cell),
+                          unique_bonds[typed_bond][1]*10)
+            else:
+                params = unique_bonds[typed_bond]
+
             bond_func = 1  # gromacs harmonic
             # add 1 to bond as 1 indexed
             # All these are converted to gromcas units, ugh...
@@ -2920,7 +2936,7 @@ class Structure(object):
                         # harmonic potential means it will not
                         # flip around
                         potential = "harmonic"
-                        kappa = 10000
+                        kappa *= 10
                         thetamin = angle_between(l_atom, central_atom, r_atom,
                                                  cell=self.cell)
                     else:
@@ -3047,7 +3063,7 @@ class Structure(object):
                 print("WARNING!!! nphi0 = %r" % nphi0)
 
             if atom_b.is_metal or atom_c.is_metal and keep_metal_geometry:
-                V = 100.0
+                V *= 10.0
                 phi_s = dihedral(atom_a, atom_b, atom_c, atom_d, cell=self.cell)
             else:
                 phi_s = nphi0 - 180.0  # phi_s in degrees
@@ -4666,7 +4682,7 @@ def mk_dl_poly_control(options, dummy=False):
     return control
 
 
-def mk_gromacs_mdp(cell, mode='bfgs', terse=True):
+def mk_gromacs_mdp(cell, mode='bfgs', verbose=False):
     """
     Generate an energy minimsation file for GROMACS, with cell based cutoff.
 
@@ -4729,12 +4745,12 @@ def mk_gromacs_mdp(cell, mode='bfgs', terse=True):
         "emstep              =  0.01\n",  # (0.01) step size
     ])
 
-    if terse:
-        mdp.extend(["nstxout             =  2000\n",  # trajectory frequency
-                    "nstenergy           =  0\n"])  # energy frequency
-    else:
+    if verbose:
         mdp.extend(["nstxout             =  1\n",  # trajectory frequency
                     "nstenergy           =  1\n"])  # energy frequency
+    else:
+        mdp.extend(["nstxout             =  2000\n",  # trajectory frequency
+                    "nstenergy           =  0\n"])  # energy frequency
 
     return mdp
 
@@ -5065,6 +5081,10 @@ def angle_between(left, middle, right, cell=None):
                   zip(minimum_image(middle, right, box), middle.pos)]
 
     angle = arccos(dot(vleft, vright)/(norm(vleft)*norm(vright)))/DEG2RAD
+
+    if angle != angle:
+        # angle is a nan; sometimes happened with older numpy
+        angle = 180
 
     return angle
 

@@ -2856,7 +2856,7 @@ class Structure(object):
 
             if atom_a.is_metal or atom_b.is_metal and keep_metal_geometry:
                 params = (min_distance(atom_a, atom_b, self.cell.cell),
-                          unique_bonds[typed_bond][1]*10)
+                          unique_bonds[typed_bond][1]*10.0)
             else:
                 params = unique_bonds[typed_bond]
 
@@ -2909,13 +2909,15 @@ class Structure(object):
                     ka *= (3.0*rab*rbc*(1.0 - cosT0*cosT0) - rac*rac*cosT0)
 
                     # FIXME(tdaff) change uff_coordination to coordination
-                    if abs(c2) > 0.001:
+                    if central_atom.uff_coordination == 1:
+                        # linear bonds (e.g. C_1 triple bonds) had 0 force
+                        # constant otherwise
+                        thetamin = 180.0
+                        kappa = ka
+                    elif abs(c2) > 0.001:
                         thetamin = pi - arccos(c1/(4.0*c2))
                         thetamin /= DEG2RAD
                         kappa = ka * (16.0*c2*c2 - c1*c1) / (4.0*c2)
-                    elif central_atom.uff_coordination == 1:
-                        thetamin = 180.0
-                        kappa = ka
                     elif central_atom.uff_coordination == 2:
                         thetamin = 120.0
                         kappa = 4.0*ka/3.0
@@ -2936,9 +2938,12 @@ class Structure(object):
                         # harmonic potential means it will not
                         # flip around
                         potential = "harmonic"
-                        kappa *= 10
+                        kappa *= 10.0
                         thetamin = angle_between(l_atom, central_atom, r_atom,
                                                  cell=self.cell)
+                    elif central_atom.uff_coordination == 1:
+                        # linear bonds seemed too flexible
+                        potential = "harmonic"
                     else:
                         potential = "G96"
 

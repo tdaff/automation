@@ -28,9 +28,9 @@ doing select parts.
 # Revision = {rev}
 
 try:
-    __version_info__ = (1, 3, 2, int("$Revision$".strip("$Revision: ")))
+    __version_info__ = (1, 4, 0, int("$Revision$".strip("$Revision: ")))
 except ValueError:
-    __version_info__ = (1, 3, 2, 0)
+    __version_info__ = (1, 4, 0, 0)
 __version__ = "%i.%i.%i.%i" % __version_info__
 
 import code
@@ -57,7 +57,7 @@ from math import ceil, log
 from os import path
 
 import numpy as np
-from numpy import pi, cos, sin, sqrt, arccos
+from numpy import pi, cos, sin, sqrt, arccos, arctan2
 from numpy import array, identity, dot, cross
 from numpy.linalg import norm
 
@@ -90,7 +90,7 @@ NOT_SUBMITTED = -2
 # Possible folder names; need these so that similar_ones_with_underscores are
 # not globbed
 FOLDER_SUFFIXES = ['gulp', 'gulp_opt', 'gulp_fit', 'siesta', 'vasp', 'egulp',
-                   'repeat', 'fastmc', 'properties', 'absl']
+                   'repeat', 'fastmc', 'properties', 'absl', 'gromacs']
 
 
 class PyNiss(object):
@@ -430,6 +430,25 @@ class PyNiss(object):
                      (probe, void, void_fraction, specific_area))
             info("========= ========= ========= =========")
 
+        pxrd = self.structure.sub_property('pxrd')
+        if pxrd:
+            info("Summary of PXRD; see properties for cpi file")
+            for probe, pattern in pxrd.items():
+                info("%s Powder XRD:" % probe)
+                plot = [['|']*21]
+                # 1000 points makes this 75 columns wide
+                averaged = [sum(pattern[x:x+20])/20.0
+                            for x in range(0, 1000, 20)]
+                # make peaks horizontal first
+                peak = max(averaged)
+                for point in averaged:
+                    height = int(round(15*point/peak))
+                    plot.append([' ']*(15-height) + ['|']*height + ['-'])
+                # transpose for printing
+                plot = zip(*plot)
+                for line in plot:
+                    info(''.join(line))
+
 
     def step_force_field(self):
         """Check the force field step of the calculation."""
@@ -459,7 +478,8 @@ class PyNiss(object):
             self.dump_state()
 
         if self.state['ff_opt'][0] == FINISHED:
-            self.structure.update_pos(self.options.get('ff_opt_code'))
+            self.structure.update_pos(self.options.get('ff_opt_code'),
+                                      options=self.options)
             self.state['ff_opt'] = (UPDATED, False)
             self.dump_state()
 
@@ -778,7 +798,9 @@ class PyNiss(object):
         """Select correct method for running the dft/optim."""
         ff_opt_code = self.options.get('ff_opt_code')
         info("Running a %s calculation" % ff_opt_code)
-        if ff_opt_code == 'gulp':
+        if ff_opt_code == 'gromacs':
+            jobid = self.run_optimise_gromacs()
+        elif ff_opt_code == 'gulp':
             jobid = self.run_optimise_gulp()
         else:
             critical("Unknown force field method: %s" % ff_opt_code)
@@ -847,6 +869,91 @@ class PyNiss(object):
         return jobid
 
     ## Methods for specific codes start here
+
+    def run_optimise_gromacs(self):
+        """Run GROMACS to do a UFF optimisation."""
+        job_name = self.options.get('job_name')
+        optim_code = self.options.get('ff_opt_code')
+        g_verbose = self.options.getbool('gromacs_verbose')
+
+        # Run in a subdirectory
+        optim_dir = path.join(self.options.get('job_dir'),
+                              'faps_%s_%s' % (job_name, optim_code))
+        mkdirs(optim_dir)
+        os.chdir(optim_dir)
+        debug("Running in %s" % optim_dir)
+
+        gro_file, top_file, itp_file = self.structure.to_gromacs()
+
+        # We use default names so we don't have to specify
+        # anything extra on the command line
+        filetemp = open('conf.gro', 'w')
+        filetemp.writelines(gro_file)
+        filetemp.close()
+
+        filetemp = open('topol.top', 'w')
+        filetemp.writelines(top_file)
+        filetemp.close()
+
+        filetemp = open('topol.itp', 'w')
+        filetemp.writelines(itp_file)
+        filetemp.close()
+
+        filetemp = open('grompp.mdp', 'w')
+        filetemp.writelines(mk_gromacs_mdp(self.structure.cell, mode='bfgs',
+                                           verbose=g_verbose))
+        filetemp.close()
+
+        filetemp = open('pcoupl.mdp', 'w')
+        filetemp.writelines(mk_gromacs_mdp(self.structure.cell, mode='pcoupl',
+                                           verbose=g_verbose))
+        filetemp.close()
+
+        # prepare for simulation!
+        # Codes we need; comment out the trjconv if being quiet
+        grompp = self.options.get('grompp_exe')
+        mdrun = self.options.get('mdrun_exe')
+        if g_verbose:
+            trjconv = "echo 0 | %s" % self.options.get('trjconv_exe')
+        else:
+            trjconv = "#echo 0 | %s" % self.options.get('trjconv_exe')
+
+        # everything runs in a script -- to many steps otherwise
+        # only make the g96 file at the end so we can tell if it breaks
+        gromacs_faps = open('gromacs_faps', 'w')
+        gromacs_faps.writelines([
+            "#!/bin/bash\n\n",
+            "# preprocess first bfgs\n",
+            "%s -maxwarn 2 &>> g.log\n\n" % grompp,
+            "# bfgs step\n",
+            "%s -nt 1 &>> g.log\n\n" % mdrun,
+            "%s -o traject1.gro -f traj.trr &>> g.log\n" % trjconv,
+            "# overwrite with pcoupl step\n",
+            "%s -maxwarn 2 -t traj.trr -f pcoupl.mdp &>> g.log\n\n" % grompp,
+            "# pcoupl step\n",
+            "%s -nt 1 &>> g.log\n\n" % mdrun,
+            "%s -o traject2.gro -f traj.trr &>> g.log\n" % trjconv,
+            "# overwrite with final bfgs\n",
+            "%s -maxwarn 2 -t traj.trr &>> g.log\n\n" % grompp,
+            "# generate final structure\n",
+            "%s -nt 1 -c confout.g96 &>> g.log\n" % mdrun,
+            "%s -o traject3.gro -f traj.trr &>> g.log\n" % trjconv])
+
+        gromacs_faps.close()
+        os.chmod('gromacs_faps', 0o755)
+
+        # Leave the run to the shell
+        info("Generated gromcas inputs and run script")
+
+        if self.options.getbool('no_submit'):
+            info("GROMACS input files generated; skipping job submission")
+            jobid = False
+        else:
+            jobid = self.job_handler.submit(optim_code, self.options)
+
+        # Tidy up at the end
+        os.chdir(self.options.get('job_dir'))
+        return jobid
 
     def run_optimise_gulp(self):
         """Run GULP to do a UFF optimisation."""
@@ -1333,6 +1440,13 @@ class PyNiss(object):
             except (OSError, IOError):
                 error("Error running zeo++; skipping")
 
+        # PLATON can calculate the PXRD pattern
+        if self.options.getbool('platon_pxrd'):
+            try:
+                self.calculate_pxrd()
+            except (OSError, IOError):
+                error("Error running platon; skipping")
+
         os.chdir(job_dir)
 
 
@@ -1354,7 +1468,7 @@ class PyNiss(object):
         filetemp.writelines(zeofiles[2])
         filetemp.close()
 
-        probes = set([1.0]) # Always have a helium probe
+        probes = set([1.0])  # Always have a helium probe
         for guest in self.structure.guests:
             if hasattr(guest, 'probe_radius'):
                 probes.add(guest.probe_radius)
@@ -1406,6 +1520,35 @@ class PyNiss(object):
                 if 'A^3' in line:
                     self.structure.sub_property('void_volume', probe,
                                                 value=float(line.split()[-1]))
+
+    def calculate_pxrd(self):
+        """Run platon PXRD and update properties with no error trapping."""
+
+        job_name = self.options.get('job_name')
+        out_cif = self.structure.to_cif()
+
+        filetemp = open("%s.faps.cif" % job_name, 'w')
+        filetemp.writelines(out_cif)
+        filetemp.close()
+
+        platon_exe = self.options.get('platon_exe')
+        platon_cmd = [platon_exe, '-Q', '-o', '%s.faps.cif' % job_name]
+
+        info("Running PLATON PXRD")
+        debug("Running command: '" + " ".join(platon_cmd) + "'")
+        platon_process = subprocess.Popen(platon_cmd, stdout=subprocess.PIPE)
+        platon_process.wait()
+
+        cpi_file = open('%s.faps.cpi' % job_name).readlines()
+        probe = cpi_file[4].strip()  # source metal, e.g. Cu, Mo
+        try:
+            xrd = [int(x) for x in cpi_file[10:]]
+            self.structure.sub_property('pxrd', probe=probe, value=xrd)
+        except ValueError:
+            warning("PXRD gave weird result, check structure")
+        # These are big and useless?
+        remove_files(['%s.faps.lis' % job_name, '%s.faps.eld' % job_name,
+                      '%s.faps.ps' % job_name])
 
 
     @property
@@ -1567,6 +1710,7 @@ class Structure(object):
         self.atoms = []
         self.esp = None
         self.dft_energy = 0.0
+        self.uff_energy = 0.0
         self.guests = []
         self.properties = {}
         self.space_group = None
@@ -1609,7 +1753,7 @@ class Structure(object):
         else:
             error("Unknown filetype %s" % filetype)
 
-    def update_pos(self, opt_code):
+    def update_pos(self, opt_code, options=None):
         """Select the method for updating atomic positions."""
         opt_path = path.join('faps_%s_%s' % (self.name, opt_code))
         info("Updating positions from %s" % opt_code)
@@ -1617,6 +1761,12 @@ class Structure(object):
             self.from_vasp(path.join(opt_path, 'CONTCAR'), update=True)
         elif opt_code == 'siesta':
             self.from_siesta(path.join(opt_path, '%s.STRUCT_OUT' % self.name))
+        elif opt_code == 'gromacs':
+            self.from_gromacs(path.join(opt_path, 'confout.g96'))
+            unneeded_files = options.gettuple('gromacs_delete_files')
+            remove_files(unneeded_files, opt_path)
+            keep_files = options.gettuple('gromacs_compress_files')
+            compress_files(keep_files, opt_path)
         elif opt_code == 'gulp':
             opt_path = "%s_opt" % opt_path
             self.optimisation_output = validate_gulp_output(
@@ -1816,7 +1966,7 @@ class Structure(object):
             # Some of pete's symmetrised mofs need a higher tolerence
             duplicate_tolerance = 0.2  # Angstroms
             self.remove_duplicates(duplicate_tolerance)
-        self.order_by_types()
+        #self.order_by_types()
 
         bonds = {}
         # TODO(tdaff): this works for the one tested MOF; 0.1 was not enough
@@ -1899,6 +2049,49 @@ class Structure(object):
         self.cell.from_lines(struct_out[:3])
         for atom, line in zip(self.atoms, struct_out[4:]):
             atom.from_siesta(line, self.cell.cell)
+
+    def from_gromacs(self, filename):
+        """Update the structure from a gromacs optimisation G96 format file."""
+
+        info("Updating positions from file: %s" % filename)
+        g96 = open(filename).readlines()
+
+        # Atom positions, just regular
+        for line, atom in zip(g96[4:], self.atoms):
+            atom.pos = [10.0*float(x) for x in line[25:].split()]  # nm to A
+            del atom.fractional
+
+        # New cell too, possibly, check ordering.
+        box = [10*float(x) for x in g96[-2].split()]
+        # Only reports three values for cubic cell
+        if len(box) == 3:
+            new_cell = [box[0], 0.0, 0.0,
+                        0.0, box[1], 0.0,
+                        0.0, 0.0, box[2]]
+        else:
+            new_cell = [box[0], box[3], box[4],
+                        box[5], box[1], box[6],
+                        box[7], box[8], box[2]]
+        self.cell.cell = new_cell
+
+        # looking for energy too
+        md_log = open(path.join(path.dirname(filename), 'md.log'))
+        for line in md_log:
+            if line.startswith('Potential Energy'):
+                self.uff_energy = float(line.split()[-1])
+                info("UFF energy: %f kJ/mol" % self.uff_energy)
+            elif line.startswith('Maximum force'):
+                info("Maximum Force: %f kJ/mol/nm" % float(line.split()[3]))
+
+        # Make sure everything is good from here
+        if self.check_close_contacts(covalent=1.0):
+            warning("Structure may have atom overlap, check gromacs output!")
+            self.bad_structure = True
+
+        if self.bond_length_check():
+            warning("Structure may have strained bonds, check gromacs output!")
+            self.bad_structure = True
+
 
     def from_gulp_output(self, filename):
         """Update the structure from the gulp optimisation output."""
@@ -2525,24 +2718,22 @@ class Structure(object):
 
         return config, field
 
-    def to_gromacs(self):
-        """Procedure:
-        generate .gro atom positions
-        generate .top lj topology
-        generate .itp uff topology
-        gererate .mdp parameters
-        grompp -f mdp_file -c gro_file -p top_file -o output.tpr
-        mdrun -s moffive -o traj-c moffive -nt 1
+    def to_gromacs(self, keep_metal_geometry=True):
+        """Generate GROMACS structure and topology.
+
+        Return gro, top and itp files as lists of lines.
         """
 
         ##
         # .gro file
         ##
-        # TITLE linw
+        # TITLE line
         # number of atoms
         gro_file = ["%s\n" % self.name, " %i\n" % self.natoms]
-        # TODO(tdaff): check residue in toplogy?
-        residue = (1, self.name[:4].upper())
+
+        # Don't use the MOF name so that we can refer to this easily later
+        residue = (1, "RESI")
+
         for idx, atom in enumerate(self.atoms):
             # In the specification the atom position is given as
             # %8.3f in nm, but we probably would like more accuracy
@@ -2555,7 +2746,7 @@ class Structure(object):
         # cell is also in nm
         # v1(x) v2(y) v3(z) v1(y) v1(z) v2(x) v2(z) v3(x) v3(y)
         box = self.cell.cell/10.0
-        # gromacs needs these condtiions. Might need to rotate cell sometimes?
+        # gromacs needs these conditions. Might need to rotate cell sometimes?
         if not (box[0][1] == box[0][2] == box[1][2] == 0):
             error("Gromacs can't handle this cell orientation")
         gro_file.append("%f %f %f %f %f %f %f %f %f\n" % (
@@ -2567,17 +2758,21 @@ class Structure(object):
         ##
         # .top file
         ##
-        comb_rule = 1 # 1 = LORENTZ_BERTHELOT; 2 = GEOMETRIC
+        comb_rule = 2  # 1 = LORENTZ_BERTHELOT; 2 = GEOMETRIC
+        # geometric is recommended in UFF
+        # if you use Lorentz Berthelot then sigma and epsilon become C6 and C12
         top_file = [
             "; Topology file for %s\n" % self.name,
             "[ defaults ]\n",
             "; nbfunc      comb-rule      gen-pairs       fudgeLJ    fudgeQQ\n",
-            "1             %i              yes             1.0        1.0\n\n" % (comb_rule)]
+            "1             %i              yes             1.0        1.0\n\n"
+            % comb_rule]
 
         # define the forcefield for UFF
         unique_types = set()
         top_file.append("[ atomtypes ]\n")
-        top_file.append("; name1 name2   mass     charge  ptype   sigma   epsilon\n")
+        top_file.append("; name1 name2   mass     charge "
+                        " ptype   sigma   epsilon\n")
         for atom in self.atoms:
             if atom.uff_type not in unique_types:
                 uff_type = atom.uff_type
@@ -2586,10 +2781,13 @@ class Structure(object):
                 sigma = 0.1*UFF_FULL[uff_type][2]*(2**(-1.0/6.0))
                 # epsilon = D1 in kcal
                 epsilon = UFF_FULL[uff_type][3] * KCAL_TO_KJ
-                top_file.append("%-6s   %-6s   %9.4f   %9.4f   A %12.7f %12.7f\n" % (uff_type, uff_type, atom.mass, 0.0, sigma, epsilon))
+                top_file.append("%-6s   %-6s   %9.4f   %9.4f   A %12.7f "
+                                "%12.7f\n" % (uff_type, uff_type, atom.mass,
+                                              0.0, sigma, epsilon))
                 unique_types.add(uff_type)
 
-        top_file.extend(["\n#include <%s.itp>\n\n" % self.name,
+        # for included file, use default name scheme "topol..."
+        top_file.extend(["\n#include <topol.itp>\n\n",
                          "[ system ]\n",
                          "UFF optimisation of %s\n\n" % self.name,
                          "[ molecules ]\n",
@@ -2603,16 +2801,24 @@ class Structure(object):
                     "; molname nrexcl\n"
                     "%s 3\n" % residue[1],
                     "[ atoms ]\n",
-                    "; nr type  resnr    residue    atom     cgnr    charge       mass \n"]
+                    "; nr type  resnr    residue    atom     "
+                    "cgnr    charge       mass \n"]
 
-        # atoms
+        ##
+        #  atoms
+        ##
         for idx, atom in enumerate(self.atoms):
             uff_type = atom.uff_type
-            # charge group is different for each atom as gromacs has max of 32 in a group
-            itp_file.append("%-6i  %-6s  %i  %-6s  %-6s   %d  %9.4f  %9.4f\n" % (idx+1, uff_type, residue[0], residue[1], uff_type, idx+1, atom.charge, atom.mass))
+            # charge group is different for each atom
+            # as gromacs has max of 32 in a group
+            itp_file.append("%-6i  %-6s  %i  %-6s  %-6s   %d  %9.4f  %9.4f\n" %
+                            (idx+1, uff_type, residue[0], residue[1], uff_type,
+                             idx+1, atom.charge, atom.mass))
 
+        ##
         # bonds
-        itp_file.append(" [ bonds ]\n")
+        ##
+        itp_file.append("\n[ bonds ]\n")
         itp_file.append("; ai aj funct b0 kb\n")
 
         unique_bonds = {}
@@ -2638,36 +2844,52 @@ class Structure(object):
                 chiJ = UFF_FULL[atom_b.uff_type][8]
                 rbo = -0.1332*(ri+rj)*log(bondorder)
 
-                ren = ri*rj*(((sqrt(chiI) - sqrt(chiJ))**2)) / (chiI*ri + chiJ*rj)
-                r0 = 0.1*(ri + rj + rbo - ren)
+                ren = ri*rj*(((sqrt(chiI) - sqrt(chiJ))**2))/(chiI*ri + chiJ*rj)
+                r0 = (ri + rj + rbo - ren)
 
                 # force constant
                 # parameters Z1
-                kb = (KCAL_TO_KJ * 664.12 * UFF_FULL[uff_a][5] * UFF_FULL[uff_b][5])/(r0**3)
+                kb = (UFF_FULL[uff_a][5]*UFF_FULL[uff_b][5])/(r0**3)
+                kb *= 0.5*KCAL_TO_KJ*664.12
 
-                unique_bonds[typed_bond] = (r0, kb)
+                unique_bonds[typed_bond] = (r0, kb)  # in nm
 
-            params = unique_bonds[typed_bond]
+            if atom_a.is_metal or atom_b.is_metal and keep_metal_geometry:
+                params = (min_distance(atom_a, atom_b, self.cell.cell),
+                          unique_bonds[typed_bond][1]*10.0)
+            else:
+                params = unique_bonds[typed_bond]
+
             bond_func = 1  # gromacs harmonic
             # add 1 to bond as 1 indexed
-            itp_file.append('%-5i %-5i %1i %11.4f %11.4f ; %-5s %-5s %.2f\n' % (bond[0]+1, bond[1]+1, bond_func, params[0], params[1], typed_bond[0], typed_bond[1], bondorder))
+            # All these are converted to gromcas units, ugh...
+            itp_file.append('%-5i %-5i %1i %11.4f %11.4f ; %-5s %-5s %.2f\n' %
+                            (bond[0]+1, bond[1]+1, bond_func, 0.1*params[0],
+                             200*params[1], typed_bond[0], typed_bond[1],
+                             bondorder))
 
+        ##
         # angles
-        itp_file.append("\n [ angles ]\n")
+        ##
+        itp_file.append("\n[ angles ]\n")
 
         for idx_a in sorted(bonding_table):
             bonded_atoms = bonding_table[idx_a]
             for l_idx in bonded_atoms:
                 for r_idx in bonded_atoms:
-                    if l_idx == r_idx:
+                    if r_idx >= l_idx:
+                        # don't include angles twice
                         continue
                     # FIXME(tdaff) special cases for 5 or more coord
+                    # tag central uff and two largest neighbours
                     central_atom = self.atoms[idx_a]
                     l_atom = self.atoms[l_idx]
                     r_atom = self.atoms[r_idx]
+                    # FIXME(tdaff) GetCoordination()
                     coordination = len(bonded_atoms)
                     # FIXME(tdaff) over/under coordinated atoms?
                     theta0 = UFF_FULL[central_atom.uff_type][1]
+                    # FIXME(tdaff) switch if coordination is not correct
                     cosT0 = cos(theta0*DEG2RAD)
                     sinT0 = sin(theta0*DEG2RAD)
                     c2 = 1.0 / (4.0 * sinT0 * sinT0)
@@ -2686,16 +2908,270 @@ class Structure(object):
                     ka = (644.12 * KCAL_TO_KJ) * (zi * zk / (rac**5.0))
                     ka *= (3.0*rab*rbc*(1.0 - cosT0*cosT0) - rac*rac*cosT0)
 
-                    thetamin = (pi-arccos(c1/(4.0*c2))/DEG2RAD)
-                    kappa = ka * (16.0*c2*c2 - c1*c1) / (4.0* c2)
-                    itp_file.append("%-5i %-5i %-5i %3i %f %f ; %-5s %-5s %-5s" % (l_idx + 1, idx_a + 1, r_idx + 1, 1, thetamin, kappa, l_atom.uff_type, central_atom.uff_type, r_atom.uff_type))
+                    # FIXME(tdaff) change uff_coordination to coordination
+                    if central_atom.uff_coordination == 1:
+                        # linear bonds (e.g. C_1 triple bonds) had 0 force
+                        # constant otherwise
+                        thetamin = 180.0
+                        kappa = ka
+                    elif abs(c2) > 0.001:
+                        thetamin = pi - arccos(c1/(4.0*c2))
+                        thetamin /= DEG2RAD
+                        kappa = ka * (16.0*c2*c2 - c1*c1) / (4.0*c2)
+                    elif central_atom.uff_coordination == 2:
+                        thetamin = 120.0
+                        kappa = 4.0*ka/3.0
+                    elif central_atom.uff_coordination in (4, 6):
+                        thetamin = 90.0
+                        kappa = 2.0*ka
+                    elif central_atom.uff_coordination == 7:
+                        alpha = 2.0*pi/5.0
+                        c7 = sin(alpha)*(cos(alpha) - cos(2*alpha))
+                        thetamin = 72.0
+                        kappa = 2.0 * c7*c7 * ka * c1
+                    else:
+                        thetamin = pi - arccos(c1/(4.0*c2))
+                        thetamin /= DEG2RAD
+                        kappa = ka * (16.0*c2*c2 - c1*c1) / (4.0*c2)
 
-        #with open("moffive.top", 'w') as tempfile:
-        #    tempfile.writelines(top_file)
-        #with open("moffive.gro", 'w') as tempfile:
-        #    tempfile.writelines(gro_file)
-        #with open("moffive.itp", 'w') as tempfile:
-        #    tempfile.writelines(itp_file)
+                    if central_atom.is_metal and keep_metal_geometry:
+                        # harmonic potential means it will not
+                        # flip around
+                        potential = "harmonic"
+                        kappa *= 10.0
+                        thetamin = angle_between(l_atom, central_atom, r_atom,
+                                                 cell=self.cell)
+                    elif central_atom.uff_coordination == 1:
+                        # linear bonds seemed too flexible
+                        potential = "harmonic"
+                    else:
+                        potential = "G96"
+
+                    if potential == "G96":
+                        kappa /= sin(thetamin*DEG2RAD)**2
+                        potential_function = 2
+                    else:  # harmonic
+                        potential_function = 1
+
+                    angle_fmt = ("%-6i %-6i %-6i  %i  %9.4f  %9.4f ;"
+                                 " %-6s %-6s %-6s\n")
+
+                    itp_file.append(angle_fmt % (
+                        l_idx + 1, idx_a + 1, r_idx + 1, potential_function,
+                        thetamin, kappa, l_atom.uff_type,
+                        central_atom.uff_type, r_atom.uff_type))
+
+        ##
+        # dihedrals
+        ##
+
+        itp_file.append("\n[ dihedrals ]\n; proper torsion terms\n")
+
+        # Like OB FindTorsions
+        # Generate all torsions first so we can find equivalents
+        torsions = []
+        for idx_b in sorted(bonding_table):
+            for idx_c in bonding_table[idx_b]:
+                if idx_b >= idx_c:
+                    continue
+                for idx_a in bonding_table[idx_b]:
+                    if idx_a == idx_c:
+                        continue
+                    for idx_d in bonding_table[idx_c]:
+                        if idx_d == idx_b or idx_d == idx_a:
+                            continue
+                        else:
+                            torsions.append((idx_a, idx_b, idx_c, idx_d))
+
+        # now loop to generate force field
+        for torsion in torsions:
+            idx_a, idx_b, idx_c, idx_d = torsion
+            atom_a = self.atoms[idx_a]
+            atom_b = self.atoms[idx_b]
+            atom_c = self.atoms[idx_c]
+            atom_d = self.atoms[idx_d]
+
+            bond_bc = bonding_table[idx_b][idx_c]
+            torsiontype = bond_bc[2]  # bond order
+            coord_bc = (atom_b.uff_coordination, atom_c.uff_coordination)
+
+            V = 0
+            n = 0
+
+            if coord_bc == (3, 3):
+                # two sp3 centers
+                phi0 = 60.0
+                n = 3
+                vi = UFF_FULL[atom_b.uff_type][6]
+                vj = UFF_FULL[atom_c.uff_type][6]
+
+                # exception for a pair of group 6 sp3 atoms
+                if atom_b.atomic_number == 8:
+                    vi = 2.0
+                    n = 2
+                    phi0 = 90.0
+                elif atom_b.atomic_number in (16, 34, 52, 84):
+                    vi = 6.8
+                    n = 2
+                    phi0 = 90.0
+
+                if atom_c.atomic_number == 8:
+                    vj = 2.0
+                    n = 2
+                    phi0 = 90.0
+                elif atom_c.atomic_number in (16, 34, 52, 84):
+                    vj = 6.8
+                    n = 2
+                    phi0 = 90.0
+
+                V = 0.5 * KCAL_TO_KJ * (vi * vj)**0.5
+
+            elif coord_bc == (2, 2):
+                # two sp2 centers
+                ui = UFF_FULL[atom_b.uff_type][7]
+                uj = UFF_FULL[atom_c.uff_type][7]
+                phi0 = 180.0
+                n = 2
+                V = (ui*uj)**0.5 * (1.0 + 4.18*log(torsiontype))
+                V *= 0.5 * KCAL_TO_KJ * 5.0
+
+            elif coord_bc in [(2, 3), (3, 2)]:
+                # one sp3, one sp2
+                phi0 = 0.0
+                n = 6
+                V = 0.5 * KCAL_TO_KJ * 1.0
+
+                # exception for group 6 sp3
+                if atom_c.uff_coordination == 3:
+                    if atom_c.atomic_number in (8, 16, 34, 52):
+                        n = 2
+                        phi0 = 90.0
+                if atom_b.uff_coordination == 3:
+                    if atom_b.atomic_number in (8, 16, 34, 52):
+                        n = 2
+                        phi0 = 90.0
+
+            if abs(V) < 2e-6:  # don't bother calculating this torsion
+                continue
+
+            # Dividing by equivalent torsions is a GG addition
+            equivalent_torsions = 0
+            for equivalent in torsions:
+                if equivalent[1:3] == (idx_b, idx_c):
+                    equivalent_torsions += 1
+
+            V /= equivalent_torsions
+
+            nphi0 = n*phi0
+
+            if abs(sin(nphi0*DEG2RAD)) > 1.0e-3:
+                print("WARNING!!! nphi0 = %r" % nphi0)
+
+            if atom_b.is_metal or atom_c.is_metal and keep_metal_geometry:
+                V *= 10.0
+                phi_s = dihedral(atom_a, atom_b, atom_c, atom_d, cell=self.cell)
+            else:
+                phi_s = nphi0 - 180.0  # phi_s in degrees
+
+            tor_fmt = ("%-6i %-6i %-6i %-6i  %i  %9.4f  %9.4f  %i ;"
+                       " %-6s %-6s %-6s %-6s\n")
+            tor_type = 1  # proper dihedrals in GROMACS
+
+            itp_file.append(tor_fmt % (
+                idx_a + 1, idx_b + 1, idx_c + 1, idx_d + 1,
+                tor_type, phi_s, V, n,
+                atom_a.uff_type, atom_b.uff_type,
+                atom_c.uff_type, atom_d.uff_type))
+
+        ##
+        # inversions / improper dihedrals
+        ##
+        itp_file.append("\n[ dihedrals ]\n; inversions (improper dihedrals)\n")
+
+        for idx_b in sorted(bonding_table):
+            atom_b = self.atoms[idx_b]
+            # Only have parameters for limited elements
+            # and only want those with 3 neighbours
+            if not atom_b.atomic_number in (6, 7, 8, 15, 33, 51, 83):
+                continue
+            elif len(bonding_table[idx_b]) != 3:
+                continue
+
+            idx_a, idx_c, idx_d = bonding_table[idx_b]
+            atom_a = self.atoms[idx_a]
+            atom_c = self.atoms[idx_c]
+            atom_d = self.atoms[idx_d]
+
+            if atom_b.uff_type in ('N_3', 'N_2', 'N_R', 'O_2', 'O_R'):
+                c0 = 1.0
+                c1 = -1.0
+                c2 = 0.0
+                koop = 6.0*KCAL_TO_KJ
+            elif atom_b.uff_type in ('P_3+3', 'As3+3', 'Sb3+3', 'Bi3+3'):
+                if atom_b.uff_type == 'P_3+3':
+                    phi = 84.4339 * DEG2RAD
+                elif atom_b.uff_type == 'As3+3':
+                    phi = 86.9735 * DEG2RAD
+                elif atom_b.uff_type == 'Sb3+3':
+                    phi = 87.7047 * DEG2RAD
+                else:
+                    phi = 90.0 * DEG2RAD
+                c1 = -4.0 * cos(phi)
+                c2 = 1.0
+                c0 = -1.0*c1*cos(phi) + c2*cos(2.0*phi)
+                koop = 22.0 * KCAL_TO_KJ
+            elif atom_b.uff_type in ('C_2', 'C_R'):
+                c0 = 1.0
+                c1 = -1.0
+                c2 = 0.0
+                koop = 6.0*KCAL_TO_KJ
+                if 'O_2' in (atom_a.uff_type, atom_c.uff_type, atom_d.uff_type):
+                    koop = 50.0 * KCAL_TO_KJ
+            else:
+                continue
+
+            # three permutations:
+            koop /= 3
+
+            # that was easy...
+            if abs(c2) < 1.0e-5:
+                csi0 = 0.0
+                kcsi = koop
+            else:
+                #TODO(tdaff): check if this is multiply or divide
+                csi0 = arccos(-c1/(4.0*c2))/DEG2RAD  # csi_0 in degrees
+                kcsi = (16.0*c2*c2-c1*c1)/(4.0*c2*c2)
+                kcsi *= koop  # kcsi in kJ/mol/rad^2
+
+            # put it thrice, middle atom first
+            # b, a, c, d
+            # b, d, c, a
+            # b, a, d, c
+
+            inv_fmt = ("%-6i %-6i %-6i %-6i  %i  %9.4f  %9.4f ;"
+                       " %-6s %-6s %-6s %-6s\n")
+            inv_type = 2  # improper dihedrals in GROMACS
+
+            itp_file.append(inv_fmt % (
+                idx_b + 1, idx_a + 1, idx_c + 1, idx_d + 1,
+                inv_type, csi0, kcsi,
+                atom_b.uff_type, atom_a.uff_type,
+                atom_c.uff_type, atom_d.uff_type))
+
+            itp_file.append(inv_fmt % (
+                idx_b + 1, idx_d + 1, idx_c + 1, idx_a + 1,
+                inv_type, csi0, kcsi,
+                atom_b.uff_type, atom_d.uff_type,
+                atom_c.uff_type, atom_a.uff_type))
+
+            itp_file.append(inv_fmt % (
+                idx_b + 1, idx_a + 1, idx_d + 1, idx_c + 1,
+                inv_type, csi0, kcsi,
+                atom_b.uff_type, atom_a.uff_type,
+                atom_d.uff_type, atom_c.uff_type))
+
+        # done!
+        return gro_file, top_file, itp_file
 
 
     def to_cssr(self, cartesian=False, no_atom_id=False):
@@ -2744,7 +3220,86 @@ class Structure(object):
         masses = ["%-7s %-f\n" % (atom, WEIGHT[atom])
                   for atom in unique(self.types)]
 
-        return (self.to_cssr(no_atom_id=True), radii, masses)
+        return self.to_cssr(no_atom_id=True), radii, masses
+
+    def to_cif(self):
+        """Return a CIF file with bonding and atom types."""
+
+        name = self.name
+        atoms = self.atoms
+        cell = self.cell
+        if hasattr(self, 'bonds'):
+            bonds = self.bonds
+        else:
+            bonds = {}
+
+        inv_cell = cell.inverse
+
+        type_count = {}
+
+        atom_part = []
+        for idx, atom in enumerate(atoms):
+            if atom is None:
+                # blanks are left in here
+                continue
+            if hasattr(atom, 'uff_type') and atom.uff_type is not None:
+                uff_type = atom.uff_type
+            else:
+                uff_type = '?'
+            if atom.element in type_count:
+                type_count[atom.element] += 1
+            else:
+                type_count[atom.element] = 1
+            atom.site = "%s%i" % (atom.element, type_count[atom.element])
+            atom_part.append("%-5s %-5s %-5s " % (atom.site, atom.element, uff_type))
+            atom_part.append("%f %f %f " % tuple(atom.ifpos(inv_cell)))
+            atom_part.append("%f\n" % atom.charge)
+
+        bond_part = []
+        for bond, order in bonds.items():
+            try:
+                bond_part.append("%-5s %-5s %-5s\n" %
+                                 (atoms[bond[0]].site, atoms[bond[1]].site,
+                                  CCDC_BOND_ORDERS[order]))
+            except AttributeError:
+                # one of the atoms is None so skip
+                debug("cif NoneType atom")
+
+        cif_file = [
+            "data_%s\n" % name.replace(' ', '_'),
+            "%-33s %s\n" % ("_audit_creation_date", time.strftime('%Y-%m-%dT%H:%M:%S%z')),
+            "%-33s %s\n" % ("_audit_creation_method", "'faps %s'" % __version__),
+            "%-33s %s\n" % ("_symmetry_space_group_name_H-M", "P1"),
+            "%-33s %s\n" % ("_symmetry_Int_Tables_number", "1"),
+            "%-33s %s\n" % ("_space_group_crystal_system", cell.crystal_system),
+            "%-33s %-.10s\n" % ("_cell_length_a", cell.a),
+            "%-33s %-.10s\n" % ("_cell_length_b", cell.b),
+            "%-33s %-.10s\n" % ("_cell_length_c", cell.c),
+            "%-33s %-.10s\n" % ("_cell_angle_alpha", cell.alpha),
+            "%-33s %-.10s\n" % ("_cell_angle_beta", cell.beta),
+            "%-33s %-.10s\n" % ("_cell_angle_gamma", cell.gamma),
+            "%-33s %s\n" % ("_cell_volume", cell.volume),
+            # start of atom loops
+            "\nloop_\n",
+            "_atom_site_label\n",
+            "_atom_site_type_symbol\n",
+            "_atom_site_description\n",
+            "_atom_site_fract_x\n",
+            "_atom_site_fract_y\n",
+            "_atom_site_fract_z\n",
+            "_atom_type_partial_charge\n"] + atom_part
+
+        # Don't put this if there are no bonds!
+        if bond_part:
+            cif_file.extend([
+                # bonding loop
+                "\nloop_\n",
+                "_geom_bond_atom_site_label_1\n",
+                "_geom_bond_atom_site_label_2\n",
+                #"_geom_bond_distance\n",
+                "_ccdc_geom_bond_type\n"] + bond_part)
+
+        return cif_file
 
     def fastmc_postproc(self, filepath, tp_point, options):
         """Update structure properties from gcmc OUTPUT."""
@@ -2917,7 +3472,6 @@ class Structure(object):
                 guest.binding_energies[tp_point] = binding_energies
             else:
                 guest.binding_energies = {tp_point: binding_energies}
-
 
         unneeded_files = options.gettuple('absl_delete_files')
         remove_files(unneeded_files)
@@ -3313,6 +3867,18 @@ class Cell(object):
         return tuple(int(ceil(2*cutoff/x)) for x in widths)
 
     @property
+    def minimum_width(self):
+        """The shortest perpendicular distance within the cell."""
+        a_cross_b = cross(self.cell[0], self.cell[1])
+        b_cross_c = cross(self.cell[1], self.cell[2])
+        c_cross_a = cross(self.cell[2], self.cell[0])
+
+        volume = dot(self.cell[0], b_cross_c)
+
+        return volume / min(norm(b_cross_c), norm(c_cross_a), norm(a_cross_b))
+
+
+    @property
     def imcon(self):
         """Guess cell shape and return DL_POLY imcon key."""
         keys = {'none': 0,
@@ -3643,6 +4209,30 @@ class Atom(object):
     def is_metal(self):
         """Return True if element is in a predetermined set of metals."""
         return self.atomic_number in METALS
+
+    @property
+    def uff_coordination(self):
+        """
+        The expected coordination based on the third character of the UFF
+        name for the element. Based on _ipar from OB forcefielduff.cpp
+        """
+        coordinations = {
+            '1': 1,
+            '2': 2,
+            'R': 2,
+            '3': 3,
+            '4': 4,
+            '5': 5,
+            '6': 6,
+            '7': 7,
+        }
+        try:
+            # Just pull for the dict, or default to 1 for unknowns
+            return coordinations.get(self.uff_type[2], 1)
+        except (IndexError, TypeError):
+            # This catches things like 'H_' and when there is no uff_type
+            return 1
+
 
 
 class Guest(object):
@@ -4097,6 +4687,79 @@ def mk_dl_poly_control(options, dummy=False):
     return control
 
 
+def mk_gromacs_mdp(cell, mode='bfgs', verbose=False):
+    """
+    Generate an energy minimsation file for GROMACS, with cell based cutoff.
+
+    Use mode argument to select from:
+        'bfgs' standard l-bfgs position optimisation
+        'pcoupl' zero kelivn cell semi anisotropic relaxation
+        'sd' steppest descent minimisation
+    """
+    # Use 0.45 as it allows for around 10% shrinkage of the cell
+    # 1/2 smallest of cell lengths or diagonal elements, in nm
+    cutoff = 0.45*min(cell.a, cell.b, cell.c,
+                      cell.cell[0][0], cell.cell[1][1], cell.cell[2][2])/10.0
+    if mode == 'bfgs':
+        # bfgs needs the shift potentials, which need a transition radius
+        rlist = min(1.2, cutoff)
+        rcoulomb = rlist - 0.1
+        rvdw = rlist - 0.1
+        mdp = ["integrator          =  l-bfgs\n",
+               "vdwtype             =  shift\n",
+               "coulombtype         =  shift\n"]
+    elif mode == 'pcoupl':
+        # This changes volume but not angles as I don't know how well it shears
+        rlist = min(1.2, cutoff)
+        rcoulomb = rlist - 0.1
+        rvdw = rlist - 0.1
+        mdp = ["integrator          =  md\n",
+               "vdwtype             =  shift\n",
+               "coulombtype         =  shift\n",
+               "pcoupl              =  berendsen\n",  # others too bouncy
+               "pcoupltype          =  anisotropic\n",
+               "ref_p               =  1.01325 1.01325 1.01325 0.0 0.0 0.0\n",
+               "compressibility     =  5.0e-5 5.0e-5 5.0e-5 0.0 0.0 0.0\n",
+               "tcoupl              =  v-rescale\n",
+               "ref_t               =  0.0\n",  # zero kelvin
+               "tau_t               =  0.1\n",
+               "tc-grps             =  RESI\n"]  # residue as in the gro file
+    elif mode == 'sd':
+        rlist = min(1.2, cutoff)
+        rcoulomb = rlist
+        rvdw = rlist
+        mdp = ["integrator          =  cg\n",
+               "nstcgsteep          =  50\n"]  # frequency of sd steps in cg
+    else:
+        error('Bad optimisation mode, %s, selected for gromacs mdp')
+        return
+
+    # common items work all round (bfgs only needs a few steps and
+    # 2000 steps reduces the box size enough)
+    mdp.extend([
+        "nsteps              =  2000\n",
+        "rlist               =  %f\n" % rlist,
+        "rcoulomb            =  %f\n" % rcoulomb,
+        "rvdw                =  %f\n" % rvdw,
+        "periodic_molecules  =  yes\n",
+        "pbc                 =  xyz\n",
+        ";\n",
+        ";       Energy minimizing stuff\n",
+        ";\n",
+        "emtol               =  10.0\n",  # convergence (10.0) [kJ mol-1 nm-1]
+        "emstep              =  0.01\n",  # (0.01) step size
+    ])
+
+    if verbose:
+        mdp.extend(["nstxout             =  1\n",  # trajectory frequency
+                    "nstenergy           =  1\n"])  # energy frequency
+    else:
+        mdp.extend(["nstxout             =  2000\n",  # trajectory frequency
+                    "nstenergy           =  0\n"])  # energy frequency
+
+    return mdp
+
+
 def parse_qeq_params(param_tuple):
     """Convert an options tuple to a dict of values."""
     # group up into ((atom, electronegativity, 0.5*hardness), ... )
@@ -4278,9 +4941,10 @@ def try_symlink(src, dest):
     """Delete an existing dest file, symlink a new one if possible."""
     if path.lexists(dest):
         os.remove(dest)
+    # Catch cases like Windows which can't symlink or unsupported SAMBA
     try:
         os.symlink(src, dest)
-    except AttributeError:
+    except (AttributeError, OSError):
         shutil.copy(src, dest)
 
 
@@ -4382,6 +5046,131 @@ def vecdist3(coord1, coord2):
            coord2[2] - coord1[2]]
 
     return (vec[0]*vec[0] + vec[1]*vec[1] + vec[2]*vec[2])**0.5
+
+
+def angle_between(left, middle, right, cell=None):
+    """
+    Calculate the angle between the atoms middle->left and middle->right.
+
+    If a Cell is specified, this will use the minimum image criterion to find
+    the angle with the closest point.
+
+    Parameters
+    ----------
+
+    left : Atom
+        one of the atoms
+    middle : Atom
+        vertex atom
+    left : Atom
+        second atom
+    cell : Cell or None
+        if a Cell object is passes the minimum image criterion will be used
+        to calculate the angle
+
+    Returns
+    -------
+
+    angle: float
+        Angle between the atoms in degrees.
+    """
+    if cell is None:
+        vleft = [i - j for i, j in zip(left.pos, middle.pos)]
+        vright = [i - j for i, j in zip(right.pos, middle.pos)]
+    else:
+        # Minimum image criterion
+        box = cell.cell
+        vleft = [i - j for i, j in
+                 zip(minimum_image(middle, left, box), middle.pos)]
+        vright = [i - j for i, j in
+                  zip(minimum_image(middle, right, box), middle.pos)]
+
+    angle = arccos(dot(vleft, vright)/(norm(vleft)*norm(vright)))/DEG2RAD
+
+    if angle != angle:
+        # angle is a nan; sometimes happened with older numpy
+        angle = 180
+
+    return angle
+
+
+def dihedral(atom_a, atom_b, atom_c, atom_d, cell=None):
+    """
+    Calculate the dihedral angle along the path a, b, c, d.
+
+    If a Cell is specified, this will use the minimum image criterion to find
+    the atoms that are closest for the vectors.
+
+    Parameters
+    ----------
+
+    atom_a : Atom
+        the first atom
+    atom_b : Atom
+        one of the atoms
+    atom_c : Atom
+        one of the atoms
+    atom_d : Atom
+        one of the atoms
+    cell : Cell or None
+        if a Cell object is passes the minimum image criterion will be used
+        to calculate the dihedral angle
+
+    Returns
+    -------
+
+    angle: float
+        Angle between the atoms in degrees.
+    """
+
+    if cell is None:
+        vec_a_b = [i - j for i, j in zip(atom_a.pos, atom_b.pos)]
+        vec_b_c = [i - j for i, j in zip(atom_b.pos, atom_c.pos)]
+        vec_c_d = [i - j for i, j in zip(atom_c.pos, atom_d.pos)]
+    else:
+        # Minimum image criterion
+        box = cell.cell
+        vec_a_b = [i - j for i, j in
+                   zip(minimum_image(atom_b, atom_a, box), atom_b.pos)]
+        vec_b_c = [i - j for i, j in
+                   zip(minimum_image(atom_c, atom_b, box), atom_c.pos)]
+        vec_c_d = [i - j for i, j in
+                   zip(minimum_image(atom_d, atom_c, box), atom_d.pos)]
+
+    norm_1 = cross(vec_a_b, vec_b_c)
+    norm_2 = cross(vec_b_c, vec_c_d)
+
+    return -arctan2(dot(vec_b_c, cross(norm_2, norm_1)),
+                    norm(vec_b_c)*dot(norm_1, norm_2))/DEG2RAD
+
+    return angle
+
+
+def minimum_image(atom1, atom2, box):
+    """Return the minimum image coordinates of atom2 with respect to atom1."""
+    f_coa = atom1.fractional[:]
+    f_cob = atom2.fractional[:]
+
+    fdx = f_coa[0] - f_cob[0]
+    if fdx < -0.5:
+        f_cob[0] -= 1
+    elif fdx > 0.5:
+        f_cob[0] += 1
+    fdy = f_coa[1] - f_cob[1]
+    if fdy < -0.5:
+        f_cob[1] -= 1
+    elif fdy > 0.5:
+        f_cob[1] += 1
+    fdz = f_coa[2] - f_cob[2]
+    if fdz < -0.5:
+        f_cob[2] -= 1
+    elif fdz > 0.5:
+        f_cob[2] += 1
+
+    new_b = [f_cob[0]*box[0][0] + f_cob[1]*box[1][0] + f_cob[2]*box[2][0],
+             f_cob[0]*box[0][1] + f_cob[1]*box[1][1] + f_cob[2]*box[2][1],
+             f_cob[0]*box[0][2] + f_cob[1]*box[1][2] + f_cob[2]*box[2][2]]
+    return new_b
 
 
 def matrix_rotate(source, target):
@@ -4536,9 +5325,9 @@ def main():
         for suffix in FOLDER_SUFFIXES:
             directory = "faps_%s_%s/" % (job_name, suffix)
             if path.isdir(directory):
-               debug("Adding directory %s" % directory)
-               faps_tar.add(directory)
-               shutil.rmtree(directory)
+                debug("Adding directory %s" % directory)
+                faps_tar.add(directory)
+                shutil.rmtree(directory)
         faps_tar.close()
 
     my_simulation.dump_state()

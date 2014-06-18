@@ -21,11 +21,9 @@ import traceback
 from os import path
 
 # faps is in the parent directory of this script
-sys.path.append(path.dirname(path.dirname(path.realpath(__file__))))
+sys.path.insert(0, path.dirname(path.dirname(path.realpath(__file__))))
 # Need the PyNiss and the rest as they are being unpickled
 from faps import PyNiss, Structure, Symmetry, Cell, Atom, Guest
-from function_switch import to_cif
-
 
 def niss_to_cif(job_name):
     """Load a simulation Niss and dump out the cif of the current structure."""
@@ -47,7 +45,7 @@ def niss_to_cif(job_name):
 
     # the method from fapswitch accepts separate components
     cryst = my_simulation.structure
-    cif_lines = to_cif(cryst.atoms, cryst.cell, cryst.bonds, job_name)
+    cif_lines = cryst.to_cif()
 
     # Can't change the name for now; overwrites existing
     cif_file_name = "%s.out.cif" % job_name

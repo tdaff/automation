@@ -248,13 +248,14 @@ def _wooki_submit(job_type, options, *args, **kwargs):
     node types, because it is too fiddly to care about.
     """
     submit_scripts = {
-        'vasp': 'vasp-submit',
-        'repeat': 'repeat-submit-faps',
-        'siesta': 'siesta-submit',
-        'fastmc': 'fastmc-submit',
-        'gulp': 'gulp-submit-faps',
-        'egulp': 'egulp-submit',
-        'dl_poly': 'dl_poly-submit'
+        'vasp': ['vasp-submit'],
+        'repeat': ['repeat-submit-faps'],
+        'siesta': ['siesta-submit'],
+        'fastmc': ['fastmc-submit'],
+        'gulp': ['gulp-submit-faps'],
+        'egulp': ['egulp-submit'],
+        'dl_poly': ['dl_poly-submit'],
+        'gromacs': ['script-submit', './gromacs_faps']
     }
     job_name = options.get('job_name')
     try:
@@ -262,7 +263,7 @@ def _wooki_submit(job_type, options, *args, **kwargs):
     except AttributeError:
         nodes = 1
 
-    submit_args = [submit_scripts[job_type], job_name, "%i" % nodes]
+    submit_args = submit_scripts[job_type] + [job_name, "%i" % nodes]
 
     debug("Submission command: %s" % " ".join(submit_args))
     submitted = False

@@ -314,7 +314,7 @@ class AlchemyBackend(object):
         """
 
         # TODO(tdaff): more complete database to come
-        if len(structure.guests) > 1:
+        if len(structure.guests) != 1:
             error("Database only deals with single guests at the moment")
             return
 

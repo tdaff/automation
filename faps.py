@@ -2900,24 +2900,29 @@ class Structure(object):
                 binding_energies.append([magnitude, e_vdw, e_esp, position])
 
             with open('%s_absl.xyz' % guest.ident, 'w') as absl_out:
+                frame_number = 0
                 for idx, bind in enumerate(binding_energies):
                     energy = bind[1] + bind[2]
+                    if energy > 0 or energy != energy:
+                        continue
                     pc_elec = 100*bind[2]/energy
                     this_point = [
                         "%i\n" % len(bind[3]),  # number of atoms
                         # idx, energy, %esp, e_vdw, e_esp, magnitude
-                        " BS: %i, %f, %.2f, %f, %.2f, %f\n" %
-                        (idx, energy, pc_elec, bind[1], bind[2], bind[0])]
+                        " BS: %i, Frame: %i, Ebind= %f, esp= %.2f%%, Evdw= %f, "
+                        "Eesp= %.2f, occ= %f\n" %
+                        (idx, frame_number, energy, pc_elec, bind[1], bind[2],
+                         bind[0])]
                     for atom in bind[3]:
                         this_point.append("%-5s " % atom[0])
                         this_point.append("%12.6f %12.6f %12.6f\n" % tuple(atom[1]))
                     absl_out.writelines(this_point)
+                    frame_number += 1
 
             if hasattr(guest, 'binding_energies'):
                 guest.binding_energies[tp_point] = binding_energies
             else:
                 guest.binding_energies = {tp_point: binding_energies}
-
 
         unneeded_files = options.gettuple('absl_delete_files')
         remove_files(unneeded_files)

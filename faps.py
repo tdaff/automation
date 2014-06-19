@@ -1966,7 +1966,7 @@ class Structure(object):
             # Some of pete's symmetrised mofs need a higher tolerence
             duplicate_tolerance = 0.2  # Angstroms
             self.remove_duplicates(duplicate_tolerance)
-        #self.order_by_types()
+        self.order_by_types()
 
         bonds = {}
         # TODO(tdaff): this works for the one tested MOF; 0.1 was not enough

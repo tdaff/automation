@@ -215,6 +215,20 @@ probability =
     1 2
 probe radius = 1.8
 
+[N2-NIMF]
+name = Nitrogen In MoFs (NIMF) parameterised to experimental data
+source = Bianca (submitted)
+atoms =
+    Nx      14.0067     -0.482     -0.55    0       0
+    Nx      14.0067     -0.482      0.55    0       0
+    COM      0.0000     +0.964      0       0       0
+potentials =
+    Nx      2.45491    0.07942
+    COM     0.00000    0.00000
+probability =
+    1 2
+probe radius = 1.8
+
 [N2-2site]
 name = Two Site, Chargeless Nitrogen
 source = http://dx.doi.org/10.1080/00268978000103611

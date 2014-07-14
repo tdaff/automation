@@ -28,9 +28,9 @@ doing select parts.
 # Revision = {rev}
 
 try:
-    __version_info__ = (1, 4, 1, int("$Revision$".strip("$Revision: ")))
+    __version_info__ = (1, 4, 2, int("$Revision$".strip("$Revision: ")))
 except ValueError:
-    __version_info__ = (1, 4, 1, 0)
+    __version_info__ = (1, 4, 2, 0)
 __version__ = "%i.%i.%i.%i" % __version_info__
 
 import code
@@ -195,6 +195,9 @@ class PyNiss(object):
                 self.options.get('job_name'),
                 self.options.get('initial_structure_format'),
                 self.options)
+            if self.options.getbool('order_atom_types'):
+                info("Forcing atom re-ordering by types")
+                self.structure.order_by_types()
             self.state['init'] = (UPDATED, False)
             self.dump_state()
 
@@ -734,6 +737,12 @@ class PyNiss(object):
                 job_name,
                 self.options.get('initial_structure_format'),
                 self.options)
+
+            warning("Ensure that order_atom_types is on for pre-1.4 data")
+            if self.options.getbool('order_atom_types'):
+                info("Forcing atom re-ordering by types")
+                self.structure.order_by_types()
+
             self.state['init'] = (UPDATED, False)
         except IOError:
             info("No initial structure found to import")
@@ -1026,14 +1035,18 @@ class PyNiss(object):
         potcar_types = unique(self.structure.types)
         filetemp = open("POTCAR", "w")
         potcar_dir = self.options.get('potcar_dir')
-        for at_type in potcar_types:
+        previous_type = ""
+        for at_type in self.structure.types:
+            if at_type == previous_type:
+                continue
             # Try and get the preferred POTCARS
             debug("Using %s pseudopotential for %s" %
-                 (VASP_PSEUDO_PREF.get(at_type, at_type), at_type))
+                  (VASP_PSEUDO_PREF.get(at_type, at_type), at_type))
             potcar_src = path.join(potcar_dir,
-                                      VASP_PSEUDO_PREF.get(at_type, at_type),
-                                      "POTCAR")
+                                   VASP_PSEUDO_PREF.get(at_type, at_type),
+                                   "POTCAR")
             shutil.copyfileobj(open(potcar_src), filetemp)
+            previous_type = at_type
         filetemp.close()
 
         if self.options.getbool('no_submit'):
@@ -1687,6 +1700,7 @@ class PyNiss(object):
              (rprobe, hydrophilic_area, hydrophilic_fraction))
         return total_area
 
+
 class Structure(object):
     """
     The current state of the structure; update as the calculations proceed.
@@ -1839,7 +1853,6 @@ class Structure(object):
                 newatoms.append(newatom)
 
         self.atoms = newatoms
-        self.order_by_types()
 
     def from_cif(self, filename=None, string=None):
         """Genereate structure from a .cif file."""
@@ -1966,7 +1979,6 @@ class Structure(object):
             # Some of pete's symmetrised mofs need a higher tolerence
             duplicate_tolerance = 0.2  # Angstroms
             self.remove_duplicates(duplicate_tolerance)
-        self.order_by_types()
 
         bonds = {}
         # TODO(tdaff): this works for the one tested MOF; 0.1 was not enough
@@ -2038,7 +2050,6 @@ class Structure(object):
                     this_atom.from_vasp(contcar[line_idx], at_type, mcell)
                     atom_list.append(this_atom)
             self.atoms = atom_list
-            self.order_by_types()
 
     def from_siesta(self, filename):
         """Update the structure from the siesta output."""
@@ -2150,7 +2161,6 @@ class Structure(object):
                 atom.pos = newatom.pos
         else:
             self.atoms = newatoms
-            self.order_by_types()
 
     def charges_from_repeat(self, filename, symmetry=False):
         """Parse charges and update structure."""
@@ -2229,15 +2239,34 @@ class Structure(object):
         """Return a vasp5 poscar as a list of lines."""
         optim_h = options.getbool('optim_h')
         optim_all = options.getbool('optim_all')
-        types = [atom.type for atom in self.atoms]
-        ordered_types = unique(types)
+
         poscar = ["%s\n" % self.name[:80],
                   " 1.0\n"]
         # Vasp does 16 dp but we get rounding errors (eg cubic) use 14
         poscar.extend(self.cell.to_vector_strings(fmt="%23.14f"))
-        poscar.append("".join("%5s" % x for x in ordered_types) + "\n")
-        poscar.append("".join("%6i" % types.count(x)
-                              for x in ordered_types) + "\n")
+
+        # Bunch up types as much as possible.
+        types, counts = count_ordered_types(self.atoms)
+
+        # Non consecutive similar types are not the same species anymore
+        sspecies = "".join(" %s" % x for x in types) + "\n"
+        scounts = "".join(" %i" % x for x in counts) + "\n"
+
+        if len(sspecies) > 254 or len(scounts) > 254:
+            warning("Faps has detected that you have too many atoms for vasp"
+                    "to use in an orderd list and has attempted to re-order"
+                    "them. This might break your calculation and it might be"
+                    "better to run with oreder_atom_types turned on")
+            self.order_by_types()
+            types, counts = count_ordered_types(self.atoms)
+
+            # Regenerate these strings for new ordering
+            sspecies = "".join(" %s" % x for x in types) + "\n"
+            scounts = "".join(" %i" % x for x in counts) + "\n"
+
+        poscar.append(sspecies)
+        poscar.append(scounts)
+
         # We always have the T or F so turn on selective dynamics for
         # fixed pos variable cell
         poscar.extend(["Selective dynamics\n", "Cartesian\n"])
@@ -3635,8 +3664,30 @@ class Structure(object):
                         yield newatom
 
     def order_by_types(self):
-        """Sort the atoms alphabetically and group them."""
-        self.atoms.sort(key=lambda x: (x.type, x.site))
+        """
+        Sort the atoms alphabetically and group them as in old versions.
+        Update bonds to reflect new ordering.
+        """
+
+        # Append indexes to each and sort on type (legacy sorting)
+        new_atoms = sorted(enumerate(self.atoms),
+                           key=lambda x: (x[1].type, x[1].site))
+        self.atoms = [x[1] for x in new_atoms]
+
+        if hasattr(self, 'bonds'):
+            # dict of old_index: new_index
+            translation_table = dict((j, i) for i, j in
+                                     enumerate(x[0] for x in new_atoms))
+
+            new_bonds = {}
+            # Just translate atom indexes, bond data is the same
+            for bond in self.bonds:
+                new_bond = tuple(sorted([translation_table[bond[0]],
+                                         translation_table[bond[1]]]))
+                new_bonds[new_bond] = self.bonds[bond]
+
+            self.bonds = new_bonds
+
 
     def gen_neighbour_list(self, force=False):
         """All atom pair distances."""
@@ -5270,6 +5321,20 @@ def name_from_types(sites, guest):
     else:
         site_name = stypes[0]
     return site_name
+
+
+def count_ordered_types(atoms):
+    """Generate a list of atom types and their counts for POSCAR file."""
+    types = [atoms[0].type]
+    counts = [0]
+    for atom in atoms:
+        if atom.type == types[-1]:
+            counts[-1] += 1
+        else:
+            types.append(atom.type)
+            counts.append(1)
+
+    return types, counts
 
 
 def other_bond_index(bond, index):

@@ -3284,15 +3284,36 @@ class Structure(object):
             atom_part.append("%f %f %f " % tuple(atom.ifpos(inv_cell)))
             atom_part.append("%f\n" % atom.charge)
 
-        bond_part = []
+        # Materials studio sorts bonds in the same order as the atoms
+        # but perceives bonds wrong if bond orders are mixed.
+        # i.e. it misreads cifs that it writes itself.
+        bond_properties = []
         for bond, order in bonds.items():
-            try:
-                bond_part.append("%-5s %-5s %-5s\n" %
-                                 (atoms[bond[0]].site, atoms[bond[1]].site,
-                                  CCDC_BOND_ORDERS[order]))
-            except AttributeError:
-                # one of the atoms is None so skip
-                debug("cif NoneType atom")
+            bond_type = CCDC_BOND_ORDERS[order]
+            atom0, atom1 = atoms[bond[0]], atoms[bond[1]]
+            distance, shift = cif_bond_dist(atom0, atom1, cell)
+
+            # assume P1 for now (only one symmetry operation) so "1_???"
+            if shift == [0, 0, 0]:
+                site_symm = "."
+                bond_properties.append((order, bond,
+                                        (atom0.site, atom1.site, distance,
+                                         site_symm, bond_type)))
+            else:
+                site_symm = "1_%i%i%i" % (5+shift[0], 5+shift[1], 5+shift[2])
+                bond_properties.append((order, bond,
+                                        (atom0.site, atom1.site, distance,
+                                         site_symm, bond_type)))
+                # MS also includes the reverse bond over the boundary
+                site_symm = "1_%i%i%i" % (5-shift[0], 5-shift[1], 5-shift[2])
+                rbond = (bond[1], bond[0])
+                bond_properties.append((order, rbond,
+                                        (atom1.site, atom0.site, distance,
+                                         site_symm, bond_type)))
+
+        # Can just sort bond_properties as it will be bond_order, site1, site2
+        bond_part = ["%-5s %-5s %.3f %-5s %2s\n" % x[2]
+                     for x in sorted(bond_properties)]
 
         cif_file = [
             "data_%s\n" % name.replace(' ', '_'),
@@ -3301,6 +3322,7 @@ class Structure(object):
             "%-33s %s\n" % ("_symmetry_space_group_name_H-M", "P1"),
             "%-33s %s\n" % ("_symmetry_Int_Tables_number", "1"),
             "%-33s %s\n" % ("_space_group_crystal_system", cell.crystal_system),
+            "loop_\n", "_symmetry_equiv_pos_as_xyz\n", "  x,y,z\n",
             "%-33s %-.10s\n" % ("_cell_length_a", cell.a),
             "%-33s %-.10s\n" % ("_cell_length_b", cell.b),
             "%-33s %-.10s\n" % ("_cell_length_c", cell.c),
@@ -3325,7 +3347,8 @@ class Structure(object):
                 "\nloop_\n",
                 "_geom_bond_atom_site_label_1\n",
                 "_geom_bond_atom_site_label_2\n",
-                #"_geom_bond_distance\n",
+                "_geom_bond_distance\n",
+                "_geom_bond_site_symmetry_2\n",
                 "_ccdc_geom_bond_type\n"] + bond_part)
 
         return cif_file
@@ -5092,6 +5115,57 @@ def min_dist(c_coa, f_coa, c_cob, f_cob_in, box):
                  f_cob[0]*box[0][1] + f_cob[1]*box[1][1] + f_cob[2]*box[2][1],
                  f_cob[0]*box[0][2] + f_cob[1]*box[1][2] + f_cob[2]*box[2][2]]
         return vecdist3(c_coa, new_b)
+
+
+def cif_bond_dist(first_atom, second_atom, cell):
+    """
+    Calculate the distance to the minimum image and which boundaries have been
+    crossed for _geom_bond_site_symmetry_2.
+
+    :param first_atom: Atom within the cell boundary
+    :param second_atom: Atom to find the distance to
+    :param cell: Cell object
+    :return: distance, (dx, dy, dx)
+    """
+
+    c_coa = first_atom.ipos(cell.cell, cell.inverse)
+    f_coa = first_atom.ifpos(cell.inverse)
+    c_cob = second_atom.ipos(cell.cell, cell.inverse)
+    f_cob_in = second_atom.ifpos(cell.inverse)
+    box = cell.cell
+
+    cell_shift = [0, 0, 0]
+
+    f_cob = f_cob_in[:]
+    fdx = f_coa[0] - f_cob[0]
+    if fdx < -0.5:
+        f_cob[0] -= 1
+        cell_shift[0] = -1
+    elif fdx > 0.5:
+        f_cob[0] += 1
+        cell_shift[0] = 1
+    fdy = f_coa[1] - f_cob[1]
+    if fdy < -0.5:
+        f_cob[1] -= 1
+        cell_shift[1] = -1
+    elif fdy > 0.5:
+        f_cob[1] += 1
+        cell_shift[1] = 1
+    fdz = f_coa[2] - f_cob[2]
+    if fdz < -0.5:
+        f_cob[2] -= 1
+        cell_shift[2] = -1
+    elif fdz > 0.5:
+        f_cob[2] += 1
+        cell_shift[2] = 1
+    if f_cob == f_cob_in:
+        # if nothing has changed, use initial values
+        return vecdist3(c_coa, c_cob), cell_shift
+    else:
+        new_b = [f_cob[0]*box[0][0] + f_cob[1]*box[1][0] + f_cob[2]*box[2][0],
+                 f_cob[0]*box[0][1] + f_cob[1]*box[1][1] + f_cob[2]*box[2][1],
+                 f_cob[0]*box[0][2] + f_cob[1]*box[1][2] + f_cob[2]*box[2][2]]
+        return vecdist3(c_coa, new_b), cell_shift
 
 
 def vecdist3(coord1, coord2):

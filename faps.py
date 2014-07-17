@@ -4775,8 +4775,8 @@ def mk_gromacs_mdp(cell, mode='bfgs', verbose=False):
                "coulombtype         =  shift\n",
                "pcoupl              =  berendsen\n",  # others too bouncy
                "pcoupltype          =  anisotropic\n",
-               "ref_p               =  1.01325 1.01325 1.01325 0.0 0.0 0.0\n",
-               "compressibility     =  5.0e-5 5.0e-5 5.0e-5 0.0 0.0 0.0\n",
+               "ref_p               =  0.0 0.0 0.0 0.0 0.0 0.0\n",
+               "compressibility     =  5.0e-6 5.0e-6 5.0e-6 0.0 0.0 0.0\n",
                "tcoupl              =  v-rescale\n",
                "ref_t               =  0.0\n",  # zero kelvin
                "tau_t               =  0.1\n",

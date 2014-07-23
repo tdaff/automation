@@ -4803,6 +4803,7 @@ def mk_gromacs_mdp(cell, mode='bfgs', verbose=False):
                "tcoupl              =  v-rescale\n",
                "ref_t               =  0.0\n",  # zero kelvin
                "tau_t               =  0.1\n",
+               "nstcalcenergy       =  1\n",  # needed for stability
                "tc-grps             =  RESI\n"]  # residue as in the gro file
     elif mode == 'sd':
         rlist = min(1.2, cutoff)

@@ -255,7 +255,8 @@ def _wooki_submit(job_type, options, *args, **kwargs):
         'gulp': ['gulp-submit-faps'],
         'egulp': ['egulp-submit'],
         'dl_poly': ['dl_poly-submit'],
-        'gromacs': ['script-submit', './gromacs_faps']
+        'gromacs': ['script-submit', './gromacs_faps'],
+        'absl': ['script-submit', './absl_faps']
     }
     job_name = options.get('job_name')
     try:

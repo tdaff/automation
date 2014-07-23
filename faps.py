@@ -28,9 +28,9 @@ doing select parts.
 # Revision = {rev}
 
 try:
-    __version_info__ = (1, 4, 2, int("$Revision$".strip("$Revision: ")))
+    __version_info__ = (1, 4, 3, int("$Revision$".strip("$Revision: ")))
 except ValueError:
-    __version_info__ = (1, 4, 2, 0)
+    __version_info__ = (1, 4, 3, 0)
 __version__ = "%i.%i.%i.%i" % __version_info__
 
 import code
@@ -254,7 +254,13 @@ class PyNiss(object):
                 if not state:
                     info(" * State of ABSL: Not run")
                 else:
-                    info("%s" % state)
+                    for point, jobs in state.items():
+                        if job[0] is RUNNING:
+                            info(" * ABSL %s: Running, jobid: %s" %
+                                 (point, ",".join(job[1])))
+                        else:
+                            info(" * ABSL %s: %s" %
+                                 (point, valid_states[job[0]]))
             elif state[0] is RUNNING:
                 info(" * State of %s: Running, jobid: %s" % (step, state[1]))
             else:
@@ -1351,7 +1357,6 @@ class PyNiss(object):
         for tp_point in state_points(temps, presses, indivs, len(guests)):
             temp = tp_point[0]
             press = tp_point[1]
-            jobids[(temp, press)] = []
             info("Running ABSL: T=%.1f " % temp +
                  " ".join(["P=%.2f" % x for x in press]))
             tp_path = ('T%s' % temp +
@@ -1373,15 +1378,8 @@ class PyNiss(object):
             with open("CONTROL", "w") as control:
                 control.writelines(mk_dl_poly_control(self.options, dummy=True))
 
-            # Submit this and figure out if we submit all of them
-            if self.options.getbool('no_submit'):
-                info("ABSL input files generated; skipping job submission")
-                jobids[(temp, press)].append(False)
-                no_submit = True
-            else:
-                jobid = self.job_handler.submit('dl_poly', self.options)
-                jobids[(temp, press)].append(jobid)
-                no_submit = False
+            # Keep track of directories so that we can run jobs at once
+            individual_directories = ['.']
 
             # calculate binding sites here and submit
             for guest in self.structure.guests:
@@ -1409,13 +1407,31 @@ class PyNiss(object):
                     with open("CONTROL", "w") as control:
                         control.writelines(mk_dl_poly_control(self.options))
 
-                    if no_submit:
-                        jobids[(temp, press)].append(False)
-                    else:
-                        jobid = self.job_handler.submit('dl_poly', self.options)
-                        jobids[(temp, press)].append(jobid)
+                    individual_directories.append(bs_directory)
 
                     os.chdir('..')
+
+            # Make the script to run all the jobs now, using the individual
+            # directories
+            dl_poly_exe = self.options.get('dl_poly_exe')
+            absl_script = ["#!/bin/bash\n\n"]
+            for directory in individual_directories:
+                absl_script.extend(["pushd %s\n" % directory,
+                                    "%s\n" % dl_poly_exe,
+                                    "popd\n"])
+
+            absl_faps = open('absl_faps', 'w')
+            absl_faps.writelines(absl_script)
+            absl_faps.close()
+            os.chmod('absl_faps', 0o755)
+
+            # Submit this script
+            if self.options.getbool('no_submit'):
+                info("ABSL input files generated; skipping job submission")
+                jobids[(temp, press)] = [False]
+            else:
+                jobid = self.job_handler.submit('absl', self.options)
+                jobids[(temp, press)] = [jobid]
 
             os.chdir('..')
 

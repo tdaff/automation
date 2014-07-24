@@ -39,7 +39,7 @@ try:
 except ImportError:
     import ConfigParser as configparser
 import glob
-import gzip
+import mmap
 import os
 import pickle
 import re
@@ -1213,6 +1213,10 @@ class PyNiss(object):
         if esp_src == 'vasp':
             esp_to_cube_args = shlex.split(self.options.get('vasp_to_cube'))
             info("Converting vasp esp to cube, this might take a minute...")
+            try:
+                fix_vasp_wrapped_types('LOCPOT')
+            except IOError:
+                error("Couldn't find the LOCPOT file; did VASP fail?")
             submit = subprocess.Popen(esp_to_cube_args)
             submit.wait()
             # Cube should have job_name, but can get truncated;
@@ -2028,6 +2032,7 @@ class Structure(object):
     def from_vasp(self, filename='CONTCAR', update=False):
         """Read a structure from a vasp [POS,CONT]CAR file."""
         info("Reading positions from vasp file: %s" % filename)
+        fix_vasp_wrapped_types(filename)
         filetemp = open(filename)
         contcar = filetemp.readlines()
         filetemp.close()
@@ -4966,6 +4971,69 @@ def validate_gulp_output(filename):
 
     debug("Gulp .out: %s" % [finished_optimisation, final_energy, final_gnorm])
     return (finished_optimisation, final_energy, final_gnorm)
+
+
+def fix_vasp_wrapped_types(filename='CONTCAR'):
+    """
+    Output files from VASP with a long list of types sometimes get wrapped.
+    Check if lines have been wrapped and put them all on a single line.
+    Only works with VASP 5 outputs that include type names.
+
+    :param filename: name of the file to fix
+    :return: None
+
+    """
+    # Keep track of how long each line to be replaced is
+    # as well as the contents
+    types = []
+    types_length = 0
+    counts = []
+    counts_length = 0
+    # If we have only two lines then leave file as-is
+    wrapped_lines = 0
+
+    f = open(filename, 'r+b')
+    mm = mmap.mmap(f.fileno(), 0)
+
+    mm.readline()  # Title
+    mm.readline()  # Scale
+    mm.readline()  # a
+    mm.readline()  # b
+    mm.readline()  # c
+
+    start_position = mm.tell()
+    # List of element symbols
+    type_line = mm.readline()
+    while type_line.split()[0].isalpha():
+        types.extend(type_line.split())
+        types_length += len(type_line)
+        type_line = mm.readline()
+        wrapped_lines += 1
+
+    # List of element counts
+    while type_line.split()[0].isdigit():
+        counts.extend(type_line.split())
+        counts_length += len(type_line)
+        type_line = mm.readline()
+        wrapped_lines += 1
+
+    if wrapped_lines == 2:
+        return
+
+    # Can overwrite a memmapped file in-place to avoid re-writing whole file
+    otypes = "".join(" %s" % x for x in types)
+    otypes = "%-*s" % (types_length - 1, otypes) + '\n'
+    ocounts = "".join(" %s" % x for x in counts)
+    ocounts = "%-*s" % (counts_length - 1, ocounts) + '\n'
+
+    linebreak_position = start_position + types_length
+    mm[start_position:linebreak_position] = otypes
+    mm[linebreak_position:linebreak_position + counts_length] = ocounts
+
+    mm.close()
+    f.close()
+
+    debug("Unwrapped lines in file %s" % filename)
 
 
 def unique(in_list, key=None):

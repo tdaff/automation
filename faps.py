@@ -28,9 +28,9 @@ doing select parts.
 # Revision = {rev}
 
 try:
-    __version_info__ = (1, 4, 3, int("$Revision$".strip("$Revision: ")))
+    __version_info__ = (1, 4, 4, int("$Revision$".strip("$Revision: ")))
 except ValueError:
-    __version_info__ = (1, 4, 3, 0)
+    __version_info__ = (1, 4, 4, 0)
 __version__ = "%i.%i.%i.%i" % __version_info__
 
 import code
@@ -4725,7 +4725,7 @@ def mk_incar(options, esp_grid=None):
 
     if dispersion:
         info("Dispersion correction will be used")
-        incar.append("LVDW    = .TRUE.\n")
+        incar.append("IVDW    = 12\n")  # DFT-D3 with BJ damping
 
     if esp_grid is not None:
         info("Changing FFT grid to %ix%ix%i" % esp_grid)

@@ -66,6 +66,7 @@ from config import Options
 from elements import WEIGHT, ATOMIC_NUMBER, UFF, VASP_PSEUDO_PREF
 from elements import CCDC_BOND_ORDERS, GULP_BOND_ORDERS, METALS
 from elements import COVALENT_RADII, UFF_FULL, QEQ_PARAMS
+from eos import peng_robinson
 from job_handler import JobHandler
 from logo import LOGO
 
@@ -309,10 +310,14 @@ class PyNiss(object):
                 cv_header = "C_v,stdev,"
             else:
                 cv_header = ""
+            if hasattr(guest, 'fugacities') and guest.fugacities:
+                fuga_header = "f/bar,"
+            else:
+                fuga_header = ""
             # Generate headers separately
             csv = ["#T/K,p/bar,molc/uc,mmol/g,stdev,",
                    "v/v,stdev,wt%,stdev,hoa/kcal/mol,stdev,",
-                   guest_excess, he_excess, cv_header,
+                   guest_excess, he_excess, cv_header, fuga_header,
                    ",".join("p(g%i)" % gidx for gidx in range(nguests)), "\n"]
             info(guest.name)
             info("---------------------------------------")
@@ -376,6 +381,12 @@ class PyNiss(object):
                         xs_uptake, muptake, vuptake, wtpc,))
                 if cv_header:
                     csv.append("%f,%f," % (guest.c_v[tp_point]))
+                if fuga_header:
+                    try:
+                        csv.append("%f," % (guest.fugacities[tp_point]))
+                    except KeyError:
+                        # Assume it was done without fugacity correction
+                        csv.append("%f," % tp_point[1][idx])
                 # list all the other guest pressures and start a new line
                 csv.append(",".join("%f" % x for x in tp_point[1]) + "\n")
 
@@ -1323,10 +1334,44 @@ class PyNiss(object):
                        ''.join(['P%.2f' % x for x in press]))
             mkdirs(tp_path)
             os.chdir(tp_path)
-            try_symlink(path.join('..', 'CONFIG'),'CONFIG')
+            try_symlink(path.join('..', 'CONFIG'), 'CONFIG')
             try_symlink(path.join('..', 'FIELD'), 'FIELD')
             filetemp = open("CONTROL", "w")
-            filetemp.writelines(mk_gcmc_control(temp, press, self.options,
+            # Calculate fugacities for the input if required
+            if self.options.get('equation_of_state').lower() == 'peng-robinson':
+                info("Using Peng-Robinson EOS gas fugacities")
+                ideal = {}
+                for guest, pressure in zip(guests, press):
+                    if not hasattr(guest, 'species'):
+                        try:
+                            guest.species = Guest(guest.ident).species
+                        except AttributeError:
+                            error("Unable to use equation of state with guest"
+                                  "%s. Failure imminent." % guest.name)
+                    if not hasattr(guest, 'fugacities'):
+                        guest.fugacities = {}
+                    ideal[guest.species] = pressure
+                # Apply the correction
+
+                fugacities = peng_robinson(ideal, temp)
+
+                fuga = []
+                for guest, pressure in zip(guests, press):
+                    info("Fugacity correction for %s: %f bar -> %f bar" %
+                         (guest.ident, pressure, fugacities[guest.species]))
+                    fuga.append(fugacities[guest.species])
+                    guest.fugacities[tp_point] = fugacities[guest.species]
+
+                # Expects single guest not in a list
+                if len(guests) == 1:
+                    fuga = fuga[0]
+            else:
+                info("Using ideal gas fugacities")
+                for guest, pressure in zip(guests, press):
+                    guest.fugacities[tp_point] = pressure
+                fuga = press
+            # make control with fugacities
+            filetemp.writelines(mk_gcmc_control(temp, fuga, self.options,
                                                 guests, self.structure.gcmc_supercell))
             filetemp.close()
 
@@ -4342,6 +4387,7 @@ class Guest(object):
         """Populate an empty guest then load from library if required."""
         self.ident = ''
         self.name = "Unknown guest"
+        self.species = 'unknown'
         self.potentials = {}
         self.probability = []
         self.atoms = []
@@ -4352,6 +4398,7 @@ class Guest(object):
         self.guest_locations = {}
         self.binding_sites = {}
         self.binding_energies = {}
+        self.fugacities = {}
         # only load if asked, set the ident in the loader
         if ident:
             self.load_guest(ident, guest_path=None)

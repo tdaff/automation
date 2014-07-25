@@ -10,6 +10,7 @@
 
 [template]
 name = Molecule Name
+species = species name
 source = doi or reference
 atoms =
     at_name  at_mass  at_charge  at_x  at_y  at_z  # must be indented
@@ -29,6 +30,7 @@ molar volume = 22.414  # used for volumetric uptake (defaults to ideal gas)
 
 [CO2]
 name = Carbon Dioxide for Adsorption in Zeolites
+species = carbon dioxide
 source = http://dx.doi.org/10.1021/jp810871f
 atoms =
     Cx  12.0107  0.65120  0.0    0.0  0.0
@@ -44,6 +46,7 @@ probe radius = 1.71
 
 [CO2-TraPPE]
 name = TraPPE Carbon Dioxide
+species = carbon dioxide
 source = http://dx.doi.org/10.1002/aic.690470719
 atoms =
     Cx  12.0107  0.70  0.0   0.0  0.0
@@ -59,6 +62,7 @@ probe radius = 1.71
 
 [CO-MOF]
 name = Carbon Monoxide Optimised for CuBTC MIL-47 and IRMOF1
+species = carbon monoxide
 source = http://dx.doi.org/10.1021/jp211563e
 atoms =
     Cx  12.0107 -0.2424  0.0000  0.0000  0.0000
@@ -75,6 +79,7 @@ probe radius = 1.71
 
 [CO-UFF]
 name = Carbon Monoxide with UFF Parameters and Mulliken Charges
+species = carbon monoxide
 source = http://dx.doi.org/10.1021/jp908058n
 atoms =
     Cx  12.0107  0.107  0.000  0.000  0.000
@@ -89,6 +94,7 @@ probe radius = 1.71
 
 [CO-Graphite]
 name = Carbon Monoxide Adsorbed on Graphite
+species = carbon monoxide
 source = http://dx.doi.org/10.1080/00268978400103111
 atoms =
     Cx  12.0107  0.831 -0.6446  0.0000  0.0000
@@ -106,6 +112,7 @@ probe radius = 1.71
 
 [CO-Ligand]
 name = Carbon Monoxide in Myoglobin
+species = carbon monoxide
 source = http://dx.doi.org/10.1016/0301-0104(91)87068-7
 atoms =
     Cx  12.0107 -0.75  0.0000  0.0000  0.0000
@@ -122,6 +129,7 @@ probe radius = 1.71
 
 [TIP5P]
 name = TIP5P Water
+species = water
 source = http://dx.doi.org/10.1063/1.481505
 atoms =
     Ow  15.9990  0.000 -0.84626011  1.34987746  0.00000000
@@ -140,6 +148,7 @@ probe radius = 1.4
 
 [TIP5P-Ew]
 name = TIP5P-Ew Water for Ewald sums
+species = water
 source = http://dx.doi.org/10.1063/1.1652434
 atoms =
     Ow  15.9990  0.000 -0.84626011  1.34987746  0.00000000
@@ -158,6 +167,7 @@ probe radius = 1.4
 
 [TIP4P-Ew]
 name = TIP4P-Ew Four-Site Water Model for Biomolecular Simulations
+species = water
 source = http://dx.doi.org/10.1063/1.1683075
 atoms =
     Ow  15.9994  0.00000  0.0000000  0.000000  0.0000000
@@ -175,6 +185,7 @@ probe radius = 1.4
 
 [CH4-TraPPE]
 name = TraPPE Methane; Single Site
+species = methane
 source = http://dx.doi.org/10.1021/jp972543+
 atoms =
     CM  16.000  0.0  0.0  0.0  0.0
@@ -186,6 +197,7 @@ probe radius = 1.8
 
 [CH4-5s]
 name = Methane 5 Site
+species = methane
 source = doi://
 atoms =
     C_M  12.000 -0.480  0.000000  0.000000  0.000000
@@ -202,6 +214,7 @@ probe radius = 1.8
 
 [N2]
 name = Three Site Nitrogen Based on TraPPE
+species = nitrogen
 source = http://dx.doi.org/10.1002/aic.690470719
 atoms =
     Nx      14.0067     -0.482     -0.55    0       0
@@ -217,6 +230,7 @@ probe radius = 1.8
 
 [N2-NIMF]
 name = Nitrogen In MoFs (NIMF) parameterised to experimental data
+species = nitrogen
 source = Bianca (submitted)
 atoms =
     Nx      14.0067     -0.482     -0.55    0       0
@@ -231,6 +245,7 @@ probe radius = 1.8
 
 [N2-2site]
 name = Two Site, Chargeless Nitrogen
+species = nitrogen
 source = http://dx.doi.org/10.1080/00268978000103611
 atoms =
     Nx      14.0067     0.000       -0.55   0       0
@@ -244,6 +259,7 @@ probe radius = 1.8
 
 [N2-Etters]
 name = Nitrogen Based on Etters Potential
+species = nitrogen
 source = http://dx.doi.org/10.1063/1.1352078
 atoms =
     Nx   14.0067 -0.4954 -0.556 0.000 0.000
@@ -259,6 +275,7 @@ probe radius = 1.8
 
 [H2S]
 name = Hydrogen Sulphide for Vapor-Liquid Equilibria
+species = hydrogen sulfide
 source = http://dx.doi.org/10.1063/1.2049278
 atoms =
     SX    32.065 -0.380  0.000000  0.000000  0.000000
@@ -274,6 +291,7 @@ probe radius = 1.8
 
 [N2O-PE]
 name = Nitrous Oxide for Phase Equilibria with Oxygen
+species = nitrous oxide
 source = http://dx.doi.org/10.1016/j.fluid.2007.07.014
 atoms =
     N1    14.0067 -0.3630  2.3124  0.0000  0.0000
@@ -291,6 +309,7 @@ probe radius = 1.7
 
 [N2O-Sol]
 name = Nitrous Oxide for Solubility in Fluorinated Liquids
+species = nitrous oxide
 source = http://dx.doi.org/10.1021/jp062995z
 atoms =
     N1    14.0067 -0.2497  2.3120  0.0000  0.0000
@@ -308,6 +327,7 @@ probe radius = 1.7
 
 [NO2]
 name = Nitrogen Dioxide
+species = nitrogen dioxide
 source = http://dx.doi.org/10.1021/jp8068255
 atoms =
     Ox    15.9990 -0.073 -1.0985  0.4651  0.0000
@@ -323,6 +343,7 @@ probe radius = 1.7
 
 [N2O4]
 name = Dinitrogen Tetroxide
+species = dinitrogen tetroxide
 source = http://dx.doi.org/10.1021/jp8068255
 atoms =
     Ox    15.9990 -0.294 -1.1010 -1.3426  0.0000
@@ -341,6 +362,7 @@ probe radius = 1.7
 
 [NO]
 name = Nitric Oxide for Diffusion in Water
+species = nitric oxide
 source = http://dx.doi.org/10.1063/1.1992482
 atoms =
     Nx    14.0067  0.0288  0.00  0.00  0.00
@@ -355,6 +377,7 @@ probe radius = 1.7
 
 [O2-TraPPE]
 name = Oxygen for Liquid Vapour Phase Equilibria
+species = oxygen
 source = http://dx.doi.org/10.1007/s00214-005-0073-1
 atoms =
     O2    15.9990 -0.113 -0.605  0.000  0.000
@@ -370,6 +393,7 @@ probe radius = 1.7
 
 [O2-PE]
 name = Oxygen for Phase Equilibria with Nitrous Oxide
+species = oxygen
 source = http://dx.doi.org/10.1016/j.fluid.2007.07.014
 atoms =
     O2    15.9990 -0.1230 -0.6050  0.0000  0.0000
@@ -385,6 +409,7 @@ probe radius = 1.7
 
 [SO2]
 name = Sulphur Dioxide for Vapor-Liquid Equilibria
+species = sulfur dioxide
 source = http://dx.doi.org/10.1063/1.2049278
 atoms =
     Sx    32.065   0.59   0.000000  0.000000  0.000000
@@ -400,6 +425,7 @@ probe radius = 1.7
 
 [H2]
 name = Anisotropic Hydrogen Diatom for Condensed Phase
+species = hydrogen
 source = http://dx.doi.org/10.1021/ct800155q
 atoms =
     H2E   0.000  0.3732 -0.371 0.000 0.000
@@ -418,6 +444,7 @@ probe radius = 1.0
 
 [I2]
 name = Iodine Diatom with UFF parameters
+species = iodine
 source = http://dx.doi.org/10.1021/ja204757x
 atoms =
     Ix   126.90447 0.000  1.33 0.00 0.00

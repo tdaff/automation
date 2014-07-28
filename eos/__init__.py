@@ -10,5 +10,5 @@ Peng-Robinson: peng_robinson()
 """
 
 # Make these accessible at the module level
-from peng_robinson import peng_robinson
+from .peng_robinson import peng_robinson
 

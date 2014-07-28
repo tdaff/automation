@@ -246,7 +246,14 @@ def peng_robinson(pressures, temperature=298.0):
     beta_f = A - 3 * B * B - 2 * B
     gamma = -A * B + B * B + B * B * B
 
-    Z1 = np.roots([1, alpha, beta_f, gamma])[0].real
+    zroots = np.roots([1, alpha, beta_f, gamma])
+    # Sometimes the real root is the last one
+    if zroots[0].imag == 0:
+        Z1 = zroots[0].real
+    elif zroots[1].imag == 0:
+        Z1 = zroots[1].real
+    else:
+        Z1 = zroots[2].real
 
     # calculate the sum(aik*zi)
     sum_za = dict((x, 0.0) for x in pressures)

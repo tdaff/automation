@@ -1330,8 +1330,7 @@ class PyNiss(object):
             press = tp_point[1]
             info("Running GCMC: T=%.1f " % temp +
                  " ".join(["P=%.2f" % x for x in press]))
-            tp_path = ('T%s' % temp +
-                       ''.join(['P%.2f' % x for x in press]))
+            tp_path = format_tp_path(tp_point)
             mkdirs(tp_path)
             os.chdir(tp_path)
             try_symlink(path.join('..', 'CONFIG'), 'CONFIG')
@@ -1408,8 +1407,7 @@ class PyNiss(object):
             press = tp_point[1]
             info("Running ABSL: T=%.1f " % temp +
                  " ".join(["P=%.2f" % x for x in press]))
-            tp_path = ('T%s' % temp +
-                       ''.join(['P%.2f' % x for x in press]))
+            tp_path = format_tp_path(tp_point)
             mkdirs(tp_path)
             os.chdir(tp_path)
 
@@ -1882,8 +1880,7 @@ class Structure(object):
         gcmc_code = options.get('mc_code')
         gcmc_path = path.join('faps_%s_%s' % (self.name, gcmc_code))
         # Runs in subdirectories
-        tp_path = path.join(gcmc_path, 'T%s' % tp_point[0] +
-                               ''.join(['P%.2f' % x for x in tp_point[1]]))
+        tp_path = path.join(gcmc_path, format_tp_path(tp_point))
         if gcmc_code == 'fastmc':
             info("Importing results from FastGCMC")
             self.fastmc_postproc(tp_path, tp_point, options)
@@ -1894,8 +1891,7 @@ class Structure(object):
         """Select the source for ABSL results and import."""
         absl_path = path.join('faps_%s_%s' % (self.name, 'absl'))
         # Runs in subdirectories
-        tp_path = path.join(absl_path, 'T%s' % tp_point[0] +
-                               ''.join(['P%.2f' % x for x in tp_point[1]]))
+        tp_path = path.join(absl_path, format_tp_path(tp_point))
         info("Importing results from ABSL")
         self.absl_postproc(tp_path, tp_point, options)
 
@@ -5170,6 +5166,31 @@ def sys_argv_strip(argument):
 def same_guests(base, other):
     """Test if the guests are the same index and order."""
     return [item.ident for item in base] == [item.ident for item in other]
+
+
+def format_tp_path(tp_point):
+    """
+    Format the state point into a short string for use in directory naming,
+    "Txxx.xPyy.yyPzz.zz". Any pressures above 0.1 bar are fixed at 2 dp,
+    anything below is allowed to float. This is to keep some backwards
+    compatibility with old calculations.
+
+    :param tp_point: (temperature, (pressure1, pressure2, ...))
+    :return: string "Txxx.xPyy.yyPzz.zz"
+    """
+    #TODO(tdaff): break compatibility one day.
+
+    def pformat(pressure):
+        """conditional choice between fixed dp or just g format."""
+        if pressure < 0.1:
+            if not hasattr(format_tp_path, 'warned'):
+                warning("Directory naming for pressures < 0.1 bar has changed")
+                format_tp_path.warned = True
+            return 'P%g' % pressure
+        else:
+            return 'P%.2f' % pressure
+
+    return 'T%s' % tp_point[0] + ''.join([pformat(x) for x in tp_point[1]])
 
 
 def ufloat(text):

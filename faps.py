@@ -28,9 +28,9 @@ doing select parts.
 # Revision = {rev}
 
 try:
-    __version_info__ = (1, 4, 4, int("$Revision$".strip("$Revision: ")))
+    __version_info__ = (1, 4, 5, int("$Revision$".strip("$Revision: ")))
 except ValueError:
-    __version_info__ = (1, 4, 4, 0)
+    __version_info__ = (1, 4, 5, 0)
 __version__ = "%i.%i.%i.%i" % __version_info__
 
 import code
@@ -64,7 +64,7 @@ from numpy.linalg import norm
 from binding_sites.absl import calculate_binding_sites
 from config import Options
 from elements import WEIGHT, ATOMIC_NUMBER, UFF, VASP_PSEUDO_PREF
-from elements import CCDC_BOND_ORDERS, GULP_BOND_ORDERS, METALS
+from elements import CCDC_BOND_ORDERS, GULP_BOND_ORDERS, OB_BOND_ORDERS, METALS
 from elements import COVALENT_RADII, UFF_FULL, QEQ_PARAMS
 from eos import peng_robinson
 from job_handler import JobHandler
@@ -819,10 +819,16 @@ class PyNiss(object):
         else:
             return False
 
-
     def run_ff_opt(self):
-        """Select correct method for running the dft/optim."""
+        """Prepare the system and run the selected force field optimisation."""
         ff_opt_code = self.options.get('ff_opt_code')
+        info("Checking connectivity/types")
+        if self.structure.check_connectivity():
+            if self.options.getbool('infer_types_from_bonds'):
+                self.structure.gen_types_from_bonds()
+            else:
+                info("Bonds and types, provided")
+
         info("Running a %s calculation" % ff_opt_code)
         if ff_opt_code == 'gromacs':
             jobid = self.run_optimise_gromacs()
@@ -3643,7 +3649,6 @@ class Structure(object):
 
         return folded
 
-
     def remove_duplicates(self, tolerance=0.02):
         """Find overlapping atoms and remove them."""
         uniq_atoms = []
@@ -3659,6 +3664,27 @@ class Structure(object):
                 uniq_atoms.append(atom)
         debug("Found %i unique atoms in %i" % (len(uniq_atoms), self.natoms))
         self.atoms = uniq_atoms
+
+    def check_connectivity(self):
+        """
+        Carry out pre-optimisation checks checks on the structure to determine
+        if bonding information is included and if atom types are needed.
+        No bonding is inferred. Return True if connectivity is bad.
+
+        :return: bool
+        """
+
+        if not self.bonds:
+            warning("No bonding information found. "
+                    "Typing and optimisation will fail.")
+            return True
+
+        for atom in self.atoms:
+            if not atom.uff_type or atom.uff_type == '?':
+                debug("Untyped atom found.")
+                return True
+
+        return False
 
     def check_close_contacts(self, absolute=1.0, covalent=None):
         """
@@ -3773,6 +3799,54 @@ class Structure(object):
 
             self.bonds = new_bonds
 
+    def gen_types_from_bonds(self):
+        """
+        Pass the bonding information into openbabel to get the atomic types.
+        Modifies the atoms in place to set their uff_type attribute.
+        """
+        info("Generating UFF atom types from bonding information")
+        if not self.bonds:
+            error('No bonds, cannot generate types!')
+            return
+        # import these locally so we can run faps without them
+        import openbabel as ob
+        import pybel
+
+        # Construct the molecule from atoms and bonds
+        obmol = ob.OBMol()
+        obmol.BeginModify()
+
+        for atom in self.atoms:
+            new_atom = obmol.NewAtom()
+            new_atom.SetAtomicNum(atom.atomic_number)
+
+        for bond, bond_order in self.bonds.items():
+            # Remember openbabel indexes from 1
+            obmol.AddBond(bond[0]+1, bond[1]+1, OB_BOND_ORDERS[bond_order])
+
+        obmol.EndModify()
+
+        pybel_mol = pybel.Molecule(obmol)
+
+        # need to tell the typing system to ignore all atoms in the setup
+        # or it will silently crash with memory issues
+        constraint = ob.OBFFConstraints()
+        for at_idx in range(pybel_mol.OBMol.NumAtoms()):
+            constraint.AddIgnore(at_idx)
+        uff = ob.OBForceField_FindForceField('uff')
+        uff.Setup(pybel_mol.OBMol, constraint)
+        uff.GetAtomTypes(pybel_mol.OBMol)
+        # Dative nitrogen bonds break aromaticity determination from resonant
+        # structures, so make anything with an aromatic bond be aromatic
+        for at_idx, atom, ob_atom in zip(count(), self.atoms, pybel_mol):
+            uff_type = ob_atom.OBAtom.GetData("FFAtomType").GetValue()
+            if atom.type in ['C', 'N', 'O', 'S']:
+                for bond, bond_order in self.bonds.items():
+                    if at_idx in bond and bond_order == 1.5:
+                        uff_type = uff_type[0] + '_R'
+                        break
+
+            atom.uff_type = uff_type
 
     def gen_neighbour_list(self, force=False):
         """All atom pair distances."""

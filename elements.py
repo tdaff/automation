@@ -406,7 +406,17 @@ CCDC_BOND_ORDERS = {
 }
 
 GULP_BOND_ORDERS = {1: 'single', 1.41: 'amide', 1.5: 'resonant',
-               2: 'double', 3: 'triple', 4: 'quadruple'}
+                    2: 'double', 3: 'triple', 4: 'quadruple'}
+
+OB_BOND_ORDERS = {
+    # openbabel needs integers and aromatics are 5?
+    1.0: 1,  # single (two-electron) bond or sigma bond to metal
+    2.0: 2,  # double (four-electron) bond
+    3.0: 3,  # triple (six-electron) bond
+    4.0: 4,  # quadruple (eight-electron, metal-metal) bond
+    1.5: 5,  # alternating normalized ring bond (aromatic)
+    1.41: 5  # Amide bond (non standard)
+}
 
 UFF_TYPES = {
     "H": "H_", #"H_b",

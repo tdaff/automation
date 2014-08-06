@@ -4419,7 +4419,7 @@ class Atom(object):
     @property
     def covalent_radius(self):
         """Get the covalent radius from the library parameters."""
-        if self.type == 'C' and self.uff_type:
+        if self.type == 'C' and self.uff_type and self.uff_type in COVALENT_RADII:
             return COVALENT_RADII[self.uff_type]
         return COVALENT_RADII[self.type]
 

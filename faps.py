@@ -827,7 +827,9 @@ class PyNiss(object):
             if self.options.getbool('infer_types_from_bonds'):
                 self.structure.gen_types_from_bonds()
             else:
-                info("Bonds and types, provided")
+                warning("No types; try with infer_types_from_bonds")
+        else:
+            info("Bonds and types, provided")
 
         info("Running a %s calculation" % ff_opt_code)
         if ff_opt_code == 'gromacs':

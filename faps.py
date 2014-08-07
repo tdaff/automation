@@ -2162,7 +2162,10 @@ class Structure(object):
                 self.uff_energy = float(line.split()[-1])
                 info("UFF energy: %f kJ/mol" % self.uff_energy)
             elif line.startswith('Maximum force'):
-                info("Maximum Force: %f kJ/mol/nm" % float(line.split()[3]))
+                maximum_force = float(line.split()[3])
+                info("Maximum Force: %f kJ/mol/nm" % maximum_force)
+                if maximum_force > 10:
+                    error("Calculation is not converged!! Check output!")
 
         # Make sure everything is good from here
         if self.check_close_contacts(covalent=1.0):
@@ -2984,8 +2987,6 @@ class Structure(object):
                     central_atom = self.atoms[idx_a]
                     l_atom = self.atoms[l_idx]
                     r_atom = self.atoms[r_idx]
-                    # FIXME(tdaff) GetCoordination()
-                    coordination = len(bonded_atoms)
                     # FIXME(tdaff) over/under coordinated atoms?
                     theta0 = UFF_FULL[central_atom.uff_type][1]
                     # FIXME(tdaff) switch if coordination is not correct
@@ -3008,7 +3009,7 @@ class Structure(object):
                     ka *= (3.0*rab*rbc*(1.0 - cosT0*cosT0) - rac*rac*cosT0)
 
                     # FIXME(tdaff) change uff_coordination to coordination
-                    if central_atom.uff_coordination == 1:
+                    if central_atom.coordination == 1:
                         # linear bonds (e.g. C_1 triple bonds) had 0 force
                         # constant otherwise
                         thetamin = 180.0
@@ -3017,13 +3018,13 @@ class Structure(object):
                         thetamin = pi - arccos(c1/(4.0*c2))
                         thetamin /= DEG2RAD
                         kappa = ka * (16.0*c2*c2 - c1*c1) / (4.0*c2)
-                    elif central_atom.uff_coordination == 2:
+                    elif central_atom.coordination == 2:
                         thetamin = 120.0
                         kappa = 4.0*ka/3.0
-                    elif central_atom.uff_coordination in (4, 6):
+                    elif central_atom.coordination in (4, 6):
                         thetamin = 90.0
                         kappa = 2.0*ka
-                    elif central_atom.uff_coordination == 7:
+                    elif central_atom.coordination == 7:
                         alpha = 2.0*pi/5.0
                         c7 = sin(alpha)*(cos(alpha) - cos(2*alpha))
                         thetamin = 72.0
@@ -3040,7 +3041,7 @@ class Structure(object):
                         kappa *= 10.0
                         thetamin = angle_between(l_atom, central_atom, r_atom,
                                                  cell=self.cell)
-                    elif central_atom.uff_coordination == 1:
+                    elif central_atom.coordination == 1:
                         # linear bonds seemed too flexible
                         potential = "harmonic"
                     else:
@@ -3082,6 +3083,7 @@ class Structure(object):
                         else:
                             torsions.append((idx_a, idx_b, idx_c, idx_d))
 
+        overcoordinated = set()
         # now loop to generate force field
         for torsion in torsions:
             idx_a, idx_b, idx_c, idx_d = torsion
@@ -3092,7 +3094,20 @@ class Structure(object):
 
             bond_bc = bonding_table[idx_b][idx_c]
             torsiontype = bond_bc[2]  # bond order
-            coord_bc = (atom_b.uff_coordination, atom_c.uff_coordination)
+
+            # correct for over-coordinated things like vanadium
+            if atom_b.is_metal and atom_b.coordination > atom_b.uff_coordination:
+                coord_b = atom_b.coordination
+                overcoordinated.add(atom_b)
+            else:
+                coord_b = atom_b.uff_coordination
+            if atom_c.is_metal and atom_c.coordination > atom_c.uff_coordination:
+                coord_c = atom_c.coordination
+                overcoordinated.add(atom_c)
+            else:
+                coord_c = atom_c.uff_coordination
+
+            coord_bc = (coord_b, coord_c)
 
             V = 0
             n = 0
@@ -3141,11 +3156,11 @@ class Structure(object):
                 V = 0.5 * KCAL_TO_KJ * 1.0
 
                 # exception for group 6 sp3
-                if atom_c.uff_coordination == 3:
+                if coord_c == 3:
                     if atom_c.atomic_number in (8, 16, 34, 52):
                         n = 2
                         phi0 = 90.0
-                if atom_b.uff_coordination == 3:
+                if coord_b == 3:
                     if atom_b.atomic_number in (8, 16, 34, 52):
                         n = 2
                         phi0 = 90.0
@@ -3181,6 +3196,11 @@ class Structure(object):
                 tor_type, phi_s, V, n,
                 atom_a.uff_type, atom_b.uff_type,
                 atom_c.uff_type, atom_d.uff_type))
+
+        # Don't warn about overcoordination unless user cares.
+        if overcoordinated:
+            debug("%i overcoordinated atoms found: %s" % (len(overcoordinated),
+                  " ".join(set(x.uff_type for x in overcoordinated))))
 
         ##
         # inversions / improper dihedrals
@@ -4429,6 +4449,11 @@ class Atom(object):
         return self.atomic_number in METALS
 
     @property
+    def index(self):
+        """Return the index of the atom in the current parent structure."""
+        return self._parent.atoms.index(self)
+
+    @property
     def uff_coordination(self):
         """
         The expected coordination based on the third character of the UFF
@@ -4451,6 +4476,20 @@ class Atom(object):
             # This catches things like 'H_' and when there is no uff_type
             return 1
 
+    @property
+    def coordination(self):
+        """
+        The actual coordination of the atom based on bonds in the parent.
+        Counts all the bonds and returns an integer.
+
+        Returns
+        -------
+        int
+            Coordination of the atom
+        """
+
+        atom_index = self.index
+        return sum([atom_index in bond for bond in self._parent.bonds])
 
 
 class Guest(object):

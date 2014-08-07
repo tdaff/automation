@@ -58,23 +58,36 @@ options are used):
 * Default from :file:`defaults.ini`
 
 
+-----------------------------
+List of all available options
+-----------------------------
+
 
 The following is an automatically generated list of most options. The default
 value for each option is given here. For the most up-to-date list, see the
 :file:`defaults.ini` file.
 
 
-.. envvar:: absl_delete_files
-
-  Default: REVIVE \*/REVIVE \*/\*.out \*.out
-
-  files to delete after a successful absl job [str, list]
-
 .. envvar:: absl_compress_files
 
   Default: CONFIG \*/CONFIG REVCON \*/REVCON
 
-  files to keep and compress after a successful fastmc job [str, list]
+  yes, on, 1 and False, no, off, 0
+  Files to keep and compress after a successful fastmc job [str, list]
+
+.. envvar:: absl_delete_files
+
+  Default: REVIVE \*/REVIVE \*/\*.out \*.out
+
+  Files to delete after a successful absl job [str, list]
+
+.. envvar:: absl_exe
+
+  Default: ./absl_faps
+
+  Helper script name for absl job parts. faps will generate this script
+  first so don't change the name unless you know what you are doing.
+  see dl_poly_exe for the executables [str]
 
 .. envvar:: charge_method
 
@@ -155,6 +168,13 @@ value for each option is given here. For the most up-to-date list, see the
 
   Identify Sulphonic acid and nitro oxygen as separate types in egulp. [bool]
 
+.. envvar:: equation_of_state
+
+  Default: ideal
+
+  Equation of state to use to calculate the gas fugacities from the pressures.
+  [str] {ideal, peng-robinson}
+
 .. envvar:: esp_resolution
 
   Default: 0.1
@@ -218,6 +238,40 @@ value for each option is given here. For the most up-to-date list, see the
 
   Fold probability cube into the unit cell [bool]
 
+.. envvar:: grompp_exe
+
+  Default: grompp_d
+
+  Gromacs preprocessor executable, usually grompp or grompp_d for double
+  precision calculations (preferred) [str]
+
+.. envvar:: gromacs_compress_files
+
+  Default: \*.itp \*md.log\* traject\*.gro
+
+  files to keep and compress after a successful GROMACS job. [str, list]
+
+.. envvar:: gromacs_delete_files
+
+  Default: \*topol.tpr\* g.log \*traj.trr\* \*confout.gro\* \*ener.edr\* \*mdout.mdp\* state.cpt
+
+  Files to delete after a successful GROMACS job. [str, list]
+
+.. envvar:: gromacs_exe
+
+  Default: ./gromacs_faps
+
+  Helper script name for gromacs job parts. faps will generate this script
+  first so don't change the name unless you know what you are doing.
+  see mdrun_exe and grompp_exe for the executables [str]
+
+.. envvar:: gromacs_verbose
+
+  Default: False
+
+  Make gromacs produce more output like trajectories and energies. Check
+  that the files to keep are in gromacs_delete_files. [bool]
+
 .. envvar:: guests
 
   Default: CO2
@@ -241,6 +295,13 @@ value for each option is given here. For the most up-to-date list, see the
   Default: False
 
   Try to read in data from a previous calculation. [bool]
+
+.. envvar:: infer_types_from_bonds
+
+  Default: True
+
+  If bonding information is found, but atoms are not typed for force field
+  using _atom_type_description, then use openbabel to derive UFF types.
 
 .. envvar:: initial_structure_format
 
@@ -309,7 +370,7 @@ value for each option is given here. For the most up-to-date list, see the
 
 .. envvar:: mc_probability_plot
 
-  Default: True
+  Default: False
 
   Turn on probability plots in GCMC. [bool]
 
@@ -354,6 +415,13 @@ value for each option is given here. For the most up-to-date list, see the
   Default: False
 
   Do not use charges in the GCMC even if they have been calculated. [bool]
+
+.. envvar:: mdrun_exe
+
+  Default: mdrun_d
+
+  Gromacs main executable, usually mdrun or mdrun_d for double precision
+  calculations (preferred) [str]
 
 .. envvar:: no_absl
 
@@ -418,11 +486,32 @@ value for each option is given here. For the most up-to-date list, see the
 
   Optimize cell vectors in dft/optimization step. [bool]
 
+.. envvar:: order_atom_types
+
+  Default: False
+
+  Force re-ordering of atoms when reading files as in pre-1.4 versions of
+  faps. Setting to a True will always force legacy atom ordering for
+  compatibility with old simulations. False will prevent re-ordering unless
+  it is needed (e.g. vasp fails with too many blocks) [bool]
+
 .. envvar:: plain
 
   Default: False
 
   Do not colourise output. Ignored here; use commandline. [bool]
+
+.. envvar:: platon_pxrd
+
+  Default: True
+
+  Use PLATON to calculate the PXRD pattern. [bool]
+
+.. envvar:: platon_exe
+
+  Default: platon
+
+  location of the PLATON executable. [str]
 
 .. envvar:: potcar_dir
 
@@ -604,6 +693,13 @@ value for each option is given here. For the most up-to-date list, see the
 
   Maximum memory to use for threaded calculations (GB). [float]
 
+.. envvar:: trjconv_exe
+
+  Default: trjconv_d
+
+  Gromacs trajectory converter, usually trjconv or trjconv_d for double
+  precision calculations (preferred) [str]
+
 .. envvar:: update_opts
 
   Default: True
@@ -657,85 +753,6 @@ value for each option is given here. For the most up-to-date list, see the
   Default: network
 
   Command to run for zeo++. Faps will generate the command lines. [str]
-
-.. envvar:: daemon
-
-  Default: False
-
-
-  Function switch specific options
-
-  Run fapswitch as a service and wait for line-by-line input.
-  See also commandline options. [bool]
-
-.. envvar:: fapswitch_backends
-
-  Default: file
-
-  Backends to store the output structures. [str, list] {file, sqlite}
-
-.. envvar:: fapswitch_connectivity
-
-  Default: openbabel
-
-  Where to get the connectivity information from [str] {openbabel, file}
-
-.. envvar:: fapswitch_custom_strings
-
-  Default:
-
-  Make functionalisations with the set of {.freeform.srings.} and
-  [symm@try.strings]. [str, list]
-
-.. envvar:: fapswitch_full_random_count
-
-  Default: 0
-
-  Number of completely randomised structures to make. [int]
-
-.. envvar:: fapswitch_max_different
-
-  Default: 0
-
-  Maximum number of groups that will be used simultaneously. [int]
-
-.. envvar:: fapswitch_port
-
-  Default: 0
-
-  Socket port to run the server mode on; leave as zero to pick random
-  available port as two instances cannot share a port. [int]
-
-.. envvar:: fapswitch_replace_all_sites
-
-  Default: False
-
-  Should fapswitch produce all group@site combinations? [bool]
-
-.. envvar:: fapswitch_replace_groups
-
-  Default:
-
-  Only use the specified groups in systematic functionalisations. [list]
-
-.. envvar:: fapswitch_replace_only
-
-  Default:
-
-  Only replace the listed sites in systematic functionalisations. [list]
-
-.. envvar:: fapswitch_site_random_count
-
-  Default: 0
-
-  Number of symmetry based randomised structures to make. [int]
-
-.. envvar:: fapswitch_unfunctionalised_probability
-
-  Default: 0.5
-
-  Probability that a site will have no functionalisation in random switching
-  scheme. [float]
 
 
 .. _commandline-options:

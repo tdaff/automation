@@ -24,6 +24,7 @@ Contents
    modules
    options
    guests
+   changes
 
 ==================
 Indices and tables

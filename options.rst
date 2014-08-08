@@ -224,7 +224,7 @@ value for each option is given here. For the most up-to-date list, see the
 
   Default: gulp
 
-  Method to use to do force field optimisations. [str]
+  Method to use to do force field optimisations. [str] {gulp, gromcas}
 
 .. envvar:: find_maxima
 
@@ -535,8 +535,9 @@ value for each option is given here. For the most up-to-date list, see the
 
   Default:
 
-  custom parameter sets for QEq as (atom, electronegativity, 0.5\*hardness)
-  [(int/str, float, float), list]
+  Custom parameter sets for QEq as (atom, electronegativity, 0.5\*hardness).
+  Predefined parameter sets can also be named anywhere here.
+  [(int/str, float, float), list] {mepo}
 
 .. envvar:: queue
 
@@ -710,13 +711,20 @@ value for each option is given here. For the most up-to-date list, see the
 
   Default: LOCPOT CHGCAR vasprun.xml
 
-  files to keep and compress after a successful VASP job. [str, list]
+  Files to keep and compress after a successful VASP job. [str, list]
+
+.. envvar:: vasp_custom_incar
+
+  Default: 
+
+  Any options to add to the INCAR file. Text is copied verbatim and faps will
+  not overwrite any keys that are specified here. [str]
 
 .. envvar:: vasp_delete_files
 
   Default: WAVECAR CHG DOSCAR EIGENVAL POTCAR PCDAT IBZKPT XDATCAR KPOINTS
 
-  files to delete after a successful VASP job. [str, list]
+  Files to delete after a successful VASP job. [str, list]
 
 .. envvar:: vasp_exe
 

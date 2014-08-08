@@ -17,7 +17,7 @@ save it where you will be running faps as :file:`MIL-47.cif`.
 Faps is designed to have sensible defaults for most options, so it is possible
 to run a simulation without any further input. The usual way to run faps is
 using a ``JOBNAME``, in this case this is the name of the cif without ``.cif``.
-All the output files and interim calcualtions will use this jobname as the
+All the output files and interim calculations will use this jobname as the
 basename. You can fap the structure by running:
 
   :command:`faps MIL-47`
@@ -98,7 +98,7 @@ also be copied to duplicate the structure in different simulation conditions.
 
 
 ---------------------------
-Repeating calcualtion parts
+Repeating calculation parts
 ---------------------------
 
 Since the `.niss` file stores the state of the system calcaultions that have
@@ -269,7 +269,7 @@ options:
    no_dft = True
    no_charges = True
    no_gcmc = True
-   # Parameters for surface calcaultions
+   # Parameters for surface calculations
    # probes for VdW surface, H2, CO2, and N2
    surface_area_probe = 0.0, 1.42, 1.72, 1.82
    # approximate area per point on the surface
@@ -297,6 +297,30 @@ Make sure that your ``.cif`` minimally includes correct bonding information,
    no_force_field_opt = False
    ff_opt_code = gromacs
 
+
+------------------
+Higher quality DFT
+------------------
+
+For ESP charges and most structure optimisation jobs the VASP defaults are fine,
+but for higher or lower accuracy, or other job types, the inputs can be manually
+tweaked as required. For example, to do the DFT calculation using the TPSS
+meta-GGA functional with more K-points we can add the options that would be put
+in the INCAR:
+
+.. code-block:: ini
+
+   # structure.fap
+   # More K-points
+   kpoints = (3, 3, 3)
+   # Use the TPSS functional and correct DFT-D3 parameters
+   vasp_custom_incar =
+       METAGGA = TPSS
+       IVDW = 12
+       VDW_S6 = 1.0
+       VDW_S8 = 1.9435
+       VDW_A1 = 0.4535
+       VDW_A2 = 4.4752
 
 
 .. |H2O| replace:: H\ :sub:`2`\ O

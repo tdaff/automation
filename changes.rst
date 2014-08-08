@@ -27,14 +27,15 @@ Development
     fugacities of gasses on the fly.
   * Probability plots are turned off by default, must be explicitly turned on
     for processing binding sites.
-  * ``Structre`` classes have a ``to_cif()`` method.
-  * ``.cif`` files are generate for the final structure in the properties
+  * ``Structure`` classes have a ``to_cif()`` method.
+  * ``.cif`` files are generated for the final structure in the properties
     directory.
   * Use PLATON to generate a powder XRD pattern.
   * High energy and ``nan`` binding sites are pruned from the output.
   * ABSL runs DL_POLY jobs in serial through a single script.
   * MEPO_QEq parameters now accessible by name in ``qeq_parameters``.
   * ``egulp_parameters`` option removed, use ``qeq_parameters`` instead.
+  * Add any custom options to a VASP calculation with ``vasp_custom_incar``.
 
 
 -----------------

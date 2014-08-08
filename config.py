@@ -246,7 +246,7 @@ class Options(object):
         if local_options.cmdopts is not None:
             for pair in local_options.cmdopts:
                 if '=' in pair:
-                    pair = pair.split('=')
+                    pair = pair.split('=', 1)  # maximum of one split
                     self.cmdopts[pair[0]] = pair[1]
                 else:
                     self.cmdopts[pair] = True

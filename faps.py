@@ -28,9 +28,9 @@ doing select parts.
 # Revision = {rev}
 
 try:
-    __version_info__ = (1, 4, 5, int("$Revision$".strip("$Revision: ")))
+    __version_info__ = (1, 4, 6, int("$Revision$".strip("$Revision: ")))
 except ValueError:
-    __version_info__ = (1, 4, 5, 0)
+    __version_info__ = (1, 4, 6, 0)
 __version__ = "%i.%i.%i.%i" % __version_info__
 
 import code
@@ -4795,6 +4795,23 @@ def mk_connectivity_ff(sym_tree):
     filetemp.close()
 
 
+def incar_extend(incar, *args):
+    """
+    Add the specified (key, value) pairs to the incar string list only if they
+    are not already included in it. Only does startswith() matching, so can be
+    fooled/broken.
+
+    """
+    for key, value in args:
+        # assume we get (key, value) pairs
+        for line in incar:
+            if line.lstrip().startswith(key):
+                # Value already specified, skip it
+                debug("Not overwriting %s" % key)
+                continue
+        incar.append("%-7s = %s\n" % (key, value))
+
+
 def mk_incar(options, esp_grid=None):
     """Basic vasp INCAR; use defaults as much as possible."""
     # We need these options
@@ -4805,46 +4822,56 @@ def mk_incar(options, esp_grid=None):
     optim_cell = options.getbool('optim_cell')
     dispersion = options.getbool('dispersion')
 
-    incar = ["SYSTEM  = %s\n" % job_name,
-             "ALGO    = Fast\n",
-             "EDIFF   = 1E-5\n",
-             "EDIFFG  = -0.02\n",
-             "POTIM   = 0.4\n",
-             "LREAL   = Auto\n",
-             "LVTOT   = .TRUE.\n",
-             "LVHAR   = .TRUE.\n",
-             "ISMEAR  = 0\n",
-             "SIGMA   = 0.05\n",
-             "NWRITE  = 0\n"]
+    # Make sure that we have a list of lines with line endings
+    incar = ["%s\n" % x for x in options.get('vasp_custom_incar').splitlines()]
+    print incar
+    incar_extend(incar,
+                 ("SYSTEM", job_name),
+                 ("ALGO", "Fast"),
+                 ("EDIFF", "1E-5"),
+                 ("EDIFFG", -0.02),
+                 ("POTIM", 0.4),
+                 ("LREAL", "Auto"),
+                 ("LVTOT", ".TRUE."),
+                 ("LVHAR", ".TRUE."),
+                 ("ISMEAR", 0),
+                 ("SIGMA", 0.05),
+                 ("NWRITE", 0))
     if optim_cell:
         # Positions will be fixed by selective dynamics
         info("Cell vectors will be optimized")
-        incar.extend(["ENCUT   = 520\n",
-                      "IBRION  = 2\n",
-                      "NSW     = 800\n",
-                      "ISIF    = 3\n"])
+        incar_extend(incar,
+                     ("ENCUT", 520),
+                     ("IBRION", 2),
+                     ("NSW", 800),
+                     ("ISIF", 3))
     elif optim_all or optim_h:
         # Just move positions
-        incar.extend(["IBRION  = 2\n",
-                      "NSW     = 600\n",
-                      "ISIF    = 2\n"])
+        incar_extend(incar,
+                     ("IBRION", 2),
+                     ("NSW", 600),
+                     ("ISIF", 2))
     else:
         # Single point energy
         info("Single point calculation")
-        incar.extend(["IBRION  = 0\n",
-                      "NSW     = 0\n",
-                      "ISIF    = 0\n"])
+        incar_extend(incar,
+                     ("IBRION", 0),
+                     ("NSW", 0),
+                     ("ISIF", 0))
     if spin:
         info("Spin polarised calculation")
-        incar.append("ISPIN   = 2\n")
+        incar_extend(incar, ("ISPIN", 2))
 
     if dispersion:
         info("Dispersion correction will be used")
-        incar.append("IVDW    = 12\n")  # DFT-D3 with BJ damping
+        incar_extend(incar, ("IVDW", 12))  # DFT-D3 with BJ damping
 
     if esp_grid is not None:
         info("Changing FFT grid to %ix%ix%i" % esp_grid)
-        incar.append("NGXF = %i ; NGYF = %i ; NGZF = %i\n" % esp_grid)
+        incar_extend(incar,
+                     ("NGXF", esp_grid[0]),
+                     ("NGYF", esp_grid[1]),
+                     ("NGZF", esp_grid[2]))
 
     #TODO(jlo): if nelect is not None:
 
@@ -4854,7 +4881,7 @@ def mk_incar(options, esp_grid=None):
     npar = vasp_ncpu  # recommended up to 8 cpus
     if vasp_ncpu > 8:
         npar = 4*max(int((vasp_ncpu**0.5)/4.0), 1)
-    incar.append("NPAR    = %i\n" % npar)
+    incar_extend(incar, ("NPAR", npar))
 
     return incar
 

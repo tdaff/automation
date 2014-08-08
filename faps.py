@@ -1183,12 +1183,16 @@ class PyNiss(object):
         filetemp.close()
 
         # EGULP defaults to GULP parameters if not specified
-        # TODO(tdaff): remove old terminaology
-        try:
-            egulp_parameters = self.options.gettuple('egulp_parameters')
-            warning("egulp_parameters is deprecated use qeq_parameters instead")
-        except AttributeError:
-            egulp_parameters = self.options.gettuple('qeq_parameters')
+        egulp_parameters = self.options.gettuple('qeq_parameters')
+        if 'mepo' in egulp_parameters:
+            from parameters import mepo_qeq
+            info("Using MEPO-QEq base parameters")
+            egulp_parameters = [x for x in egulp_parameters if x != 'mepo']
+            for element, parameters in mepo_qeq.items():
+                # Put MEPO parameters at the beginning so they can be
+                # overridden
+                plist = [element, parameters[0], parameters[1]]
+                egulp_parameters = plist + egulp_parameters
 
         if not egulp_parameters:
             # parameters are mandatory in new egulp
@@ -5022,9 +5026,15 @@ def mk_gromacs_mdp(cell, mode='bfgs', verbose=False):
 
 def parse_qeq_params(param_tuple):
     """Convert an options tuple to a dict of values."""
+    param_dict = {}
+    # Check for predefined parameter sets
+    if 'mepo' in param_tuple:
+        info("Using MEPO-QEq base charges")
+        from parameters import mepo_qeq
+        param_dict.update(mepo_qeq)
+        param_tuple = [x for x in param_tuple if x != 'mepo']
     # group up into ((atom, electronegativity, 0.5*hardness), ... )
     param_tuple = subgroup(param_tuple, 3)
-    param_dict = {}
     for param_set in param_tuple:
         try:
             atom_type = int(param_set[0])

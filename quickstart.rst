@@ -161,27 +161,30 @@ To make use of our new jobfile, we run the command:
   :command:`faps -j methane MIL-47`
 
 
---------------
-Multiple guest
---------------
+----------------------------------------
+Multiple guest with fugacity corrections
+----------------------------------------
 
-Mixtures can be run by specifying multiple guests. This calculation will run
-three simulations:
+Mixtures can be run by specifying multiple guests. For high pressures we should
+use an equation of state to correct the pressures for fugacities. This
+calculation will run four simulations for high pressure methane separation and
+use a Peng-Robinson equation of state to calculate the fugacity of each gas:
 
 =========== ===========
 p(|CO2|)    p(|CH4|)
 =========== ===========
-0.6         0.2
-0.5         0.3
-0.4         0.4
+0.1         0.9
+1.0         9.0
+3.5         31.5
+6.5         58.5
 =========== ===========
 
 .. code-block:: ini
 
    # structure.fap
    guests = CO2 CH4-TraPPE
-   mc_pressure = (0.6, 0.2), (0.5, 0.3), (0.4, 0.4)
-
+   mc_pressure = (0.1, 0.9), (1.0, 9.0), (3.5, 31.5), (6.5, 58.5)
+   equation_of_state = peng-robinson
 
 ------------------
 Siesta calculation
@@ -216,10 +219,23 @@ is blank then the defaults are used.
    # structure.fap
    no_dft = True
    charge_method = egulp
-   egulp_parameters =
+   qeq_parameters =
        C   5.87730000   5.23176667
        8   9.61510000   7.08292000
       Zn   4.59540000   3.85650000
+
+For predefined parameter sets, just specify them by name in ``qeq_parameters``.
+These can also be combined with custom parameters, e.g. for MEPO-QEq with an
+extra potential for silver:
+
+.. code-block:: ini
+
+   # structure.fap
+   no_dft = True
+   charge_method = egulp
+   qeq_parameters =
+       mepo
+       Ag   4.59540000   3.85650000
 
 
 -------------------------
@@ -262,6 +278,24 @@ options:
    surface_area_save = True
    # Use a spiral point generation algorithm rather than random points (MC)
    surface_area_uniform_sample = True
+
+
+-----------------------------
+Fast force field optimisation
+-----------------------------
+
+Some structures, particularly hypothetical ones require optimisation. This can
+be slow or fail with DFT, but if bonding (and atom typing) information is
+provided, either GROMACS or GULP can be used to pre-optimise the strains.
+Make sure that your ``.cif`` minimally includes correct bonding information,
+(and, preferably, atom typing), then turn on the force field optimisation:
+
+.. code-block:: ini
+
+   # structure.fap
+   # Fast force field optimisation
+   no_force_field_opt = False
+   ff_opt_code = gromacs
 
 
 

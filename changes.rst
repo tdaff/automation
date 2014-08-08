@@ -12,7 +12,7 @@ Development
 
   * **breaking change:** Atoms in the structure are no longer re-ordered when
     reading in the input files so that atom numbering is the same for input and
-    output files. This will break ordering when ``--import``ing from previous
+    output files. This will break ordering when using ``--import`` with previous
     runs. Since VASP doesn't label the POSCAR, this can lead to long lines in
     files that are fixed transparently, but may be missed by a user.
   * **breaking change:** VASP uses DFT-D3 by default instead of DFT-D2.
@@ -33,6 +33,8 @@ Development
   * Use PLATON to generate a powder XRD pattern.
   * High energy and ``nan`` binding sites are pruned from the output.
   * ABSL runs DL_POLY jobs in serial through a single script.
+  * MEPO_QEq parameters now accessible by name in ``qeq_parameters``.
+  * ``egulp_parameters`` option removed, use ``qeq_parameters`` instead.
 
 
 -----------------

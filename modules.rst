@@ -56,13 +56,19 @@ only useful with poor initial structures.
         C1    C     C_R   0.332090 0.631570 0.078270
         O52   O     O_2   0.631570 0.332090 0.958070
 
+  * If no atom typing is found, faps will attempt to derive the atom types
+    from the bonding information. **The bonding information must be correct**
+    if no atom typing information is found, and you should always check the
+    output.
+
 * Enable force field optimisations with ``no_force_field_opt = False``
 * ``ff_opt_code`` selects the optimisers from:
 
   * ``gulp`` optimises atoms and cell shape using the in built in UFF optimiser
     in the `GULP software package <http://projects.ivec.org/gulp/>`_. Metal
     atoms and nearest neighbours are fixed in fractional coordinates.
-  * ``gromacs`` faster alternative, in development.
+  * ``gromacs`` faster alternative, optimises cell parameters through NPT
+    simulation rather than directly.
 
 ----------------
 DFT calculations
@@ -110,6 +116,8 @@ isotherm and binding site data.
   ``.niss`` file to run different guests!)
 * Set isotherms with ``mc_temperature`` and ``mc_pressure`` or individual
   ``mc_state_points``.
+* Gas fugacity should be calculated for high pressure simulations by setting
+  ``equation_of_state`` to ``peng-robinson``.
 
 
 ---------------------

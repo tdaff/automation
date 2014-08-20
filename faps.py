@@ -3183,7 +3183,7 @@ class Structure(object):
             nphi0 = n*phi0
 
             if abs(sin(nphi0*DEG2RAD)) > 1.0e-3:
-                print("WARNING!!! nphi0 = %r" % nphi0)
+                error("WARNING!!! nphi0 = %r" % nphi0)
 
             if atom_b.is_metal or atom_c.is_metal and keep_metal_geometry:
                 V *= 10.0
@@ -4824,7 +4824,6 @@ def mk_incar(options, esp_grid=None):
 
     # Make sure that we have a list of lines with line endings
     incar = ["%s\n" % x for x in options.get('vasp_custom_incar').splitlines()]
-    print incar
     incar_extend(incar,
                  ("SYSTEM", job_name),
                  ("ALGO", "Fast"),

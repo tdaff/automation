@@ -28,9 +28,9 @@ doing select parts.
 # Revision = {rev}
 
 try:
-    __version_info__ = (1, 4, 6, int("$Revision$".strip("$Revision: ")))
+    __version_info__ = (1, 4, 7, int("$Revision$".strip("$Revision: ")))
 except ValueError:
-    __version_info__ = (1, 4, 6, 0)
+    __version_info__ = (1, 4, 7, 0)
 __version__ = "%i.%i.%i.%i" % __version_info__
 
 import code
@@ -1506,7 +1506,9 @@ class PyNiss(object):
         mkdirs(props_dir)
         os.chdir(props_dir)
 
-        self.structure.gen_neighbour_list()
+        # Neighbou list is only used by surface area, uncomment if needed
+        # for anything else
+        #self.structure.gen_neighbour_list()
 
         ##
         # Surface area calculations
@@ -2245,7 +2247,8 @@ class Structure(object):
         charges = []
         filetemp = open(filename)
         for line in filetemp:
-            if line.startswith(" Charge"):
+            # Stripping line means it can read Fortran or C++ REPEAT output
+            if line.strip().startswith("Charge"):
                 line = line.split()
                 # index, type, charge
                 charges.append((int(line[1]), int(line[4]), float(line[6])))
@@ -4824,6 +4827,10 @@ def mk_incar(options, esp_grid=None):
 
     # Make sure that we have a list of lines with line endings
     incar = ["%s\n" % x for x in options.get('vasp_custom_incar').splitlines()]
+    if incar:
+        # Non blank starting INCAR
+        info("Custom INCAR parameters selected")
+        debug("Base INCAR looks like: %s" % "".join(incar))
     incar_extend(incar,
                  ("SYSTEM", job_name),
                  ("ALGO", "Fast"),

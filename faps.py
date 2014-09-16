@@ -1667,6 +1667,11 @@ class PyNiss(object):
                               for x in self.structure.cell.params[:3]])
             warning("Reduced grid to %.2f A resolution to fit" % resolution)
             self._esp_reduced = True
+        elif resolution != 0.1:
+            # VASP defaults to grids of around 0.1, so check if user has
+            # requested a reduced grid
+            info("User requested esp resolution %f" % resolution)
+            self._esp_reduced = True
 
         self._esp_grid = esp_grid
         return esp_grid

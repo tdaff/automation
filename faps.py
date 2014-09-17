@@ -5183,10 +5183,11 @@ def fix_vasp_wrapped_types(filename='CONTCAR'):
     """
     Output files from VASP with a long list of types sometimes get wrapped.
     Check if lines have been wrapped and put them all on a single line.
-    Only works with VASP 5 outputs that include type names.
+    Only works with VASP 5 outputs that include type names. Return True if
+    the file has been modified.
 
     :param filename: name of the file to fix
-    :return: None
+    :return: bool
 
     """
     # Keep track of how long each line to be replaced is
@@ -5240,6 +5241,7 @@ def fix_vasp_wrapped_types(filename='CONTCAR'):
     f.close()
 
     debug("Unwrapped lines in file %s" % filename)
+    return True
 
 
 def unique(in_list, key=None):

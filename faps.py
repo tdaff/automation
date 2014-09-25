@@ -28,9 +28,9 @@ doing select parts.
 # Revision = {rev}
 
 try:
-    __version_info__ = (1, 4, 8, int("$Revision$".strip("$Revision: ")))
+    __version_info__ = (1, 4, 9, int("$Revision$".strip("$Revision: ")))
 except ValueError:
-    __version_info__ = (1, 4, 8, 0)
+    __version_info__ = (1, 4, 9, 0)
 __version__ = "%i.%i.%i.%i" % __version_info__
 
 import code
@@ -917,7 +917,8 @@ class PyNiss(object):
         os.chdir(optim_dir)
         debug("Running in %s" % optim_dir)
 
-        gro_file, top_file, itp_file = self.structure.to_gromacs()
+        metal_geom = self.options.get('gromacs_metal_geometry')
+        gro_file, top_file, itp_file = self.structure.to_gromacs(metal_geom)
 
         # We use default names so we don't have to specify
         # anything extra on the command line
@@ -2832,11 +2833,28 @@ class Structure(object):
 
         return config, field
 
-    def to_gromacs(self, keep_metal_geometry=True):
+    def to_gromacs(self, metal_geometry='input'):
         """Generate GROMACS structure and topology.
+
+        metal_geometry will affect topology terms with metal atoms. 'input'
+        will use the structure to generate the topology, and 'fix' will also
+        apply a stiffer potential.
 
         Return gro, top and itp files as lists of lines.
         """
+
+        # Use this to multiply the potential terms and make them rigid
+        metal_stiffness_factor = 1
+        if metal_geometry.lower().startswith('fix'):
+            keep_metal_geometry = True
+            metal_stiffness_factor = 10
+            info("Metals fixed at input geometries")
+        elif metal_geometry.lower().startswith('in'):
+            keep_metal_geometry = True
+            info("Using input geometry for metals")
+        else:
+            keep_metal_geometry = False
+            info("Using UFF parameters for metals")
 
         ##
         # .gro file
@@ -2970,7 +2988,7 @@ class Structure(object):
 
             if atom_a.is_metal or atom_b.is_metal and keep_metal_geometry:
                 params = (min_distance(atom_a, atom_b, self.cell.cell),
-                          unique_bonds[typed_bond][1]*10.0)
+                          unique_bonds[typed_bond][1]*metal_stiffness_factor)
             else:
                 params = unique_bonds[typed_bond]
 
@@ -3046,11 +3064,13 @@ class Structure(object):
                         thetamin /= DEG2RAD
                         kappa = ka * (16.0*c2*c2 - c1*c1) / (4.0*c2)
 
-                    if central_atom.is_metal and keep_metal_geometry:
+                    if keep_metal_geometry and (central_atom.is_metal or
+                                                l_atom.is_metal or
+                                                r_atom.is_metal):
                         # harmonic potential means it will not
                         # flip around
                         potential = "harmonic"
-                        kappa *= 10.0
+                        kappa *= metal_stiffness_factor
                         thetamin = angle_between(l_atom, central_atom, r_atom,
                                                  cell=self.cell)
                     elif central_atom.coordination == 1:
@@ -3194,7 +3214,7 @@ class Structure(object):
                 error("WARNING!!! nphi0 = %r" % nphi0)
 
             if atom_b.is_metal or atom_c.is_metal and keep_metal_geometry:
-                V *= 10.0
+                V *= metal_stiffness_factor
                 phi_s = dihedral(atom_a, atom_b, atom_c, atom_d, cell=self.cell)
             else:
                 phi_s = nphi0 - 180.0  # phi_s in degrees

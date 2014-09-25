@@ -20,6 +20,7 @@ from subprocess import Popen, PIPE, STDOUT
 
 MAX_RETRY = 5
 
+
 class JobHandler(object):
     """
     Abstraction of batch scheduler submission.
@@ -47,6 +48,11 @@ class JobHandler(object):
             self.postrun = _mk_sharcnet_postrun(options.get('dedicated_queue'))
             self.jobcheck = _sharcnet_jobcheck
             self.env = _sharcnet_env
+        elif self.queue == 'slurm':
+            self.submit = _slurm_submit
+            self.postrun = _slurm_postrun
+            self.jobcheck = _slurm_jobcheck
+            self.env = _pass
         elif self.queue == 'serial':
             self.submit = _serial_run
             self.postrun = _pass
@@ -58,10 +64,6 @@ class JobHandler(object):
             self.postrun = _pass
             self.jobcheck = _pass
             self.env = _pass
-
-    def _pbs_submit(self, job_type, nodes, **kwargs):
-        """Submit a generic pbs job; return the jobid."""
-        pass
 
 
 def _sharcnet_submit(job_type, options, input_file=None, input_args=None):
@@ -156,9 +158,11 @@ def _sharcnet_submit(job_type, options, input_file=None, input_args=None):
 
     return jobid
 
+
 def _sharcnet_postrun(waitid):
     """Dummy to stop picked jobs failing"""
     _pass()
+
 
 def _mk_sharcnet_postrun(dedicated_queue=None):
     """Return a postrun function for a particular queue."""
@@ -189,8 +193,7 @@ def _mk_sharcnet_postrun(dedicated_queue=None):
             '-r', '20m',
             '-o', 'faps-post-%s.out' % jobid_str,
             '--mpp=3g',
-            '--waitfor=%s' % ','.join(waitid),
-            ]
+            '--waitfor=%s' % ','.join(waitid)]
         if dedicated_queue:
             sqsub_args.extend(['-q', dedicated_queue])
         # Add the submitted program cleaned for instruction commands
@@ -199,6 +202,7 @@ def _mk_sharcnet_postrun(dedicated_queue=None):
         debug("Postrun command: %s" % " ".join(sqsub_args))
         subprocess.call(sqsub_args)
     return _sharcnet_postrun
+
 
 def _sharcnet_jobcheck(jobid):
     """Return true if job is still running or queued, or check fails."""
@@ -316,24 +320,14 @@ def _wooki_jobcheck(jobid):
     """Return true if job is still running or queued, or check fails."""
     # can deal with jobid as an int or a string
     jobid = ("%s" % jobid).strip()
-#    running_status = ['Q', 'R', 'Z']
     qstat = Popen(['qstat', '-j', jobid], stdout=PIPE, stderr=STDOUT)
     for line in qstat.stdout.readlines():
         if "Following jobs do not exist" in line:
             # Job finished and removed
             return False
-#TODO(tdaff): any way to get the job information?
-#        elif jobid in line:
-            # use of 'in' should be fine as only this job will be shown
-#            status = line[68:69]
-#            if status in running_status:
-#                return True
-#            else:
-                # Not running
-#                return False
+        #TODO(tdaff): any way to get the job information?
     else:
-        #print("Failed to get job information.")  # qstat parsing failed?
-        # Act as if the job is still running, in case it hasn't finished
+        # Job still exists, still running
         return True
 
 
@@ -369,6 +363,111 @@ def _serial_run(job_type, options, input_file=None, input_args=None):
 
     # always return True for a finished job
     return True
+
+
+def _slurm_submit(job_type, options, input_file=None, input_args=None):
+    """Simple interface to slurm resource manager"""
+    # Threaded codes have different behaviour
+    openmp_codes = options.gettuple('threaded_codes')
+
+    # Bind some things locally, so we know what's going on
+    job_name = options.get('job_name')
+    exe = options.get('%s_exe' % job_type)
+    try:
+        nodes = options.getint('%s_ncpu' % job_type)
+    except AttributeError:
+        nodes = 1
+
+    sbatch_script = ['#!/bin/bash\n', '\n']
+    job_command = [exe]
+    sbatch_args = ['sbatch']
+
+    # job_name
+    sbatch_args.extend(['--job-name', 'faps-%s-%s' % (job_name, job_type)])
+    # Is it a multiple CPU job?
+    if nodes > 1:
+        if job_type in openmp_codes:
+            # Some jobs are only openmp
+            _check_program(exe)
+            # Single task with so many CPUs
+            sbatch_args.extend(['--cpus-per-task', '%i' % nodes])
+            sbatch_script.append('export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK\n')
+
+        else:  # assume MPI
+            # Ensure mpi is enabled
+            _check_program(exe, mpi=True)
+            sbatch_args.extend(['--ntasks', '%i' % nodes])
+            job_command.insert(0, 'mpirun ')
+    else:
+        _check_program(exe)
+
+    # Some codes need the input file name
+    if input_file is not None:
+        job_command.extend(['<', '%s' % input_file])
+    # Output
+    sbatch_args.extend(['--output', 'faps-%s.out' % job_name])
+    # Which command?
+    if input_args is not None:
+        job_command.extend(input_args)
+
+    sbatch_script.extend([" ".join(job_command)])
+    sbatch_script = ''.join(sbatch_script)
+    debug("Submission command: %s" % " ".join(sbatch_args))
+    submit_count = 0
+    while submit_count <= MAX_RETRY:
+        submit = Popen(sbatch_args, stdout=PIPE, stdin=PIPE)
+        stdoutdata, _stderrdata = submit.communicate(input=sbatch_script)
+        if 'Submitted' in stdoutdata:
+            jobid = int(stdoutdata.split()[-1])
+            break
+        else:
+            submit_count += 1
+            error("Job submission attempt %i failed." % submit_count)
+            time.sleep(submit_count)
+
+    return jobid
+
+
+def _slurm_postrun(waitid):
+    """
+    Resubmit this script for the postrun on job completion. Will accept
+    a single jobid or a list, as integers or strings.
+    """
+    # Magic makes everything into a set of strings
+    if hasattr(waitid, '__iter__'):
+        waitid = frozenset([("%s" % wid).strip() for wid in waitid])
+    else:
+        waitid = frozenset([("%s" % waitid).strip()])
+
+    jobid_str = ('-'.join(sorted(waitid)))[:15]  # this should be plenty
+    sbatch_script = ['#!/bin/bash\n',
+                     '#SBATCH --dependency afterok:%s\n' % ':'.join(waitid),
+                     'python ', ' '.join(_argstrip(sys.argv))]
+
+    sbatch_args = ['sbatch', '--job-name', 'faps-post-%s' % jobid_str,
+                   '--output', 'faps-post-%s.out' % jobid_str]
+
+    sbatch_script = ''.join(sbatch_script)
+    submit = Popen(sbatch_args, shell=False, stdin=PIPE)
+    submit.communicate(input=sbatch_script)
+
+
+def _slurm_jobcheck(jobid):
+    """Return true if job is still running or queued, or check fails."""
+    # can deal with jobid as an int or a string
+    jobid = ("%s" % jobid).strip()
+    running_states = ['CG', 'PD', 'R', 'S', 'CF']
+    squeue = Popen(['squeue', '-j', jobid], stdout=PIPE, stderr=STDOUT)
+    stdoutdata = squeue.stdout.readlines()
+    if len(stdoutdata) == 1:
+        if 'JOBID' in stdoutdata[0] or 'Invalid job' in stdoutdata[0]:
+            # job cleared from the queue
+            return False
+    elif stdoutdata[1][48:50].strip() in running_states:
+        return True
+    else:
+        # Job still exists, still running
+        return True
 
 
 def _pass(*args, **kwargs):

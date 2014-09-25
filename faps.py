@@ -28,9 +28,9 @@ doing select parts.
 # Revision = {rev}
 
 try:
-    __version_info__ = (1, 4, 7, int("$Revision$".strip("$Revision: ")))
+    __version_info__ = (1, 4, 8, int("$Revision$".strip("$Revision: ")))
 except ValueError:
-    __version_info__ = (1, 4, 7, 0)
+    __version_info__ = (1, 4, 8, 0)
 __version__ = "%i.%i.%i.%i" % __version_info__
 
 import code

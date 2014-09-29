@@ -289,13 +289,14 @@ class PyNiss(object):
         """Summarise any results for GCMC, properties..."""
         # Also includes excess calculation if void volume calculated
         # N = pV/RT
+        all_csvs = {}
         R_GAS = 8.3144621E25 / NAVOGADRO # A^3 bar K-1 molecule
         job_name = self.options.get('job_name')
         info("Summary of GCMC results")
         info("======= ======= ======= ======= =======")
         nguests = len(self.structure.guests)
         for idx, guest in enumerate(self.structure.guests):
-            # Determine whether we can calulate the excess for
+            # Determine whether we can calculate the excess for
             # any different probes
             void_volume = self.structure.sub_property('void_volume')
             he_excess, guest_excess = "", ""
@@ -390,9 +391,11 @@ class PyNiss(object):
                 # list all the other guest pressures and start a new line
                 csv.append(",".join("%f" % x for x in tp_point[1]) + "\n")
 
-            csv_file = open('%s-%s.csv' % (job_name, guest.ident), 'w')
+            csv_filename = '%s-%s.csv' % (job_name, guest.ident)
+            csv_file = open(csv_filename, 'w')
             csv_file.writelines(csv)
             csv_file.close()
+            all_csvs[csv_filename] = "".join(csv)
         info("======= ======= ======= ======= =======")
 
         info("Structure properties")
@@ -468,6 +471,62 @@ class PyNiss(object):
                 plot = zip(*plot)
                 for line in plot:
                     info(''.join(line))
+
+        # Email at the end so everything is in the .flog
+        self.email(all_csvs)
+
+    def email(self, csvs=None):
+        """Send an email, if one has not already been sent."""
+        job_name = self.options.get('job_name')
+        email_addresses = self.options.gettuple('email')
+        if email_addresses:
+            info("Emailing results to %s" % ", ".join(email_addresses))
+        else:
+            # nobody to email to, why bother?
+            return
+
+        import smtplib
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+
+        # Construct an email, thanks documentation!
+        sender = 'Faps Master <noreply@uottawa.ca>'
+        outer = MIMEMultipart()
+        outer['Subject'] = 'Results for faps job on %s' % job_name
+        outer['To'] = ', '.join(email_addresses)
+        outer['From'] = sender
+        outer.preamble = 'This is a MIME multipart message\n'
+
+        # Just attach all the csv files
+        if csvs is not None:
+            for csv in csvs:
+                msg = MIMEText(csvs[csv], _subtype='csv')
+                msg.add_header('Content-Disposition', 'attachment',
+                               filename=csv)
+                outer.attach(msg)
+
+        # Include a cif file
+        msg_cif = MIMEText("".join(self.structure.to_cif()))
+        msg_cif.add_header('Content-Disposition', 'attachment',
+                           filename="%s.faps.cif" % job_name)
+        outer.attach(msg_cif)
+
+        # And the flog file
+        try:
+            flog = open("%s.flog" % job_name)
+            msg_flog = MIMEText(flog.read())
+            flog.close()
+            msg_flog.add_header('Content-Disposition', 'attachment',
+                                filename="%s.flog" % job_name)
+            outer.attach(msg_flog)
+        except IOError:
+            # Error reading the file, don't care
+            pass
+
+        # Send via local SMTP server
+        s = smtplib.SMTP('localhost')
+        s.sendmail(sender, email_addresses, outer.as_string())
+        s.quit()
 
 
     def step_force_field(self):

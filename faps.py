@@ -28,9 +28,9 @@ doing select parts.
 # Revision = {rev}
 
 try:
-    __version_info__ = (1, 4, 9, int("$Revision$".strip("$Revision: ")))
+    __version_info__ = (1, 5, 0, int("$Revision$".strip("$Revision: ")))
 except ValueError:
-    __version_info__ = (1, 4, 9, 0)
+    __version_info__ = (1, 5, 0, 0)
 __version__ = "%i.%i.%i.%i" % __version_info__
 
 import code
@@ -3632,13 +3632,6 @@ class Structure(object):
 
                 output = open(path.join(bs_directory, 'OUTPUT')).readlines()
 
-                # sometimes it stops after fewer than 200 steps
-                terminated_after = 200
-                for line in output:
-                    if "run terminated after" in line:
-                        terminated_after = int(line.split()[3])
-
-
                 if 'error - quaternion integrator failed' in output[-1]:
                     # bad guest placement
                     e_vdw = float('nan')
@@ -3648,44 +3641,60 @@ class Structure(object):
                     revcon = revcon[6::2]
                     # This is not a 'binding site'
                     magnitude = 0.0
-                elif terminated_after < 200:
-                    for line_idx, line in enumerate(output):
-                        if "run terminated after" in line:
-                            output_energies = output[line_idx+10].split()
-                            e_vdw = float(output_energies[4])
-                            e_esp = float(output_energies[5]) - empty_esp
-                    revcon = open(path.join(bs_directory, 'REVCON')).readlines()
-                    revcon = revcon[6::4]
-                    # can just use the peak value
-                    magnitude = binding_site[0][2]
                 else:
                     # energies
                     statis = open(path.join(bs_directory, 'STATIS')).readlines()
                     # Need to do a backwards search for the start of the last
                     # block since block size varies with number of atoms
+                    # Timestep line will start with more spaces than data line
                     lidx = 0  # start block of final STATIS data
                     for ridx, line in enumerate(statis[::-1]):
-                        if 'ENERGY UNITS' in line:
-                            lidx = 1-ridx
+                        if line.startswith('   '):
+                            lidx = ridx
                             break
                     else:
                         warning('No energies in STATIS')
 
-                    e_vdw = float(statis[lidx].split()[3])
-                    e_esp = float(statis[lidx].split()[4]) - empty_esp
+                    e_vdw = float(statis[-lidx].split()[3])
+                    e_esp = float(statis[-lidx].split()[4]) - empty_esp
                     # position
                     revcon = open(path.join(bs_directory, 'REVCON')).readlines()
-                    revcon = revcon[6::4]
+                    # If using MD, skip is 4 due to velocities and forces!
+                    revcon = revcon[6::2]
                     # can just use the peak value
                     magnitude = binding_site[0][2]
 
-                position = [(atom.type, [float(x) for x in pos.split()])
-                            for atom, pos in zip(guest.atoms, revcon)]
+                # Fix molecule if it crosses boundaries
+                # have to make dummy objects with fractional attribute for
+                # the minimum_image function
+                cell = self.cell
+
+                # For now, put (atom, dummy) in here
+                positions = []
+
+                for atom, ratom in zip(guest.atoms, revcon):
+                    dummy = DummyAtom()
+                    dummy.pos = [float(x) for x in ratom.split()]
+                    dummy.fractional = [x % 1.0 for x in
+                                        dot(dummy.pos, cell.inverse)]
+                    # Put dummy nearest to first atom, if it exists
+                    if positions:
+                        dummy.pos = minimum_image(positions[0][1], dummy,
+                                                  cell.cell)
+                        positions.append((atom, dummy))
+                    else:
+                        # ensure anchor is within the unit cell
+                        dummy.pos = dot(dummy.fractional, cell.cell)
+                        positions.append((atom, dummy))
+
+                # Extract the information we need from the tuples
+                positions = [(atom.type, dummy.pos)
+                             for atom, dummy in positions]
 
                 info("Binding site %i: %f kcal/mol, %f occupancy" %
                      (bs_idx, (e_vdw+e_esp), magnitude))
 
-                binding_energies.append([magnitude, e_vdw, e_esp, position])
+                binding_energies.append([magnitude, e_vdw, e_esp, positions])
 
             with open('%s_absl.xyz' % guest.ident, 'w') as absl_out:
                 frame_number = 0
@@ -4832,6 +4841,11 @@ class Symmetry(object):
         return new_pos
 
 
+class DummyAtom(object):
+    """Not a real class. Just an empty object to store attributes."""
+    pass
+
+
 def mk_repeat(cube_name='REPEAT_ESP.cube', symmetry=False):
     """Standard REPEAT input file."""
     if symmetry:
@@ -5047,14 +5061,16 @@ def mk_dl_poly_control(options, dummy=False):
     """CONTROL file for binding site energy calculation."""
     if dummy:
         stats = 1
+        steps = 1
     else:
-        stats = 200
+        stats = 1
+        steps = 100
     control = [
         "# minimisation\n",
-        "zero\n",
-        "steps 200\n",
+        "optim energy 1.0\n",  # gives approx 0.01 kcal
+        "steps %i\n" % steps,
         "timestep 0.001 ps\n",
-        "ensemble nvt hoover 0.1\n",
+        "#ensemble nvt hoover 0.1\n",
         "cutoff %f angstrom\n" % options.getfloat('mc_cutoff'),
         "delr 1.0 angstrom\n",
         "ewald precision 1d-6\n",
@@ -5670,8 +5686,6 @@ def dihedral(atom_a, atom_b, atom_c, atom_d, cell=None):
 
     return -arctan2(dot(vec_b_c, cross(norm_2, norm_1)),
                     norm(vec_b_c)*dot(norm_1, norm_2))/DEG2RAD
-
-    return angle
 
 
 def minimum_image(atom1, atom2, box):

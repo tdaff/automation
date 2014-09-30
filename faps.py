@@ -1017,6 +1017,7 @@ class PyNiss(object):
         gromacs_faps = open('gromacs_faps', 'w')
         gromacs_faps.writelines([
             "#!/bin/bash\n\n",
+            "export OMP_NUM_THREADS=1\n\n",
             "# preprocess first bfgs\n",
             "%s -maxwarn 2 &>> g.log\n\n" % grompp,
             "# bfgs step\n",

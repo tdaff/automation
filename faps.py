@@ -1533,7 +1533,8 @@ class PyNiss(object):
             # Make the script to run all the jobs now, using the individual
             # directories
             dl_poly_exe = self.options.get('dl_poly_exe')
-            absl_script = ["#!/bin/bash\n\n", "export FORT_BUFFERED=true\n\n"]
+            absl_script = ["#!/bin/bash\n\n", "export FORT_BUFFERED=true\n\n",
+                           "export OMP_NUM_THREADS=1\n\n"]
             for directory in individual_directories:
                 absl_script.extend(["pushd %s\n" % directory,
                                     "%s\n" % dl_poly_exe,

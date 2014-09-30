@@ -28,9 +28,9 @@ doing select parts.
 # Revision = {rev}
 
 try:
-    __version_info__ = (1, 4, 9, int("$Revision$".strip("$Revision: ")))
+    __version_info__ = (1, 4, 10, int("$Revision$".strip("$Revision: ")))
 except ValueError:
-    __version_info__ = (1, 4, 9, 0)
+    __version_info__ = (1, 4, 10, 0)
 __version__ = "%i.%i.%i.%i" % __version_info__
 
 import code
@@ -1533,7 +1533,8 @@ class PyNiss(object):
             # Make the script to run all the jobs now, using the individual
             # directories
             dl_poly_exe = self.options.get('dl_poly_exe')
-            absl_script = ["#!/bin/bash\n\n", "export FORT_BUFFERED=true\n\n"]
+            absl_script = ["#!/bin/bash\n\n", "export FORT_BUFFERED=true\n\n",
+                           "export OMP_NUM_THREADS=1\n\n"]
             for directory in individual_directories:
                 absl_script.extend(["pushd %s\n" % directory,
                                     "%s\n" % dl_poly_exe,

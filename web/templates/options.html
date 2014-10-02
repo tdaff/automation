@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Faps input generation">
+  <meta name="author" content="Thomas D Daff">
+
+  <!-- Bootstrap core CSS -->
+  <link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css" type="text/css">
+  <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
+  <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+  <!-- Bootstrap javascript -->
+  <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
+
+  <!-- Custom styles for this template -->
+  <link href="static/custom.css" rel="stylesheet" type="text/css">
+
+  <title>Faps Options Maker</title>
+  <script src="static/fapweb.js"></script>
+</head>
+
+<body>
+<div id="wrap">
+  <div class="container">
+    <div class="page-header">
+      <h1>Faps UI</h1>
+    </div>
+    <div class="panel panel-primary">
+      <div class="panel-body">
+        <form id="job-form" action="/submit" method=post enctype=multipart/form-data>
+          <div class="col-sm-6">
+            <h2>Generated fap file</h2>
+            <textarea id="generated-file" name="fap-file" rows="8" class="col-sm-12"></textarea>
+          </div>
+          <div class="col-sm-6">
+            <h2>Upload cif file and submit job</h2>
+
+            <p><input id="cif-file" type=file name="cif-file">
+              <!--<input type=submit value=Upload> -->
+              <button type="button" class="btn btn-default" onclick="submitJob();">
+                Submit job!
+              </button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <div>
+      <form id='all-options' class="form-horizontal" role="form">
+        {% for section in options|sort %}
+          <div class="panel panel-default">
+            <div class="panel-heading">
+              <h4 class="panel-title">
+                <a data-toggle="collapse" data-target="#collapse{{ section|e|urlencode }}">
+                  {{ section|e }}
+                </a>
+              </h4>
+            </div>
+            <div id="collapse{{ section|e|urlencode }}" class="panel-collapse collapse {{ ' in' if not 'advanced' in section }}">
+              <div class="panel-body">
+                {% for option in options[section] %}
+                  <div class="form-group">
+                    <label for="{{ option.option_name|e }}" class="col-sm-2 control-label" onclick="switchActive('{{ option.option_name|e }}');">
+                      {{ option.option_name|e }}
+                    </label>
+
+                    <div class="col-sm-2">
+                      {% if option.option_type == 'bool' %}
+                        <input type="checkbox" class="form-control" id="{{ option.option_name|e }}" {{ ' checked="checked"' if option.default }} disabled onchange="updateFap();">
+                      {% elif 'enum' in option.option_type %}
+                        <select class="form-control" id="{{ option.option_name|e }}" disabled onchange="updateFap();">
+                          {% for item in option.option_type[1:] %}
+                            <option{{ ' selected' if item == option.default }}>{{ item|e }}</option>
+                          {% endfor %}
+                        </select>
+                      {% else %}
+                        <input type="text" class="form-control" id="{{ option.option_name|e }}" placeholder="{{ option.default }}" disabled onchange="updateFap();">
+                      {% endif %}
+                    </div>
+                    <div class="col-sm-6"><p>{{ option.help_text|e }} Default:
+                      <code>{{ option.default|e }}</code></p></div>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </form>
+    </div>
+  </div>
+</div>
+</body>
+</html>

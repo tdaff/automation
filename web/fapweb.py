@@ -4,7 +4,7 @@ import re
 from collections import defaultdict
 from subprocess import Popen, PIPE
 
-from flask import Flask, request, render_template
+from flask import Flask, request, render_template, Response
 
 
 class Option(object):
@@ -86,7 +86,7 @@ def show_hello():
     return render_template('options.html', options=parse_defaults())
 
 
-@app.route('/submit', methods=['POST'])
+@app.route('/submit', methods=['POST', 'GET', 'PUT'])
 def submit_job():
     """
     Take whatever comes in through the form and run the faps job.
@@ -108,11 +108,19 @@ def submit_job():
 
     faps_command = ['faps', basename]
     faps_run = Popen(faps_command, stdout=PIPE, stderr=PIPE)
-    stderr, stdout = faps_run.communicate()
-    print stderr
-    print stdout
+    stdout, stderr = faps_run.communicate()
+    print('---err---')
+    print(stderr)
+    print('---out---')
+    print(stdout)
 
-    return "Submitted"
+    if "Faps terminated normally" in stdout:
+        response = Response("Submitted successfully", content_type='text/xml; charset=utf-8')
+    else:
+        response = Response("Something failed :(", content_type='text/xml; charset=utf-8')
+
+    print(response.__dict__)
+    return response
 
 
 if __name__ == '__main__':

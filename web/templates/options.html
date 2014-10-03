@@ -13,14 +13,13 @@
   <!-- Bootstrap javascript -->
   <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
 
-  <!-- ChemDoodle Web stuff -->
-  <link rel="stylesheet" href="http://hub.chemdoodle.com/cwc/latest/ChemDoodleWeb.css" type="text/css">
-  <script type="text/javascript" src="http://hub.chemdoodle.com/cwc/latest/ChemDoodleWeb.js"></script>
+  <!-- JSmol -->
+  <script type="text/javascript" src="static/jsmol/JSmol.min.nojq.js"></script>
 
   <!-- Custom styles for this template -->
   <link href="static/custom.css" rel="stylesheet" type="text/css">
 
-  <title>Faps Options Maker</title>
+  <title>Faps Web Interface - Upload your CIF for easy isotherms.</title>
   <script src="static/fapweb.js"></script>
 </head>
 
@@ -28,7 +27,7 @@
 <div id="wrap">
   <div class="container">
     <div class="page-header">
-      <h1>Faps UI</h1>
+      <h1>Faps UI - Upload CIFs for easy isotherms</h1>
     </div>
     <div class="panel panel-primary">
       <div class="panel-body">
@@ -39,8 +38,9 @@
           </div>
           <div class="col-sm-6">
             <h2>Upload cif file and submit job</h2>
-            <div id="cif-canvas"><canvas id="view-cif"></canvas></div>
-            <p><input id="cif-file" type=file name="cif-file" onchange="viewCif();">
+            <!--<div id="cif-canvas"><canvas id="view-cif"></canvas></div>-->
+            <script>jmolSetup();</script>
+            <p><input id="cif-file" type=file name="cif-file" onchange="viewCif2();">
               <!--<input type=submit value=Upload> -->
               <button type="button" class="btn btn-default" onclick="submitJob();">
                 Submit job!

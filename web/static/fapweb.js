@@ -1,6 +1,10 @@
 
 /*jslint browser:true */
 
+/** Just put this as a global for now so accessible from all functions*/
+var jmolApplet0;
+
+
 /** Take all the fields and create the fap file */
 function generateFap() {
     "use strict";
@@ -19,11 +23,13 @@ function generateFap() {
     return fapfile;
 }
 
+/** update the textarea in the page with the newest fap file */
 function updateFap() {
     "use strict";
     var textArea = document.getElementById('generated-file');
     textArea.innerHTML = generateFap();
 }
+
 
 function switchActive(control) {
     "use strict";
@@ -41,6 +47,11 @@ function submitJob() {
         xhr = new XMLHttpRequest();
 
     xhr.open('post', '/submit', true);
+    xhr.onreadystatechange = function () {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+            alert(xhr.responseText);
+        }
+    };
     xhr.send(formData);
     /* do something after */
 }
@@ -71,3 +82,33 @@ function viewCif() {
 
 }
 
+function jmolSetup() {
+    "use strict";
+    var Info = {
+        width: 300,
+        height: 300,
+        // serverURL: "http://chemapps.stolaf.edu/jmol/jsmol/jsmol.php ",
+        // serverURL: "http://propka.ki.ku.dk/~jhjensen/jsmol/jsmol.php ",
+        use: "HTML5",
+        j2sPath: "static/jsmol/j2s",
+        console: "jmolApplet0_infodiv"
+    };
+    jmolApplet0 = Jmol.getApplet("jmolApplet0", Info);
+}
+
+function viewCif2() {
+    "use strict";
+    var fileInput = document.getElementById('cif-file').files[0],
+        reader = new FileReader();
+
+    reader.readAsText(fileInput, "UTF-8");
+    reader.onload = function (evt) {
+        var cifFile = evt.target.result,
+            unitCell;
+
+        cifFile = cifFile.replace(/(\r\n|\n|\t)/gm, "\n");
+        cifFile = cifFile.replace(/[\'\"]/g, "\\$&");
+        Jmol.script(jmolApplet0, 'load inline \"' + cifFile + '\" {1 1 1} packed');
+    };
+
+}

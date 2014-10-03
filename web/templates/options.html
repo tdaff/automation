@@ -13,6 +13,10 @@
   <!-- Bootstrap javascript -->
   <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
 
+  <!-- ChemDoodle Web stuff -->
+  <link rel="stylesheet" href="http://hub.chemdoodle.com/cwc/latest/ChemDoodleWeb.css" type="text/css">
+  <script type="text/javascript" src="http://hub.chemdoodle.com/cwc/latest/ChemDoodleWeb.js"></script>
+
   <!-- Custom styles for this template -->
   <link href="static/custom.css" rel="stylesheet" type="text/css">
 
@@ -31,12 +35,12 @@
         <form id="job-form" action="/submit" method=post enctype=multipart/form-data>
           <div class="col-sm-6">
             <h2>Generated fap file</h2>
-            <textarea id="generated-file" name="fap-file" rows="8" class="col-sm-12"></textarea>
+            <textarea id="generated-file" name="fap-file" rows="16" class="col-sm-12"></textarea>
           </div>
           <div class="col-sm-6">
             <h2>Upload cif file and submit job</h2>
-
-            <p><input id="cif-file" type=file name="cif-file">
+            <div id="cif-canvas"><canvas id="view-cif"></canvas></div>
+            <p><input id="cif-file" type=file name="cif-file" onchange="viewCif();">
               <!--<input type=submit value=Upload> -->
               <button type="button" class="btn btn-default" onclick="submitJob();">
                 Submit job!

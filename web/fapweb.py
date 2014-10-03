@@ -106,7 +106,7 @@ def submit_job():
     with open("{}.fap".format(basename), 'w') as fap_out:
         fap_out.write(fap_file)
 
-    faps_command = ['/home/tdaff/bin/faps', basename]
+    faps_command = ['faps', basename]
     faps_run = Popen(faps_command, stdout=PIPE, stderr=PIPE)
     stderr, stdout = faps_run.communicate()
     print stderr

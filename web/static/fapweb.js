@@ -33,7 +33,7 @@ function switchActive(control) {
 }
 
 
-/** upload fil with AJAX, thanks stack overflow http://stackoverflow.com/a/4943774 */
+/** upload file with AJAX */
 function submitJob() {
     "use strict";
     var fileInput = document.getElementById('job-form'),
@@ -43,5 +43,31 @@ function submitJob() {
     xhr.open('post', '/submit', true);
     xhr.send(formData);
     /* do something after */
+}
+
+/** read in the file contents and inject into the page as a new script */
+function viewCif() {
+    "use strict";
+    var fileInput = document.getElementById('cif-file').files[0],
+        reader = new FileReader();
+
+    reader.readAsText(fileInput, "UTF-8");
+    reader.onload = function (evt) {
+        var cifFile = evt.target.result,
+            myCanvas = new ChemDoodle.TransformCanvas3D('view-cif', 500, 300),
+            unitCell;
+
+        myCanvas.emptyMessage = 'No Data Loaded!';
+        myCanvas.specs.projectionPerspective_3D = false;
+        myCanvas.specs.atoms_useJMOLColors = true;
+        myCanvas.specs.bonds_useJMOLColors = true;
+
+        cifFile = cifFile.replace(/(\r\n|\n|\t)/gm, "\n");
+        cifFile = cifFile.replace(/[\'\"]/g, "\\$&");
+        unitCell = ChemDoodle.readCIF(cifFile);
+        myCanvas.loadMolecule(unitCell);
+        myCanvas.repaint();
+    };
+
 }
 

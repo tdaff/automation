@@ -38,7 +38,6 @@ try:
     import configparser
 except ImportError:
     import ConfigParser as configparser
-import glob
 import mmap
 import os
 import pickle
@@ -51,6 +50,7 @@ import tarfile
 import textwrap
 import time
 from copy import copy
+from glob import glob
 from itertools import count
 from logging import warning, debug, error, info, critical
 from math import ceil, log
@@ -1305,7 +1305,7 @@ class PyNiss(object):
             submit.wait()
             # Cube should have job_name, but can get truncated;
             # therefore we try to look for it first
-            cube_file = glob.glob('*.cube')
+            cube_file = glob('*.cube')
             if len(cube_file) == 1:
                 cube_file = cube_file[0]
             elif len(cube_file) > 1:
@@ -1517,11 +1517,20 @@ class PyNiss(object):
 
                     include_guests = {guest.ident: [guest.aligned_to(*binding_site)]}
 
+                    dlp_files = self.structure.to_config_field(
+                        self.options, include_guests=include_guests)
+
                     with open("CONFIG", "w") as config:
+                        config.writelines(dlp_files[0])
+
+                    if bs_idx > 0:
+                        # symlink on FIELD to save space
+                        zero_directory = "%s_bs_%04d" % (guest.ident, 0)
+                        try_symlink(path.join('..', zero_directory, 'FIELD'),
+                                    'FIELD')
+                    else:
+                        # Always put the FIELD in zero to symlink to
                         with open("FIELD", "w") as field:
-                            dlp_files = self.structure.to_config_field(
-                                self.options, include_guests=include_guests)
-                            config.writelines(dlp_files[0])
                             field.writelines(dlp_files[1])
 
                     with open("CONTROL", "w") as control:
@@ -3601,7 +3610,7 @@ class Structure(object):
 
         if folded and not options.getbool('fastmc_keep_unfolded_cubes'):
             debug("Removing unfolded cube files")
-            cubes = glob.glob("prob_guest??_prob_??.cube")
+            cubes = glob("prob_guest??_prob_??.cube")
             remove_files(cubes)
 
         unneeded_files = options.gettuple('fastmc_delete_files')
@@ -3621,7 +3630,7 @@ class Structure(object):
         press = tp_point[1]
         tp_string = " T=%.1f " % temp + " ".join(["P=%.2f" % x for x in press])
 
-        statis = open('STATIS').readlines()
+        statis = compressed_open('STATIS').readlines()
         empty_esp = float(statis[3].split()[4])
 
         for guest in self.guests:
@@ -3632,20 +3641,26 @@ class Structure(object):
             for bs_idx, binding_site in enumerate(guest.binding_sites[tp_point]):
                 bs_directory = "%s_bs_%04d" % (guest.ident, bs_idx)
 
-                output = open(path.join(bs_directory, 'OUTPUT')).readlines()
+                output = compressed_open(path.join(bs_directory,
+                                                   'OUTPUT')).readlines()
 
                 if 'error - quaternion integrator failed' in output[-1]:
                     # bad guest placement
                     e_vdw = float('nan')
                     e_esp = float('nan')
-                    # position of original
-                    revcon = open(path.join(bs_directory, 'CONFIG')).readlines()
-                    revcon = revcon[6::2]
+                    # put position of original as final position, nan anyway
+                    try:
+                        shutil.move(path.join(bs_directory, 'CONFIG'),
+                                    path.join(bs_directory, 'REVCON'))
+                    except IOError:
+                        # CONFIG already moved, just doing update?
+                        pass
                     # This is not a 'binding site'
                     magnitude = 0.0
                 else:
                     # energies
-                    statis = open(path.join(bs_directory, 'STATIS')).readlines()
+                    statis = compressed_open(path.join(bs_directory,
+                                                       'STATIS')).readlines()
                     # Need to do a backwards search for the start of the last
                     # block since block size varies with number of atoms
                     # Timestep line will start with more spaces than data line
@@ -3659,12 +3674,14 @@ class Structure(object):
 
                     e_vdw = float(statis[-lidx].split()[3])
                     e_esp = float(statis[-lidx].split()[4]) - empty_esp
-                    # position
-                    revcon = open(path.join(bs_directory, 'REVCON')).readlines()
-                    # If using MD, skip is 4 due to velocities and forces!
-                    revcon = revcon[6::2]
                     # can just use the peak value
                     magnitude = binding_site[0][2]
+
+                # get position position
+                revcon = compressed_open(path.join(bs_directory,
+                                                   'REVCON')).readlines()
+                # If using MD, skip is 4 due to velocities and forces!
+                revcon = revcon[6::2]
 
                 # Fix molecule if it crosses boundaries
                 # have to make dummy objects with fractional attribute for
@@ -5418,6 +5435,21 @@ def try_symlink(src, dest):
         shutil.copy(src, dest)
 
 
+def compressed_open(filename):
+    """Return file objects for either compressed and uncompressed files"""
+    filenames = glob(filename) + glob(filename+".gz") + glob(filename+".bz2")
+    try:
+        filename = filenames[0]
+    except IndexError:
+        raise IOError("File not found: %s" % filename)
+    if filename[-4:] == ".bz2":
+        return bz2.BZ2File(filename)
+    elif filename[-3:] == ".gz":
+        return gzip.open(filename)
+    else:
+        return open(filename, "r")
+
+
 def sys_argv_strip(argument):
     """Remove an argument from the sys.argv if it is there."""
     while argument in sys.argv:
@@ -5742,7 +5774,7 @@ def remove_files(files, directory='.'):
     """
     del_list = []
     for file_name in files:
-        del_list.extend(glob.glob(path.join(directory, file_name)))
+        del_list.extend(glob(path.join(directory, file_name)))
     for del_name in del_list:
         debug("deleting %s" % del_name)
         try:
@@ -5758,7 +5790,7 @@ def compress_files(files, directory='.'):
     """Gzip any big files to keep."""
     zip_list = []
     for file_name in files:
-        zip_list.extend(glob.glob(path.join(directory, file_name)))
+        zip_list.extend(glob(path.join(directory, file_name)))
     for zip_name in zip_list:
         debug("compressing %s" % zip_name)
         gzip_command = ['gzip', '-f', zip_name]

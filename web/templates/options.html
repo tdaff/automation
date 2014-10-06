@@ -14,13 +14,13 @@
   <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
 
   <!-- JSmol -->
-  <script type="text/javascript" src="static/jsmol/JSmol.min.nojq.js"></script>
+  <script type="text/javascript" src="{{ url_for('static', filename='jsmol/JSmol.min.nojq.js') }}"></script>
 
   <!-- Custom styles for this template -->
-  <link href="static/custom.css" rel="stylesheet" type="text/css">
+  <link href="{{ url_for('static', filename='custom.css') }}" rel="stylesheet" type="text/css">
 
   <title>Faps Web Interface - Upload your CIF for easy isotherms.</title>
-  <script src="static/fapweb.js"></script>
+  <script src="{{ url_for('static', filename='fapweb.js') }}"></script>
 </head>
 
 <body>
@@ -29,6 +29,27 @@
     <div class="page-header">
       <h1>Faps UI - Upload CIFs for easy isotherms</h1>
     </div>
+    <p class="lead">Fully Automated Adsorption Analysis in Porous Solids, or
+      faps, is a tool developed by Tom Daff in the
+      <a href="//titan.chem.uottawa.ca"> research group of Tom Woo at the
+        University of Ottawa</a>.</p>
+
+    <p>Upload a <code>.cif</code> file of a Metal Organic Framework or other
+      porous solid, and we will use molecular simulations to estimate
+      gas adsorption within the structure. </p>
+    <ol>
+      <li>Use the <code>Browse</code> to find your structure.</li>
+      <li>Click on an <em>option name</em> to activate the option.</li>
+      <li>Click on the <em>section heading</em> to expose advanced options.</li>
+      <li>Enter values for options you'd like to change.</li>
+      <li>Make sure you have entered a valid <a href="#email">email address</a>
+        to get your results.
+      </li>
+      <li>Click <code>Submit</code>.</li>
+      <li>Wait for your results. Depending on your structure and options, this
+        can be a a few minutes or a few hours.
+      </li>
+    </ol>
     <div class="panel panel-primary">
       <div class="panel-body">
         <form id="job-form" action="/submit" method=post enctype=multipart/form-data>
@@ -40,7 +61,8 @@
             <h2>Upload cif file and submit job</h2>
             <!--<div id="cif-canvas"><canvas id="view-cif"></canvas></div>-->
             <script>jmolSetup();</script>
-            <p><input id="cif-file" type=file name="cif-file" onchange="viewCif2();">
+            <p>
+              <input id="cif-file" type=file accept="chemical/x-cif" name="cif-file" onchange="viewCif2();">
               <!--<input type=submit value=Upload> -->
               <button type="button" class="btn btn-default" onclick="submitJob();">
                 Submit job!

@@ -1,4 +1,3 @@
-
 /*jslint browser:true */
 
 /** Just put this as a global for now so accessible from all functions*/
@@ -16,7 +15,15 @@ function generateFap() {
         if (!formsCollection[r].disabled) {
             fapfile += formsCollection[r].id;
             fapfile += " = ";
-            fapfile += formsCollection[r].value;
+            if (formsCollection[r].type === 'checkbox') {
+                if (formsCollection[r].checked === true) {
+                    fapfile += 'True';
+                } else {
+                    fapfile += 'False';
+                }
+            } else {
+                fapfile += formsCollection[r].value;
+            }
             fapfile += '\n';
         }
     }
@@ -46,7 +53,7 @@ function submitJob() {
         formData = new FormData(fileInput),
         xhr = new XMLHttpRequest();
 
-    xhr.open('post', '/submit', true);
+    xhr.open('post', '/faps/submit', true);
     xhr.onreadystatechange = function () {
         if (xhr.readyState === 4 && xhr.status === 200) {
             alert(xhr.responseText);
@@ -90,7 +97,7 @@ function jmolSetup() {
         // serverURL: "http://chemapps.stolaf.edu/jmol/jsmol/jsmol.php ",
         // serverURL: "http://propka.ki.ku.dk/~jhjensen/jsmol/jsmol.php ",
         use: "HTML5",
-        j2sPath: "static/jsmol/j2s",
+        j2sPath: "faps/static/jsmol/j2s",
         console: "jmolApplet0_infodiv"
     };
     jmolApplet0 = Jmol.getApplet("jmolApplet0", Info);
@@ -103,8 +110,7 @@ function viewCif2() {
 
     reader.readAsText(fileInput, "UTF-8");
     reader.onload = function (evt) {
-        var cifFile = evt.target.result,
-            unitCell;
+        var cifFile = evt.target.result;
 
         cifFile = cifFile.replace(/(\r\n|\n|\t)/gm, "\n");
         cifFile = cifFile.replace(/[\'\"]/g, "\\$&");

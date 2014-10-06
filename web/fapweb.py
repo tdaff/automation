@@ -1,10 +1,17 @@
-"""Faps web interface."""
+"""
+Faps web interface.
+
+Show all available options as a webpage to help make fap files and submit
+jobs. Built on flask, so it will run a webserver and tell the user how
+to access the site.
+"""
 
 import re
 from collections import defaultdict
+from os import path
 from subprocess import Popen, PIPE
 
-from flask import Flask, request, render_template, Response
+from flask import Flask, request, render_template, Response, url_for, redirect
 
 
 class Option(object):
@@ -77,21 +84,30 @@ def parse_defaults():
 
 
 # create the application
-app = Flask(__name__)
+# We run under /faps so that the URL is already prefixed for proxy'd
+# connections
+app = Flask(__name__, static_url_path='/faps/static')
 app.config.from_object(__name__)
 
-
+# If not running under a proxy, can just divert straight to the UI
 @app.route('/')
-def show_hello():
+def redirect_to_faps():
+    """Root URL redirects to the application sitting at '/faps"""
+    return redirect(url_for('faps'), code=302)
+
+
+@app.route('/faps')
+def faps():
+    """Return the main UI."""
     return render_template('options.html', options=parse_defaults())
 
 
-@app.route('/submit', methods=['POST', 'GET', 'PUT'])
+@app.route('/faps/submit', methods=['POST', 'GET', 'PUT'])
 def submit_job():
     """
     Take whatever comes in through the form and run the faps job.
 
-    We assume that faps is just called by the command `faps`.
+    We use the faps.py in the parent directory and use `python` to run it.
     """
 
     # Put the cif on disk
@@ -106,7 +122,8 @@ def submit_job():
     with open("{}.fap".format(basename), 'w') as fap_out:
         fap_out.write(fap_file)
 
-    faps_command = ['faps', basename]
+    faps_script = path.join(path.dirname(path.dirname(path.realpath(__file__))), 'faps.py')
+    faps_command = ['python', faps_script, basename]
     faps_run = Popen(faps_command, stdout=PIPE, stderr=PIPE)
     stdout, stderr = faps_run.communicate()
     print('---err---')
@@ -115,9 +132,11 @@ def submit_job():
     print(stdout)
 
     if "Faps terminated normally" in stdout:
-        response = Response("Submitted successfully", content_type='text/xml; charset=utf-8')
+        response = Response("Submitted successfully",
+                            content_type='text/xml; charset=utf-8')
     else:
-        response = Response("Something failed :(", content_type='text/xml; charset=utf-8')
+        response = Response("Something failed :(",
+                            content_type='text/xml; charset=utf-8')
 
     print(response.__dict__)
     return response

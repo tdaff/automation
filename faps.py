@@ -1287,7 +1287,8 @@ class PyNiss(object):
     def esp_to_cube(self):
         """Make the cube for repeat input."""
         job_name = self.options.get('job_name')
-        esp_src = self.options.get('esp_src')
+        # No case where the esp source will be different from the dft code
+        esp_src = self.options.get('dft_code')
         repeat_dir = path.join(self.options.get('job_dir'),
                                'faps_%s_repeat' % job_name)
         mkdirs(repeat_dir)

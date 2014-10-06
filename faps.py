@@ -33,11 +33,13 @@ except ValueError:
     __version_info__ = (1, 5, 0, 0)
 __version__ = "%i.%i.%i.%i" % __version_info__
 
+import bz2
 import code
 try:
     import configparser
 except ImportError:
     import ConfigParser as configparser
+import gzip
 import mmap
 import os
 import pickle

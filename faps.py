@@ -1289,10 +1289,10 @@ class PyNiss(object):
         job_name = self.options.get('job_name')
         esp_src = self.options.get('esp_src')
         repeat_dir = path.join(self.options.get('job_dir'),
-                                  'faps_%s_repeat' % job_name)
+                               'faps_%s_repeat' % job_name)
         mkdirs(repeat_dir)
         src_dir = path.join(self.options.get('job_dir'),
-                               'faps_%s_%s' % (job_name, esp_src))
+                            'faps_%s_%s' % (job_name, esp_src))
         os.chdir(src_dir)
         if esp_src == 'vasp':
             esp_to_cube_args = shlex.split(self.options.get('vasp_to_cube'))

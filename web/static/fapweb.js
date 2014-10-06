@@ -92,7 +92,7 @@ function viewCif() {
 function jmolSetup() {
     "use strict";
     var Info = {
-        width: 300,
+        width: 500,
         height: 300,
         // serverURL: "http://chemapps.stolaf.edu/jmol/jsmol/jsmol.php ",
         // serverURL: "http://propka.ki.ku.dk/~jhjensen/jsmol/jsmol.php ",

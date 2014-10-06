@@ -13,6 +13,8 @@ from subprocess import Popen, PIPE
 
 from flask import Flask, request, render_template, Response, url_for, redirect
 
+FAPS_ROOT = path.dirname(path.dirname(path.realpath(__file__)))
+
 
 class Option(object):
     """Structure to hold information on an individual option."""
@@ -28,7 +30,7 @@ class Option(object):
 
 def parse_defaults():
     """Read all the options from the defaults.ini. Return as a dict."""
-    defaults = open('../defaults.ini')
+    defaults = open(path.join(FAPS_ROOT, 'defaults.ini'))
 
     for _header in xrange(12):
         defaults.readline()
@@ -122,7 +124,7 @@ def submit_job():
     with open("{}.fap".format(basename), 'w') as fap_out:
         fap_out.write(fap_file)
 
-    faps_script = path.join(path.dirname(path.dirname(path.realpath(__file__))), 'faps.py')
+    faps_script = path.join(FAPS_ROOT, 'faps.py')
     faps_command = ['python', faps_script, basename]
     faps_run = Popen(faps_command, stdout=PIPE, stderr=PIPE)
     stdout, stderr = faps_run.communicate()

@@ -1580,7 +1580,7 @@ class PyNiss(object):
         mkdirs(props_dir)
         os.chdir(props_dir)
 
-        # Neighbou list is only used by surface area, uncomment if needed
+        # Neighbour list is only used by surface area, uncomment if needed
         # for anything else
         #self.structure.gen_neighbour_list()
 

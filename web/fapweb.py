@@ -1,12 +1,17 @@
 """
 Faps web interface.
 
-Show all available options as a webpage to help make fap files and submit
+Show all available faps options as a webpage to help make fap files and submit
 jobs. Built on flask, so it will run a webserver and tell the user how
 to access the site.
 """
 
+import argparse
+import os
 import re
+import socket
+import threading
+import webbrowser
 from collections import defaultdict
 from os import path
 from subprocess import Popen, PIPE
@@ -26,6 +31,15 @@ class Option(object):
         self.option_type = ""
         self.advanced = False
         self.section = ""
+
+
+def commandline():
+    """Parse commandline arguments and return the arguments object."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--no-browser', '-n', action='store_true',
+                        help="Do not try to launch a browser on start")
+    args = parser.parse_args()
+    return args
 
 
 def parse_defaults():
@@ -91,6 +105,7 @@ def parse_defaults():
 app = Flask(__name__, static_url_path='/faps/static')
 app.config.from_object(__name__)
 
+
 # If not running under a proxy, can just divert straight to the UI
 @app.route('/')
 def redirect_to_faps():
@@ -144,5 +159,26 @@ def submit_job():
     return response
 
 
+def main():
+    """
+    Launch the flask application and any user defined tasks. Put stuff here
+    That should not happen when running behind a web server.
+
+    """
+
+    args = commandline()
+    hostname = socket.getfqdn()
+    uid = os.getuid()
+    desired_port = 8000+uid
+    url = "http://{}:{}/faps".format(hostname, desired_port)
+    if not args.no_browser:
+        print("Attempting to start a web browser")
+        # Launch after 1 second
+        webbrowser.open(url)
+    # App runs here
+    app.run(debug=True, host=hostname, port=desired_port) #"0.0.0.0")
+
+
+
 if __name__ == '__main__':
-    app.run(debug=True, host="0.0.0.0")
+    main()

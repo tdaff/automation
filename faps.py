@@ -216,11 +216,11 @@ class PyNiss(object):
                 self.run_qeq_gulp(fitting=True)
                 self.dump_state()
 
+        self.step_properties()
+
         self.step_gcmc()
 
         self.step_absl()
-
-        self.step_properties()
 
         self.send_to_database()
 

@@ -1584,6 +1584,13 @@ class PyNiss(object):
         # for anything else
         #self.structure.gen_neighbour_list()
 
+        # Since this runs before fastmc, and can run without it, check if the
+        # guests are initialised here
+        guests = [Guest(x) for x in self.options.gettuple('guests')]
+        if not same_guests(self.structure.guests, guests):
+            info("Replacing old guests")
+            self.structure.guests = guests
+
         ##
         # Surface area calculations
         ##

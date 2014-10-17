@@ -29,7 +29,7 @@ try:
 except ImportError:
     from io import StringIO
 from optparse import OptionParser
-from logging import debug, error
+from logging import debug, error, info
 
 import __main__
 
@@ -54,6 +54,7 @@ class Options(object):
         self.args = []
         self.options = {}
         self.cmdopts = {}
+        self._used_options = set()
         self.defaults = configparser.SafeConfigParser()
         self.site_ini = configparser.SafeConfigParser()
         self.job_ini = configparser.SafeConfigParser()
@@ -72,35 +73,54 @@ class Options(object):
 
     def get(self, item):
         """Map values from different sources based on priorities."""
+        # report default options differently
+        option_source = 'D'
         if item in self.__dict__:
             # Instance attributes, such as job_name and job_dir
             debug("an attribute: %s" % item)
-            return object.__getattribute__(self, item)
+            option_source = 'A'
+            value = object.__getattribute__(self, item)
         elif self.options.__dict__.get(item) is not None:
             # Commandline options from optparse where option is set
             debug("an option: %s" % item)
-            return self.options.__dict__[item]
+            option_source = 'C'
+            value = self.options.__dict__[item]
         elif item in self.cmdopts:
             # Commandline -o custom key=value options
             debug("a custom -o option: %s" % item)
-            return self.cmdopts[item]
+            option_source = 'O'
+            value = self.cmdopts[item]
         elif self.job_ini.has_option('job_config', item):
             # jobname.fap per-job setings
             debug("a job option: %s" % item)
-            return self.job_ini.get('job_config', item)
+            option_source = 'F'
+            value = self.job_ini.get('job_config', item)
         elif self.job_type_ini.has_option('job_type', item):
             debug("a job_type option: %s" % item)
-            return self.job_type_ini.get('job_type', item)
+            option_source = 'J'
+            value = self.job_type_ini.get('job_type', item)
         elif self.site_ini.has_option('site_config', item):
             debug("a site option: %s" % item)
-            return self.site_ini.get('site_config', item)
+            value = self.site_ini.get('site_config', item)
         elif self.defaults.has_option('defaults', item):
             debug("a default: %s" % item)
-            return self.defaults.get('defaults', item)
+            value = self.defaults.get('defaults', item)
         else:
             # Most things have a default, but not always. Error properly.
             debug("unspecified option: %s" % item)
             raise AttributeError(item)
+
+        # Show what options are used the first time they are accessed
+        # for the traceability
+        if item not in self._used_options:
+            if option_source == 'D':
+                debug("Default: %s = %s" % (item, value))
+            else:
+                info("Option (%s): %s = %s" % (option_source, item, value))
+            self._used_options.add(item)
+        # we output the raw value here and pass to caller for
+        return value
+
 
     def getbool(self, item):
         """

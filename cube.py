@@ -220,7 +220,7 @@ class Cube(object):
         # Gaussian filter smoothes out the data
         # Visual inspection suggests sqrt(2/spacing)
         sigma = (2.0/spacing)**0.5
-        debug("Sigma: %f" % sigma)
+        info("Smoothing probability with sigma: %f" % sigma)
         temp_data = gaussian_filter(temp_data, sigma, mode="wrap")
 
         # Renormalise to pre-filtered values
@@ -230,7 +230,7 @@ class Cube(object):
         neighborhood = generate_binary_structure(np.ndim(temp_data), 2)
         # expand it to a neighbourhood of ~0.3 A
         footprint = int(round(0.31/spacing, 0))
-        debug("Footprint: %r" % footprint)
+        info("Finding maxima within a radius of %r grid points" % footprint)
         neighborhood = iterate_structure(neighborhood, footprint)
 
         #apply the local maximum filter; all pixel of maximal value

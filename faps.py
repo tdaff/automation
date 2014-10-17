@@ -3616,7 +3616,11 @@ class Structure(object):
         prob_plot = options.getbool('mc_probability_plot')
         folded = False
         if prob_plot and (fold or find_maxima):
-            folded = self.fold_and_maxima(fold, find_maxima, tp_point)
+            sigma = options.getfloat('absl_sigma')
+            radius = options.getfloat('absl_radius')
+            cutoff = options.getfloat('absl_cutoff')
+            folded = self.fold_and_maxima(fold, find_maxima, tp_point, sigma,
+                                          radius, cutoff)
 
         if folded and not options.getbool('fastmc_keep_unfolded_cubes'):
             debug("Removing unfolded cube files")
@@ -3758,7 +3762,8 @@ class Structure(object):
         os.chdir(startdir)
 
 
-    def fold_and_maxima(self, fold=True, find_maxima=True, tp_point=None):
+    def fold_and_maxima(self, fold=True, find_maxima=True, tp_point=None,
+                        sigma=2.0, radius=0.31, cutoff=0.0):
         """Determine the positions of maxima and produce an xyz xyz file."""
         from cube import Cube
         folded = False
@@ -3776,7 +3781,8 @@ class Structure(object):
                     guest_cube.write_cube()
                     folded = True
                 if find_maxima:
-                    guest_locations[sites] = guest_cube.maxima()
+                    guest_locations[sites] = guest_cube.maxima(sigma, radius,
+                                                               cutoff)
             if guest_locations:
                 if tp_point:
                     # We can keep them for later too, must create dict

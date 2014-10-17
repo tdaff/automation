@@ -193,7 +193,7 @@ class Cube(object):
         outfile.flush()
         outfile.close()
 
-    def maxima(self):
+    def maxima(self, sigma=2.0, radius=0.31, cutoff=0.0):
         """
         Smooth with gaussian blur then use the spacing to determine nearest
         neighbours to estimate positions of maxima.
@@ -219,7 +219,7 @@ class Cube(object):
         #temp_data = median_filter(temp_data, 4, mode='wrap')
         # Gaussian filter smoothes out the data
         # Visual inspection suggests sqrt(2/spacing)
-        sigma = (2.0/spacing)**0.5
+        sigma = (sigma/spacing)**0.5
         info("Smoothing probability with sigma: %f" % sigma)
         temp_data = gaussian_filter(temp_data, sigma, mode="wrap")
 
@@ -229,7 +229,7 @@ class Cube(object):
         # define a connectivity neighborhood
         neighborhood = generate_binary_structure(np.ndim(temp_data), 2)
         # expand it to a neighbourhood of ~0.3 A
-        footprint = int(round(0.31/spacing, 0))
+        footprint = int(round(radius/spacing, 0))
         info("Finding maxima within a radius of %r grid points" % footprint)
         neighborhood = iterate_structure(neighborhood, footprint)
 
@@ -267,10 +267,11 @@ class Cube(object):
 
         pruned_peaks = []
         previous_value = 0.0
+        maximum_value = max([peak[1] for peak in cartesian_peaks])
         # We can cut out the tail end of points where there is a sharp drop
         for point in sorted(cartesian_peaks, key=lambda k: -k[1]):
             # All of the points with 0 should be removed already
-            if previous_value/point[1] < 4:
+            if previous_value/point[1] < 4 and point[1] > cutoff*maximum_value:
                 previous_value = point[1]
                 pruned_peaks.append(point)
             else:

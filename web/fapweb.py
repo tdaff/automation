@@ -14,10 +14,16 @@ from collections import defaultdict
 from itertools import count
 from os import path
 from subprocess import Popen, PIPE
+# Python 2/3 fix
+try:
+    from configparser import SafeConfigParser
+except ImportError:
+    from ConfigParser import SafeConfigParser
 
 from flask import Flask, request, render_template, Response, url_for, redirect
 
 FAPS_ROOT = path.dirname(path.dirname(path.realpath(__file__)))
+DOT_FAPS_DIR = path.join(path.expanduser('~'), '.faps')
 
 
 class Option(object):
@@ -98,6 +104,25 @@ def parse_defaults():
     return options
 
 
+def parse_guests():
+    """Get the names and descriptions of all available guests."""
+    guest_list = []
+
+    guests_libs = [path.join(FAPS_ROOT, 'guests.lib'),
+                   path.join(DOT_FAPS_DIR, 'guests.lib'),
+                   path.join('.', 'guests.lib')]
+    guests = SafeConfigParser()
+    guests.read(guests_libs)
+
+    for guest_id in guests.sections():
+        guest_info = (guest_id,
+                      guests.get(guest_id, 'name'),
+                      guests.get(guest_id, 'source'))
+        guest_list.append(guest_info)
+
+    return guest_list
+
+
 # create the application
 # We run under /faps so that the URL is already prefixed for proxy'd
 # connections
@@ -115,7 +140,7 @@ def redirect_to_faps():
 @app.route('/faps')
 def faps():
     """Return the main UI."""
-    return render_template('options.html', options=parse_defaults())
+    return render_template('options.html', options=parse_defaults(), guests=parse_guests())
 
 
 @app.route('/faps/submit', methods=['POST', 'GET', 'PUT'])

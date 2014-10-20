@@ -11,6 +11,7 @@ import re
 import socket
 import webbrowser
 from collections import defaultdict
+from itertools import count
 from os import path
 from subprocess import Popen, PIPE
 
@@ -128,17 +129,28 @@ def submit_job():
     # Put the cif on disk
     # TODO: check for overwriting
     cif_file = request.files['cif-file']
-    if not cif_file.filename.endswith('.cif'):
+    cif_filename = cif_file.filename
+    if not cif_filename.endswith('.cif'):
         return 1
-    cif_file.save(cif_file.filename)
 
-    basename = cif_file.filename[:-4]
+    cif_basename = cif_filename[:-4]
+
+    # Do not overwrite an existing file
+    if path.exists(cif_filename):
+        for idx in count():
+            if not path.exists("{}_{}.cif".format(cif_basename, idx)):
+                cif_basename = "{}_{}".format(cif_basename, idx)
+                break
+
+    cif_file.save("{}.cif".format(cif_basename))
+
+    # Extract the fap file text and put it on disk
     fap_file = request.form['fap-file']
-    with open("{}.fap".format(basename), 'w') as fap_out:
+    with open("{}.fap".format(cif_basename), 'w') as fap_out:
         fap_out.write(fap_file)
 
     faps_script = path.join(FAPS_ROOT, 'faps.py')
-    faps_command = ['python', faps_script, basename]
+    faps_command = ['python', faps_script, cif_basename]
     faps_run = Popen(faps_command, stdout=PIPE, stderr=PIPE)
     stdout, stderr = faps_run.communicate()
     print('---err---')
@@ -166,7 +178,7 @@ def main():
 
     args = commandline()
     hostname = socket.getfqdn()
-    # Pick a random portm and hope that is doesn't get taken
+    # Pick a random port and hope that is doesn't get taken
     # between closing it and starting the app
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(('localhost', 0))

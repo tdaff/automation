@@ -7,10 +7,8 @@ to access the site.
 """
 
 import argparse
-import os
 import re
 import socket
-import threading
 import webbrowser
 from collections import defaultdict
 from os import path
@@ -168,16 +166,20 @@ def main():
 
     args = commandline()
     hostname = socket.getfqdn()
-    uid = os.getuid()
-    desired_port = 8000+uid
+    # Pick a random portm and hope that is doesn't get taken
+    # between closing it and starting the app
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(('localhost', 0))
+    desired_port = sock.getsockname()[1]
+    sock.close()
+
     url = "http://{}:{}/faps".format(hostname, desired_port)
     if not args.no_browser:
         print("Attempting to start a web browser")
         # Launch after 1 second
         webbrowser.open(url)
     # App runs here
-    app.run(debug=True, host=hostname, port=desired_port) #"0.0.0.0")
-
+    app.run(debug=True, host=hostname, port=desired_port)
 
 
 if __name__ == '__main__':

@@ -71,6 +71,7 @@ from elements import COVALENT_RADII, UFF_FULL, QEQ_PARAMS
 from eos import peng_robinson
 from job_handler import JobHandler
 from logo import LOGO
+from symmetry import symmetry_operations
 
 # Global constants
 DEG2RAD = pi / 180.0
@@ -846,7 +847,8 @@ class PyNiss(object):
 
         guests = [Guest(x) for x in self.options.gettuple('guests')]
         if not same_guests(self.structure.guests, guests):
-            info("Replacing old guests")
+            info("Replacing old guests with %s" % " ".join(guest.ident for
+                                                           guest in guests))
             self.structure.guests = guests
         else:
             # use existing guests that may have data
@@ -1375,7 +1377,8 @@ class PyNiss(object):
         # and before changing directory, or it will not find guests.lib
         guests = [Guest(x) for x in self.options.gettuple('guests')]
         if not same_guests(self.structure.guests, guests):
-            info("Replacing old guests")
+            info("Replacing old guests with %s" % " ".join(guest.ident for
+                                                           guest in guests))
             self.structure.guests = guests
         else:
             # use existing guests that may have data
@@ -1588,7 +1591,8 @@ class PyNiss(object):
         # guests are initialised here
         guests = [Guest(x) for x in self.options.gettuple('guests')]
         if not same_guests(self.structure.guests, guests):
-            info("Replacing old guests")
+            info("Replacing old guests with %s" % " ".join(guest.ident for
+                                                           guest in guests))
             self.structure.guests = guests
 
         ##
@@ -4853,26 +4857,23 @@ class Guest(object):
 
 class Symmetry(object):
     """Apply symmetry operations to atomic coordinates."""
-    def __init__(self, blob):
+    def __init__(self, text):
         """Read the operation from the argument."""
-        self.sym_ops = []
-        self.blob = blob
-        self.parse_blob()
-        self.cell = None
-
-    def parse_blob(self):
-        """Interpret a symmetry line from a cif."""
-        # convert integers to floats to avoid integer division
-        self.sym_ops = [re.sub(r'([\d]+)', r'\1.0', x.strip())
-                        for x in re.split(',', self.blob) if x.strip()]
+        xyz = "".join(text.split())  # remove all spaces
+        try:
+            self.rt_matrix = symmetry_operations[xyz]
+        except KeyError:
+            error("Unknown symmetry operation: %s" % xyz)
 
     def trans_frac(self, pos):
         """Apply symmetry operation to the supplied position."""
-        new_pos = [eval(sym_op.replace('x', str(pos[0]))
-                        .replace('y', str(pos[1]))
-                        .replace('z', str(pos[2]))) for sym_op in self.sym_ops]
-        # TODO(tdaff): should we translate into cell?
-        new_pos = [x%1.0 for x in new_pos]
+
+        rotated = dot(array(self.rt_matrix[0:9]).reshape((3, 3)), pos)
+        translated = rotated + self.rt_matrix[9:]
+
+        # translate positions into cell; leave as numpy array
+        new_pos = translated%1.0
+
         return new_pos
 
 

@@ -91,7 +91,13 @@
                     </label>
 
                     <div class="col-sm-2">
-                      {% if option.option_type == 'bool' %}
+                      {% if option.option_name == 'guests' %}
+                        <select multiple class="form-control" id="{{ option.option_name|e }}" disabled onchange="updateFap();">
+                          {% for guest in guests %}
+                            <option title="{{ guest[1] }} &#10; {{ guest[2] }}"{{ ' selected' if guest[0] in option.default }}>{{ guest[0] }}</option>
+                          {% endfor %}
+                        </select>
+                      {% elif option.option_type == 'bool' %}
                         <input type="checkbox" class="form-control" id="{{ option.option_name|e }}" {{ ' checked="checked"' if option.default }} disabled onchange="updateFap();">
                       {% elif 'enum' in option.option_type %}
                         <select class="form-control" id="{{ option.option_name|e }}" disabled onchange="updateFap();">

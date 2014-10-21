@@ -118,7 +118,8 @@ def parse_guests():
         guest_info = (guest_id,
                       guests.get(guest_id, 'name'),
                       guests.get(guest_id, 'source'))
-        guest_list.append(guest_info)
+        if guest_id != 'template':
+            guest_list.append(guest_info)
 
     return guest_list
 

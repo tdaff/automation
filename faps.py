@@ -71,7 +71,6 @@ from elements import COVALENT_RADII, UFF_FULL, QEQ_PARAMS
 from eos import peng_robinson
 from job_handler import JobHandler
 from logo import LOGO
-from symmetry import symmetry_operations
 
 # Global constants
 DEG2RAD = pi / 180.0
@@ -4859,22 +4858,59 @@ class Symmetry(object):
     """Apply symmetry operations to atomic coordinates."""
     def __init__(self, text):
         """Read the operation from the argument."""
-        xyz = "".join(text.split())  # remove all spaces
-        try:
-            self.rt_matrix = symmetry_operations[xyz]
-        except KeyError:
-            error("Unknown symmetry operation: %s" % xyz)
+        self.xyz = "".join(text.split())  # remove all spaces
+        rt_matrix = []
+        for idx, sub_xyz in enumerate(self.xyz.split(',')):
+            row = [0.0, 0.0, 0.0, 0.0]
+            # Find multipliers of x, y and z for rotation
+            for component in re.finditer(r'([+-]?)(\d*)([x-z]+)', sub_xyz):
+                # signed?
+                value = -1.0 if component.group(1) == '-' else 1.0
+                # Some scaling factor?
+                if component.group(2):
+                    value *= int(component.group(2))
+                if component.group(3) == 'x':
+                    row[0] += value
+                elif component.group(3) == 'y':
+                    row[1] += value
+                elif component.group(3) == 'z':
+                    row[2] += value
 
-    def trans_frac(self, pos):
+            # Find the translation component any trailing numbers or fractions
+            for component in re.finditer(r"([+-])(\d+)/*(\d*)$", sub_xyz):
+                # signed?
+                value = -1.0 if component.group(1) == '-' else 1.0
+                value *= int(component.group(2))
+                if component.group(3):
+                    value /= int(component.group(3))
+                row[3] += value
+
+            rt_matrix.append(row)
+
+        rt_matrix.append([0.0, 0.0, 0.0, 1.0])
+        self.rt_matrix = np.array(rt_matrix)
+
+    def trans_frac(self, pos, in_cell=True):
         """Apply symmetry operation to the supplied position."""
 
-        rotated = dot(array(self.rt_matrix[0:9]).reshape((3, 3)), pos)
-        translated = rotated + self.rt_matrix[9:]
-
-        # translate positions into cell; leave as numpy array
-        new_pos = translated%1.0
+        new_pos = dot(self.rt_matrix, [pos[0], pos[1], pos[2], 1.0])[:3]
+        #print(translated, also_new)
+        if in_cell:
+            # translate positions into cell; leave as numpy array
+            new_pos %= 1.0
 
         return new_pos
+
+    def rotate(self, vector):
+        """
+        Apply only the rotation part of the
+        symmetry operation to the vector.
+
+        """
+        return dot(self.rt_matrix[:3, :3], vector)
+
+    def __repr__(self):
+        return "Symmetry('{}')".format(self.xyz)
 
 
 class DummyAtom(object):

@@ -386,27 +386,18 @@ class ColouredConsoleHandler(logging.StreamHandler):
         levelno = myrecord.levelno
         if levelno >= 50:  # CRITICAL / FATAL
             front = '\033[30;41m'  # black/red
-            text = '\033[30;41m'  # black/red
         elif levelno >= 40:  # ERROR
             front = '\033[30;41m'  # black/red
-            text = '\033[1;31m'  # bright red
         elif levelno >= 30:  # WARNING
             front = '\033[30;43m'  # black/yellow
-            text = '\033[1;33m'  # bright yellow
         elif levelno >= 20:  # INFO
             front = '\033[30;42m'  # black/green
-            text = '\033[1m'  # bright
         elif levelno >= 10:  # DEBUG
             front = '\033[30;46m'  # black/cyan
-            text = '\033[0m'  # normal
         else:  # NOTSET and anything else
             front = '\033[0m'  # normal
-            text = '\033[0m'  # normal
 
         myrecord.levelname = '%s%s\033[0m' % (front, myrecord.levelname)
-        myrecord.msg = textwrap.fill(
-            myrecord.msg, initial_indent=text, width=76,
-            subsequent_indent='\033[0m   %s' % text) + '\033[0m'
         logging.StreamHandler.emit(self, myrecord)
 
 

@@ -1,9 +1,17 @@
+#!/usr/bin/env python
+
 """
 Faps web interface.
 
-Show all available faps options as a webpage to help make fap files and submit
-jobs. Built on flask, so it will run a webserver and tell the user how
-to access the site.
+The faps web interface is a tool to show all available faps options as an
+interactive webpage to help make fap files and submit jobs.
+
+To start the application just run:
+
+    python fapweb.py
+
+You can also add the --help option to get more information on the script.
+
 """
 
 import argparse
@@ -42,7 +50,11 @@ def commandline():
     """Parse commandline arguments and return the arguments object."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--no-browser', '-n', action='store_true',
-                        help="Do not try to launch a browser on start")
+                        help="Do not try to launch a browser on start.")
+    parser.add_argument('--port', '-p', type=int,
+                        help="Run on a specific port.")
+    parser.add_argument('--debug', '-d', action='store_true',
+                        help="Run the app in debugging mode.")
     args = parser.parse_args()
     return args
 
@@ -127,7 +139,9 @@ def parse_guests():
 # create the application
 # We run under /faps so that the URL is already prefixed for proxy'd
 # connections
-app = Flask(__name__, static_url_path='/faps/static')
+app = Flask(__name__, static_url_path='/faps/static',
+            template_folder=path.join(FAPS_ROOT, 'web', 'templates'),
+            static_folder=path.join(FAPS_ROOT, 'web', 'static'))
 app.config.from_object(__name__)
 
 
@@ -141,7 +155,8 @@ def redirect_to_faps():
 @app.route('/faps')
 def faps():
     """Return the main UI."""
-    return render_template('options.html', options=parse_defaults(), guests=parse_guests())
+    return render_template('options.html', options=parse_defaults(),
+                           guests=parse_guests())
 
 
 @app.route('/faps/submit', methods=['POST', 'GET', 'PUT'])
@@ -191,7 +206,7 @@ def submit_job():
         response = Response("Something failed :(",
                             content_type='text/xml; charset=utf-8')
 
-    print(response.__dict__)
+    print("Sending reply: {}".format(response.response))
     return response
 
 
@@ -203,21 +218,48 @@ def main():
     """
 
     args = commandline()
+
+    # Information about how and where to run
     hostname = socket.getfqdn()
-    # Pick a random port and hope that is doesn't get taken
-    # between closing it and starting the app
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.bind(('localhost', 0))
-    desired_port = sock.getsockname()[1]
-    sock.close()
+    if args.port:
+        # If this is in use, just let everything fail.
+        # If you've specified a port, then you should know what you are doing.
+        desired_port = args.port
+    else:
+        # Pick a random port and hope that is doesn't get taken
+        # between closing it and starting the app
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(('localhost', 0))
+        desired_port = sock.getsockname()[1]
+        sock.close()
 
     url = "http://{}:{}/faps".format(hostname, desired_port)
-    if not args.no_browser:
-        print("Attempting to start a web browser")
-        # Launch after 1 second
+
+    print(">> Starting faps web interface.")
+    print(">> The UI is available at the URL: {}".format(url))
+    print(">> The URL is accessible from any computer on the same network.")
+    print(">> Use the browser on the machine with your cif files.")
+
+    if args.no_browser:
+        print(">> Web browser will not be launched. Go to the URL manually.")
+    else:
+        print(">> Attempting to start a web browser...")
+        # Launch first and hope that the server is up by the time the
+        # request is finished
         webbrowser.open(url)
-    # App runs here
-    app.run(debug=True, host=hostname, port=desired_port)
+
+    print(">> To exit press Ctrl-C")
+
+    # App runs here...
+    # Debugging mode uses the internal server, otherwise make use of
+    # gevent to run things
+    if args.debug:
+        app.run(debug=True, host=hostname, port=desired_port)
+    else:
+        from gevent.wsgi import WSGIServer
+        http_server = WSGIServer(listener=('', desired_port), application=app,
+                                 log=None)
+        http_server.serve_forever()
 
 
 if __name__ == '__main__':

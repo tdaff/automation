@@ -54,17 +54,23 @@ function switchActive(control) {
 }
 
 
-/** upload file with AJAX */
 function submitJob() {
     "use strict";
     var fileInput = document.getElementById('job-form'),
+        btn = document.getElementById('submit-btn'),
         formData = new FormData(fileInput),
-        xhr = new XMLHttpRequest();
+        xhr = new XMLHttpRequest(),
+        oldText;
 
+    btn.disabled = true;
+    oldText = btn.innerHTML;
+    btn.innerHTML = 'Submitting...';
     xhr.open('post', '/faps/submit', true);
     xhr.onreadystatechange = function () {
         if (xhr.readyState === 4 && xhr.status === 200) {
-            alert(xhr.responseText);
+            window.alert(xhr.responseText);
+            btn.disabled = false;
+            btn.innerHTML = oldText;
         }
     };
     xhr.send(formData);

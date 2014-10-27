@@ -63,7 +63,7 @@ def parse_defaults():
     """Read all the options from the defaults.ini. Return as a dict."""
     defaults = open(path.join(FAPS_ROOT, 'defaults.ini'))
 
-    for _header in xrange(12):
+    for _header in range(12):
         defaults.readline()
 
     options = defaultdict(list)
@@ -168,7 +168,6 @@ def submit_job():
     """
 
     # Put the cif on disk
-    # TODO: check for overwriting
     cif_file = request.files['cif-file']
     cif_filename = cif_file.filename
     if not cif_filename.endswith('.cif'):
@@ -194,6 +193,9 @@ def submit_job():
     faps_command = ['python', faps_script, cif_basename]
     faps_run = Popen(faps_command, stdout=PIPE, stderr=PIPE)
     stdout, stderr = faps_run.communicate()
+    # in python3 these are byte arrays, need them as strings
+    stdout = stdout.decode('utf-8')
+    stderr = stderr.decode('utf-8')
     print('---err---')
     print(stderr)
     print('---out---')
@@ -256,11 +258,27 @@ def main():
     if args.debug:
         app.run(debug=True, host=hostname, port=desired_port)
     else:
-        from gevent.wsgi import WSGIServer
-        http_server = WSGIServer(listener=('', desired_port), application=app,
-                                 log=None)
-        http_server.serve_forever()
+        try:
+            from gevent.wsgi import WSGIServer
+            http_server = WSGIServer(listener=('', desired_port),
+                                     application=app, log=None)
+            http_server.serve_forever()
+        except ImportError:
+            from tornado.wsgi import WSGIContainer
+            from tornado.httpserver import HTTPServer
+            from tornado.ioloop import IOLoop
+            from tornado.options import options, parse_command_line
+
+            parse_command_line([None, '--logging=error'])
+
+            http_server = HTTPServer(WSGIContainer(app))
+            http_server.listen(desired_port)
+            IOLoop.instance().start()
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print(">> Exiting...")
+        raise SystemExit

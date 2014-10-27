@@ -1,6 +1,18 @@
 
-.form-condensed .control-group {
-    margin-top: 0;
-    margin-bottom: 1px;
+.form-compact .form-control {
+  padding: 1px 2px;
+  height: 24px;
 }
 
+#guests {
+    height: 6em;
+    margin-bottom: 6px;
+}
+
+.form-compact label {
+  margin-bottom: 1px;
+}
+.form-compact .form-group
+{
+  margin-bottom: 0px;
+}

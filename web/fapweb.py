@@ -19,6 +19,7 @@ import re
 import socket
 import webbrowser
 from collections import defaultdict
+from io import StringIO
 from itertools import count
 from os import path
 from subprocess import Popen, PIPE
@@ -59,9 +60,29 @@ def commandline():
     return args
 
 
+def parse_site_defaults():
+    """Find where the script is and load defaults"""
+    site_ini_path = path.join(FAPS_ROOT, 'site.ini')
+    try:
+        filetemp = open(site_ini_path, 'r')
+        site_ini = filetemp.read()
+        filetemp.close()
+        if not '[site_config]' in site_ini.lower():
+            site_ini = '[site_config]\n' + site_ini
+        site_ini = StringIO(site_ini)
+    except IOError:
+        # file does not exist so we just use a blank string
+        site_ini = StringIO('[site_config]\n')
+
+    site_ini_config = SafeConfigParser()
+    site_ini_config.readfp(site_ini)
+    return site_ini_config
+
+
 def parse_defaults():
     """Read all the options from the defaults.ini. Return as a dict."""
     defaults = open(path.join(FAPS_ROOT, 'defaults.ini'))
+    site_ini = parse_site_defaults()
 
     for _header in range(12):
         defaults.readline()
@@ -88,6 +109,9 @@ def parse_defaults():
             # Names are simple
             option_name, default = line.split('=')
             current_option.option_name = option_name.strip()
+            if site_ini.has_option('site_config', current_option.option_name):
+                default = site_ini.get('site_config',
+                                       current_option.option_name)
 
             # Deal with specific types, bools can be real bools
             if current_option.option_type == 'bool':

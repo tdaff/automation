@@ -3122,7 +3122,7 @@ class Structure(object):
                     ka *= (3.0*rab*rbc*(1.0 - cosT0*cosT0) - rac*rac*cosT0)
 
                     # FIXME(tdaff) change uff_coordination to coordination
-                    if central_atom.coordination == 1:
+                    if central_atom.uff_coordination == 1:
                         # linear bonds (e.g. C_1 triple bonds) had 0 force
                         # constant otherwise
                         thetamin = 180.0
@@ -3162,7 +3162,9 @@ class Structure(object):
                     else:
                         potential = "G96"
 
-                    if potential == "G96":
+                    # Use the harmonic approximation for linear angles as the
+                    # stiffness is undefined for the G96 form
+                    if potential == "G96" and thetamin != 180.0:
                         kappa /= sin(thetamin*DEG2RAD)**2
                         potential_function = 2
                     else:  # harmonic

@@ -3711,17 +3711,18 @@ class Structure(object):
                 positions = []
 
                 for atom, ratom in zip(guest.atoms, revcon):
-                    dummy = DummyAtom()
-                    dummy.pos = [float(x) for x in ratom.split()]
-
+                    dummy_pos = [float(x) for x in ratom.split()]
                     # Sometimes atoms get flung out of the cell, but have
                     # high binding energy anyway, ignore them
-                    if any((abs(x) > 2*cell.minimum_width) for x in dummy.pos):
+                    if any((abs(x) > 2*cell.minimum_width) for x in dummy_pos):
                         e_vdw = float('nan')
                         e_esp = float('nan')
 
+                    dummy = Atom(parent=self)
+                    # create with the fractional, so position matches
                     dummy.fractional = [x % 1.0 for x in
-                                        dot(dummy.pos, cell.inverse)]
+                                        dot(cell.inverse, dummy_pos)]
+
                     # Put dummy nearest to first atom, if it exists
                     if positions:
                         dummy.pos = minimum_image(positions[0][1], dummy,

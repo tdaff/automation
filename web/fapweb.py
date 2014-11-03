@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+from __future__ import unicode_literals
+
 """
 Faps web interface.
 
@@ -64,8 +66,10 @@ def parse_site_defaults():
     """Find where the script is and load defaults"""
     site_ini_path = path.join(FAPS_ROOT, 'site.ini')
     try:
+        # Add file contents to empty string to upcast to
+        # unicode in Python 2.7 since io needs unicode input.
         filetemp = open(site_ini_path, 'r')
-        site_ini = filetemp.read()
+        site_ini = '' + filetemp.read()
         filetemp.close()
         if not '[site_config]' in site_ini.lower():
             site_ini = '[site_config]\n' + site_ini

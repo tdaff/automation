@@ -4826,7 +4826,55 @@ class Guest(object):
         else:
             return True
 
+    def is_reversible(self, idx_1, idx_2=None, idx_3=None):
+        """
+        Return whether swapping indexes will give you an equivalent guest. For
+        example CO2 is linear and symmetric so each O atom is equivalent.
 
+        Parameters
+        ----------
+
+        idx_1 : int
+            Index of an atom in the guest.
+        idx_2 : int
+            Index of an atom in the guest. Optional.
+        idx_3 : int
+            Index of an atom in the guest. Optional.
+
+        Returns
+        -------
+
+        reversible : bool
+            True if atoms are equivalent.
+        """
+        if idx_2 is not None and idx_3 is not None:
+            # Ignore the central atom, assume 2 and three swap
+            src_idx = idx_2
+            dest_idx = idx_3
+        elif idx_2 is not None:
+            # Can the two atoms be reversed?
+            src_idx = idx_1
+            dest_idx = idx_2
+        else:
+            # Only one atom, can switch with itself
+            return True
+
+        src = self.atoms[src_idx]
+        dest = self.atoms[dest_idx]
+
+        src_env, dest_env = [], []
+
+        for test in self.atoms:
+            src_env.append([test.type, vecdist3(src.pos, test.pos)])
+            dest_env.append([test.type, vecdist3(dest.pos, test.pos)])
+
+        # if the distances to the closest atoms, sorted by types,
+        # are not all within 0.01 A, then the environments are different
+        for src, dest in zip(sorted(src_env), sorted(dest_env)):
+            if src[0] != dest[0] or (src[1] - dest[1]) > 0.01:
+                return False
+        else:
+            return True
 
     # Simple attribute-like calculations
     @property
@@ -4921,11 +4969,6 @@ class Symmetry(object):
 
     def __repr__(self):
         return "Symmetry('{}')".format(self.xyz)
-
-
-class DummyAtom(object):
-    """Not a real class. Just an empty object to store attributes."""
-    pass
 
 
 def mk_repeat(cube_name='REPEAT_ESP.cube', symmetry=False):

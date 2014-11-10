@@ -257,13 +257,14 @@ class PyNiss(object):
                 if not state:
                     info(" * State of ABSL: Not run")
                 else:
+                    # ABSL used to be multiple jobs, still treat jobid as list
                     for point, jobs in state.items():
-                        if job[0] is RUNNING:
-                            info(" * ABSL %s: Running, jobid: %s" %
-                                 (point, ",".join(job[1])))
+                        if jobs[0] is RUNNING:
+                            info(" * ABSL %s: Running, jobids: %s" %
+                                 (point, ",".join('%s' % x for x in jobs[1])))
                         else:
                             info(" * ABSL %s: %s" %
-                                 (point, valid_states[job[0]]))
+                                 (point, valid_states[jobs[0]]))
             elif state[0] is RUNNING:
                 info(" * State of %s: Running, jobid: %s" % (step, state[1]))
             else:
@@ -3685,7 +3686,7 @@ class Structure(object):
                     # Timestep line will start with more spaces than data line
                     lidx = 0  # start block of final STATIS data
                     for ridx, line in enumerate(statis[::-1]):
-                        if line.startswith('   '):
+                        if line.startswith('   ') and not 'NaN' in line:
                             lidx = ridx
                             break
                     else:

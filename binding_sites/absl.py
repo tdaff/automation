@@ -127,6 +127,7 @@ def calculate_binding_sites(guest, tp_point, cell):
         distance_0_2 = None
         distance_1_2 = None
         linear_guest = True
+        reversible_guest = True
     elif len(guest_atom_distances) == 2:
         # Two points to align to, use both
         debug("Two atoms")
@@ -135,6 +136,8 @@ def calculate_binding_sites(guest, tp_point, cell):
         distance_0_2 = None
         distance_1_2 = None
         linear_guest = True
+        reversible_guest = guest.is_reversible(guest_atom_distances[0][1],
+                                               guest_atom_distances[1][1])
     else:
         debug("More than two atoms, take the closest three")
         distance_0_1 = vecdist3(guest.atoms[guest_atom_distances[0][1]].pos,
@@ -146,6 +149,9 @@ def calculate_binding_sites(guest, tp_point, cell):
         linear_guest = guest.is_linear(guest_atom_distances[0][1],
                                        guest_atom_distances[1][1],
                                        guest_atom_distances[2][1])
+        reversible_guest = guest.is_reversible(guest_atom_distances[0][1],
+                                               guest_atom_distances[1][1],
+                                               guest_atom_distances[2][1])
 
     # Eugene's tolerance was 0.2
     # Using 0.3 fits the width of the neighbourhood
@@ -155,6 +161,11 @@ def calculate_binding_sites(guest, tp_point, cell):
 
     # Atom closest to the COM
     origin_key = guest_atom_distances[0][2]
+
+    # keep a list of sets of atoms that are already included so we don't
+    # use them twice
+    reversible_sets = []
+
     for origin_atom in sorted(guest_locations[origin_key],
                               key=operator.itemgetter(1), reverse=True):
         if distance_0_1 is None:
@@ -169,6 +180,8 @@ def calculate_binding_sites(guest, tp_point, cell):
         align_found = False
         for align_atom in sorted(guest_locations[align_key],
                                  key=operator.itemgetter(1), reverse=True):
+            if align_atom == origin_atom:
+                continue
             # don't forget periodic boundaries!
             vector_0_1 = min_vect(origin_atom[0], origin_atom[2],
                                   align_atom[0], align_atom[2], cell.cell)
@@ -179,12 +192,31 @@ def calculate_binding_sites(guest, tp_point, cell):
             if align_overlap < overlap_tol:
                 # We fit the alignment so it's good
                 align_found = True
-                if linear_guest or distance_0_2 is None:
-                    binding_sites.append([
-                        (guest_atom_distances[0][1], origin_atom[0],
-                         origin_atom[1]),
-                        (guest_atom_distances[1][1], vector_0_1)])
-                    continue
+                if distance_0_2 is None:
+                    # found to points to align a two atom guest. Use them!
+                    if reversible_guest:
+                        this_set = sorted([origin_atom, align_atom])
+                        if this_set in reversible_sets:
+                            # already have this the other way round
+                            # (from the lower occupancy pair)
+                            continue
+                        else:
+                            # first occurrance of this set, use it
+                            binding_sites.append([
+                                (guest_atom_distances[0][1], origin_atom[0],
+                                 origin_atom[1]),
+                                (guest_atom_distances[1][1], vector_0_1)])
+                            # make sure it's not used again
+                            reversible_sets.append(this_set)
+                            continue
+
+                    else:
+                        # add the guest in this orientation, it's unique
+                        binding_sites.append([
+                            (guest_atom_distances[0][1], origin_atom[0],
+                             origin_atom[1]),
+                            (guest_atom_distances[1][1], vector_0_1)])
+                        continue
 
                 # we can try and fit all three
                 orient_key = guest_atom_distances[1][2]
@@ -211,19 +243,62 @@ def calculate_binding_sites(guest, tp_point, cell):
                         orient_closest = (overlap_0_2 + 0.5*overlap_1_2,
                                           orient_atom)
                     if overlap_0_2 < overlap_tol and overlap_1_2 < 2*overlap_tol:
+                        # Found three points to align to! Binding site here
+                        found_site = True
+                        # Check we are not duplicating guests that have symmetry
+                        if reversible_guest:
+                            this_set = sorted([origin_atom, align_atom,
+                                               orient_atom])
+                            if this_set in reversible_sets:
+                                # We already have this one, don't add again
+                                continue
+                            elif linear_guest:
+                                # just add the two sites
+                                binding_sites.append([
+                                    (guest_atom_distances[0][1], origin_atom[0],
+                                     origin_atom[1]),
+                                    (guest_atom_distances[1][1], vector_0_1)])
+                                # these atom are now taken
+                                reversible_sets.append(this_set)
+                            else:
+                                binding_sites.append([
+                                    (guest_atom_distances[0][1], origin_atom[0],
+                                     origin_atom[1]),
+                                    (guest_atom_distances[1][1], vector_0_1),
+                                    (guest_atom_distances[1][1], vector_0_2)])
+                                found_site = True
+                        elif linear_guest:
+                            # just add the two sites
+                            binding_sites.append([
+                                (guest_atom_distances[0][1], origin_atom[0],
+                                 origin_atom[1]),
+                                (guest_atom_distances[1][1], vector_0_1)])
+                        else:
+                            # Add all three sites
+                            binding_sites.append([
+                                (guest_atom_distances[0][1], origin_atom[0],
+                                 origin_atom[1]),
+                                (guest_atom_distances[1][1], vector_0_1),
+                                (guest_atom_distances[1][1], vector_0_2)])
+
+                if not found_site:
+                    if linear_guest:
+                        # don't care about reversible guests since no third
+                        # site is found, but we can still make the guest with
+                        # two sites alone
+                        # just add the two sites
                         binding_sites.append([
                             (guest_atom_distances[0][1], origin_atom[0],
                              origin_atom[1]),
-                            (guest_atom_distances[1][1], vector_0_1),
-                            (guest_atom_distances[1][1], vector_0_2)])
-                        found_site = True
-
-                if not found_site:
-                    #TODO(tdaff): nothing within overlap, use closest
-                    pass
+                            (guest_atom_distances[1][1], vector_0_1)])
+                    #TODO(tdaff): nothing within overlap, use closest (3 sites)
         else:
+            if distance_0_2 is None and align_closest[0] > distance_0_1:
+                # Very isolated atom, not within 2 distances of any others
+                # treat as isolated point atom and still make a guest
+                binding_sites.append([(guest_atom_distances[0][1],
+                                       origin_atom[0], origin_atom[1])])
             #TODO(tdaff): nothing within overlap, use closest
-            pass
 
     return binding_sites
 

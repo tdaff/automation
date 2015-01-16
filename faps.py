@@ -3712,7 +3712,12 @@ class Structure(object):
                 positions = []
 
                 for atom, ratom in zip(guest.atoms, revcon):
-                    dummy_pos = [float(x) for x in ratom.split()]
+                    try:
+                        dummy_pos = [float(x) for x in ratom.split()]
+                    except ValueError:
+                        # DL_POLY prints large numbers wrong, like
+                        # 0.3970159038+105; these are too big anyway, so nan them
+                        dummy_pos = [float('nan'), float('nan'), float('nan')]
                     # Sometimes atoms get flung out of the cell, but have
                     # high binding energy anyway, ignore them
                     if any((abs(x) > 2*cell.minimum_width) for x in dummy_pos):

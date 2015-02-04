@@ -1556,11 +1556,14 @@ class PyNiss(object):
             absl_delete_files = self.options.gettuple('absl_delete_files')
             rm_components = []
             if 'REVIVE' in absl_delete_files or '*/REVIVE' in absl_delete_files:
-                rm_components += 'REVIVE'
+                rm_components.append('REVIVE')
             if 'FIELD' in absl_delete_files or '*/FIELD' in absl_delete_files:
-                rm_components += 'FIELD'
+                rm_components.append('FIELD')
             if 'CONTROL' in absl_delete_files or '*/CONTROL' in absl_delete_files:
-                rm_components += 'CONTROL'
+                rm_components.append('CONTROL')
+            # wildcards mean we can delete everything
+            if '*_bs_*/*' in absl_delete_files or '*_bs_*' in absl_delete_files:
+                rm_components = ['REVIVE', 'FIELD', 'CONTROL']
 
             if rm_components:
                 rm_line = 'rm %s\n' % ' '.join(rm_components)

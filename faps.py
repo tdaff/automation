@@ -1549,11 +1549,30 @@ class PyNiss(object):
             # Make the script to run all the jobs now, using the individual
             # directories
             dl_poly_exe = self.options.get('dl_poly_exe')
+
+            # Try and delete some files while running the DL_POLY jobs
+            # we need to keep a few for processing, like OUTPUT, REVCON, CONFIG
+            # STATIS, but we can delete a few
+            absl_delete_files = self.options.gettuple('absl_delete_files')
+            rm_components = []
+            if 'REVIVE' in absl_delete_files or '*/REVIVE' in absl_delete_files:
+                rm_components += 'REVIVE'
+            if 'FIELD' in absl_delete_files or '*/FIELD' in absl_delete_files:
+                rm_components += 'FIELD'
+            if 'CONTROL' in absl_delete_files or '*/CONTROL' in absl_delete_files:
+                rm_components += 'CONTROL'
+
+            if rm_components:
+                rm_line = 'rm %s\n' % ' '.join(rm_components)
+            else:
+                rm_line = ''
+
             absl_script = ["#!/bin/bash\n\n", "export FORT_BUFFERED=true\n\n",
                            "export OMP_NUM_THREADS=1\n\n"]
             for directory in individual_directories:
                 absl_script.extend(["pushd %s\n" % directory,
                                     "%s\n" % dl_poly_exe,
+                                    rm_line,
                                     "popd\n"])
 
             absl_faps = open('absl_faps', 'w')

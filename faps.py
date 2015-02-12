@@ -1534,13 +1534,14 @@ class PyNiss(object):
                         zero_directory = "%s_bs_%04d" % (guest.ident, 0)
                         try_symlink(path.join('..', zero_directory, 'FIELD'),
                                     'FIELD')
+                        try_symlink(path.join('..', zero_directory, 'CONTROL'),
+                                    'CONTROL')
                     else:
-                        # Always put the FIELD in zero to symlink to
+                        # Always put the FIELD and CONTORL in zero to symlink to
                         with open("FIELD", "w") as field:
                             field.writelines(dlp_files[1])
-
-                    with open("CONTROL", "w") as control:
-                        control.writelines(mk_dl_poly_control(self.options))
+                        with open("CONTROL", "w") as control:
+                            control.writelines(mk_dl_poly_control(self.options))
 
                     individual_directories.append(bs_directory)
 
@@ -1550,23 +1551,13 @@ class PyNiss(object):
             # directories
             dl_poly_exe = self.options.get('dl_poly_exe')
 
-            # Try and delete some files while running the DL_POLY jobs
+            # Try and delete REVIVE files while running the DL_POLY jobs
             # we need to keep a few for processing, like OUTPUT, REVCON, CONFIG
-            # STATIS, but we can delete a few
-            absl_delete_files = self.options.gettuple('absl_delete_files')
-            rm_components = []
-            if 'REVIVE' in absl_delete_files or '*/REVIVE' in absl_delete_files:
-                rm_components.append('REVIVE')
-            if 'FIELD' in absl_delete_files or '*/FIELD' in absl_delete_files:
-                rm_components.append('FIELD')
-            if 'CONTROL' in absl_delete_files or '*/CONTROL' in absl_delete_files:
-                rm_components.append('CONTROL')
-            # wildcards mean we can delete everything
-            if '*_bs_*/*' in absl_delete_files or '*_bs_*' in absl_delete_files:
-                rm_components = ['REVIVE', 'FIELD', 'CONTROL']
-
-            if rm_components:
-                rm_line = 'rm %s\n' % ' '.join(rm_components)
+            # STATIS and FIELD and CONTROL will hopefully be symlinks, so we
+            #  can't delete them, but REVIVE is never needed
+            absl_delete_files = self.options.get('absl_delete_files')
+            if 'REVIVE' in absl_delete_files or '*_bs_*' in absl_delete_files:
+                rm_line = 'rm REVIVE\n'
             else:
                 rm_line = ''
 

@@ -1564,10 +1564,10 @@ class PyNiss(object):
             absl_script = ["#!/bin/bash\n\n", "export FORT_BUFFERED=true\n\n",
                            "export OMP_NUM_THREADS=1\n\n"]
             for directory in individual_directories:
-                absl_script.extend(["pushd %s\n" % directory,
+                absl_script.extend(["pushd %s > /dev/null\n" % directory,
                                     "%s\n" % dl_poly_exe,
                                     rm_line,
-                                    "popd\n"])
+                                    "popd > /dev/null\n"])
 
             absl_faps = open('absl_faps', 'w')
             absl_faps.writelines(absl_script)

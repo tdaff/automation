@@ -3638,8 +3638,9 @@ class Structure(object):
             sigma = options.getfloat('absl_sigma')
             radius = options.getfloat('absl_radius')
             cutoff = options.getfloat('absl_cutoff')
+            write = options.getbool('absl_write_smooth_cube')
             folded = self.fold_and_maxima(fold, find_maxima, tp_point, sigma,
-                                          radius, cutoff)
+                                          radius, cutoff, write)
 
         if folded and not options.getbool('fastmc_keep_unfolded_cubes'):
             debug("Removing unfolded cube files")
@@ -3795,7 +3796,7 @@ class Structure(object):
 
 
     def fold_and_maxima(self, fold=True, find_maxima=True, tp_point=None,
-                        sigma=2.0, radius=0.31, cutoff=0.0):
+                        sigma=2.0, radius=0.31, cutoff=0.0, write=False):
         """Determine the positions of maxima and produce an xyz xyz file."""
         from cube import Cube
         folded = False
@@ -3813,8 +3814,8 @@ class Structure(object):
                     guest_cube.write_cube()
                     folded = True
                 if find_maxima:
-                    guest_locations[sites] = guest_cube.maxima(sigma, radius,
-                                                               cutoff)
+                    guest_locations[sites] = guest_cube.maxima(
+                        sigma, radius, cutoff, write)
             if guest_locations:
                 if tp_point:
                     # We can keep them for later too, must create dict

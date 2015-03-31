@@ -193,7 +193,7 @@ class Cube(object):
         outfile.flush()
         outfile.close()
 
-    def maxima(self, sigma=2.0, radius=0.31, cutoff=0.0):
+    def maxima(self, sigma=2.0, radius=0.31, cutoff=0.0, write=False):
         """
         Smooth with gaussian blur then use the spacing to determine nearest
         neighbours to estimate positions of maxima.
@@ -225,6 +225,8 @@ class Cube(object):
 
         # Renormalise to pre-filtered values
         temp_data *= normalising_sum/sum(temp_data)
+        if write:
+            self.write_cube(self.smoothed_name)
 
         # define a connectivity neighborhood
         neighborhood = generate_binary_structure(np.ndim(temp_data), 2)
@@ -286,6 +288,14 @@ class Cube(object):
             return self.filename.replace(".cube", "_folded.cube")
         else:
             return self.filename + "_folded.cube"
+
+    @property
+    def smoothed_name(self):
+        """File name with _smooth inserted for output."""
+        if ".cube" in self.filename:
+            return self.filename.replace(".cube", "_smooth.cube")
+        else:
+            return self.filename + "_smooth.cube"
 
     @property
     def error_name(self):

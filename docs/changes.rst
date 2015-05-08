@@ -7,6 +7,20 @@ Development
 -----------
 
 ----------
+1.5 series
+----------
+
+  * **New** Faps web interface! The fapweb.py starts a webserver that can be
+    used to construct input files and submit jobs.
+  * ABSL binding sites are optimied with CG instead of zero K MD.
+  * Many ABSL tweaks and fixes.
+  * Option to email results at the end of a job.
+  * Properties run before the GCMC step.
+  * Console output changed slightly to be less intense, but shows more
+    information on options in ``-v`` verbose mode.
+  * Some fixes for the gromacs UFF implementation.
+
+----------
 1.4 series
 ----------
 

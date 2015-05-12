@@ -40,6 +40,23 @@ To keep your local copy up-to-date issue an :command:`hg pull` followed by an
   overwritten.
 
 
+========================
+Setting up web interface
+========================
+
+The script :command:`web/fapweb.py` will run the web interface. To ensure that
+the jsmol rendering works you will need to add jsmol files to the static files
+of the web interface. The following commands unzip put the jsmol files into
+a directory ``web/static/jsmol/``.
+
+.. code-block:: console
+
+   $ cd web/static
+   $ curl -O -J -L http://sourceforge.net/projects/jmol/files/latest/download\?source\=files
+   $ unzip Jmol-*.zip '*/jsmol.zip
+   $ unzip Jmol*/jsmol.zip
+
+
 ===========================================
 Setting up executables and additional files
 ===========================================

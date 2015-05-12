@@ -26,6 +26,28 @@ Contents
    guests
    changes
 
+
+.. _api-docs:
+
+--------
+API Docs
+--------
+
+.. toctree::
+   :maxdepth: 2
+
+   api/faps
+   api/config
+   api/backend
+   api/binding_sites
+   api/cube
+   api/elements
+   api/eos
+   api/job_handler
+   api/logo
+   api/parameters
+   api/symmetry
+
 ==================
 Indices and tables
 ==================
@@ -33,3 +55,4 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
+

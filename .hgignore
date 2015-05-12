@@ -14,3 +14,4 @@ _build
 .idea
 *.nja
 options.inc
+web/static/[jJ]*mol*

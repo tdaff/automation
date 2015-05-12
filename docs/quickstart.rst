@@ -323,6 +323,20 @@ in the INCAR:
        VDW_A2 = 4.4752
 
 
+-----------
+Where next?
+-----------
+
+For a complete picture of the capabilities of the code, :ref:`options` shows
+documentation on all the ways in which a calculation can be customised. This is
+also available in the interactive ``web/fapweb.py`` interface (which is also
+capable of submitting jobs for you). For descriptions of the capabilities of
+the code, see :ref:`modules`.
+
+If you wish to develop using the faps provided modules, these are documented in
+the automatically generated :ref:`api-docs`.
+
+
 .. |H2O| replace:: H\ :sub:`2`\ O
 
 .. |CO2| replace:: CO\ :sub:`2`

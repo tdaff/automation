@@ -9,6 +9,25 @@ which depend on your use-case. For the large majority of users the system
 installed faps should be sufficient. Only in the case that you need to modify
 the source or you need a different version you can obtain a personal copy.
 
+------------
+Requirements
+------------
+
+Faps requires Python 2.7 or 3.3+. Some older versions were compatible
+with Python 2.4, but support for older versions has now been dropped.
+If you need a version compatible with older Pythons, contact a developer.
+
+Some features require third party modules to function correctly. Most
+optional:
+
+- ``numpy`` : required for most numerical operations
+- ``sqlalchemy`` : (optional) reading and writing to the fapswitch database
+  format
+- ``scipy`` : (optional) required for binding site location
+- ``flask`` : (optional) only needed for the web interface, with either one
+  of ``gevent`` or ``tornado``.
+
+
 ---------------------
 System installed faps
 ---------------------

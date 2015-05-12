@@ -1,12 +1,14 @@
 # faps-doc #
 
-Documentation for the faps software pacakge. That software is kept [elsewhere](https://bitbucket.org/tdaff/automation) and this documentation may, or may not, be up to date.
+Documentation for the `faps` software package.
 
 ### Use Me ###
 
-* Standard Sphinx documentation
-* Make sure you have Sphinx installed
-* Run `make html` (or whatever you want)
+* Mostly standard Sphinx documentation
+* Make sure you have a fairly up to date Sphinx installed
+* Requires `sphinxcontrib.bibtex`, and a copy of the `faps` source in the 
+  parent directory.
+* Run `make html` (or run `make` to see which formats are available)
 
 ### Who do I talk to? ###
 

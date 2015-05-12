@@ -12,17 +12,17 @@ contacting a member of the lab first.
 Documentation
 =============
 
-Complete documentation is included in the `docs` directory and must be
-built with `sphinx` before use. The the documentation requires the
-`sphinxcontrib.bibtex` extension to compile successfully `pip install
+Complete documentation is included in the ``docs`` directory and must be
+built with ``sphinx`` before use. The the documentation requires the
+``sphinxcontrib.bibtex`` extension to compile successfully `pip install
 sphinxcontrib-bibtex --user`. Any missing dependencies may also result
 in missing parts of the api documentation.
 
-Running the command `make html` will generate a `_build` directory that
-contains a file `index.html` which can be viewed in any web browser.
+Running the command ``make html`` will generate a ``_build`` directory that
+contains a file ``index.html`` which can be viewed in any web browser.
 
 If this has been installed on your machine, the documentation may be
-available with the commands `faps-doc` or `faps-man`.
+available with the commands ``faps-doc`` or ``faps-man``.
 
 Installation
 ============
@@ -32,21 +32,22 @@ with Python 2.4, but support for older versions has now been dropped.
 If you need a version compatible with older Pythons, contact a developer.
 
 Obtain a copy of the package, put it somewhere and make a link to the
-`faps.py` file in your `$PATH`. Edit 'site.ini' in the installation
+``faps.py`` file in your ``$PATH``. Edit 'site.ini' in the installation
 directory to customize all simulations for the machine you will be
 running on (an example file is included).
 
 For the web interface, you can also create a link to the file
-`web/fapweb.py`.
+``web/fapweb.py``.
 
 Some features require third party modules to function correctly. Most
 optional:
 
-- `numpy` : required for most numerical operations
-- `sqlalchemy` : (optional) reading and writing to the fapswitch database format
-- `scipy` : (optional) required for binding site location
-- `flask` : (optional) only needed for the web interface, with either one of
-            `gevent` or `tornado`.
+- ``numpy`` : required for most numerical operations
+- ``sqlalchemy`` : (optional) reading and writing to the fapswitch database
+  format
+- ``scipy`` : (optional) required for binding site location
+- ``flask`` : (optional) only needed for the web interface, with either one
+  of ``gevent`` or ``tornado``.
 
 Running
 =======

@@ -1,0 +1,16 @@
+syntax: glob
+*~
+*.pyc
+*.pyo
+__pycache__/*
+.DS_Store
+*.egg-info
+*.bak
+*.rej
+*.orig
+.*.sw[nop]
+*.flog
+_build
+.idea
+*.nja
+options.inc

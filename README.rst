@@ -14,9 +14,10 @@ Documentation
 
 Complete documentation is included in the ``docs`` directory and must be
 built with ``sphinx`` before use. The the documentation requires the
-``sphinxcontrib.bibtex`` extension to compile successfully `pip install
-sphinxcontrib-bibtex --user`. Any missing dependencies may also result
-in missing parts of the api documentation.
+``sphinxcontrib.bibtex`` and ``numpydoc`` extensions to compile successfully
+(``pip install sphinxcontrib-bibtex --user`` and ``pip install numpydoc
+--user`` will install these for the current user). Any missing faps
+dependencies may also result in missing parts of the api documentation.
 
 Running the command ``make html`` will generate a ``_build`` directory that
 contains a file ``index.html`` which can be viewed in any web browser.

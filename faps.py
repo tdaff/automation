@@ -6005,6 +6005,8 @@ def main():
     # try to unpickle the job or
     # fall back to starting a new simulation
     job_name = main_options.get('job_name')
+    if " " in job_name:
+        warning("Spaces in job names may break submission on some systems.")
     niss_name = "%s.niss" % job_name
     tar_name = "%s.tar" % job_name
     if path.exists(niss_name):

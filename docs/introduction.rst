@@ -18,3 +18,6 @@ simulation and can be subclassed into a diverse range of applications.
 It is recommended that new users read the quickstart tutorial and refer to this
 documentation for details of all the available options.
 
+This is documentation for an OLD version. Please contact someone in the
+Woo Lab (http://titan.chem.uottawa.ca) for information about using this
+code for your research.
